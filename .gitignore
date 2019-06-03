@@ -1,0 +1,17 @@
+# ignore data folder
+data/
+
+# ignore test output folder and subfolders
+output/
+deltas/
+entropy/
+qc/
+query/
+ranking/
+renderings/
+
+# ignore pycache folder
+__pyache__/
+
+# ignore pyc files
+*.pyc
