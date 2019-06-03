@@ -15,3 +15,6 @@ __pyache__/
 
 # ignore pyc files
 *.pyc
+
+# ignore .DS_Store
+.DS_Store
