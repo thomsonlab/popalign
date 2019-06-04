@@ -1925,7 +1925,7 @@ def rank(pop, ref=None, k=100, niter=200, mincells=50):
 	plt.xticks(x, lblorder, rotation=90)
 	plt.xlabel('Samples')
 	plt.ylabel('Log-likelihood scores')
-	plt.title('Sample scores against %s sample\n(For each sample: %d random cells %d times)' % (ref, k, niter))
+	plt.title('Likelihood scores against reference model (%s)' % ref)
 	plt.tight_layout()
 	dname = 'ranking'
 	mkdir(os.path.join(pop['output'], dname))
