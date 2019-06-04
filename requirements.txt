@@ -1,0 +1,7 @@
+pandas
+scipy
+sklearn
+seaborn
+adjustText
+plotly
+ipywidgets
