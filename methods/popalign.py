@@ -1204,11 +1204,11 @@ def plotfeatures(pop):
 '''
 GMM functions
 '''
-def default_groups():
+def default_types():
 	'''
 	Return a default dictionary of cell types (key) and gene lists (value) pairs
 	'''
-	groups = {
+	types = {
 		'Monocytes' : [
 			'CD14',
 			'CD33',
@@ -1254,9 +1254,9 @@ def default_groups():
 			'NCAM1',
 			'TYROBP']
 	}
-	return groups
+	return types
 
-def typer_func(gmm, prediction, M, genes, groups):
+def typer_func(gmm, prediction, M, genes, types):
 	'''
 	!!!! Need to work on a normalized matrix. types x components
 
@@ -1273,13 +1273,13 @@ def typer_func(gmm, prediction, M, genes, groups):
 		The column normalized logged data, not gene filtered
 	genes : vector
 		Array of genes
-	groups : dict
+	types : dict
 		Dictionary of cell types (keys) and gene lists (values)
 	'''
-	if groups == None:
-		groups = default_groups()
+	if types == None:
+		types = default_types()
 
-	typelist = list(groups.keys()) # create a list of cell types
+	typelist = list(types.keys()) # create a list of cell types
 	types = [] # to store top type for each component
 
 	for i in range(gmm.n_components): # for each component number i of the gmm
@@ -1287,7 +1287,7 @@ def typer_func(gmm, prediction, M, genes, groups):
 		sub = M[:,idx] # get the matching cells
 		avgs = [] # empty 
 		for j, group in enumerate(typelist): # for each cell type
-			subgenes = groups[group] # get the gene list
+			subgenes = types[group] # get the gene list
 			subgenes = [g for g in subgenes if g in genes] # only keep known genes
 			if len(subgenes) == 0:
 				raise Exception('No valid genes in group: %s' % group)
@@ -1494,7 +1494,7 @@ def build_single_GMM(k, C, reg_covar):
 		verbose_interval=10) # create model
 	return gmm.fit(C) # Fit the data
 
-def build_gmms(pop, ks=(5,20), nreps=3, reg_covar=False, rendering='grouped', groups=None):
+def build_gmms(pop, ks=(5,20), nreps=3, reg_covar=False, rendering='grouped', types=None):
 	'''
 	Build a Gaussian Mixture Model on feature projected data for each sample
 
@@ -1511,7 +1511,7 @@ def build_gmms(pop, ks=(5,20), nreps=3, reg_covar=False, rendering='grouped', gr
 		If False, 1e-6 default value is used
 	rendering : str
 		One of groupd, individual or unique
-	groups : dict, str or None
+	types : dict, str or None
 		Dictionary of cell types.
 		If None, a default PBMC cell types dictionary is provided
 	'''
@@ -1547,12 +1547,12 @@ def build_gmms(pop, ks=(5,20), nreps=3, reg_covar=False, rendering='grouped', gr
 		gmm = q[np.argmin(BIC)] # best gmm is the one that minimizes the BIC
 		pop['samples'][x]['gmm'] = gmm # store gmm
 
-		pop['samples'][x]['gmm_types'] = typer_func(gmm=gmm, prediction=gmm.predict(C), M=M, genes=pop['genes'], groups=groups)
+		pop['samples'][x]['gmm_types'] = typer_func(gmm=gmm, prediction=gmm.predict(C), M=M, genes=pop['genes'], types=types)
 
 	print('Rendering models')
 	render_models(pop, mode=rendering) # render the models
 
-def build_unique_gmm(pop, ks=(5,20), nreps=3, reg_covar=False, groups=None):
+def build_unique_gmm(pop, ks=(5,20), nreps=3, reg_covar=False, types=None):
 	'''
 	Build a unique Gaussian Mixture Model on the feature projected data
 
@@ -1567,7 +1567,7 @@ def build_unique_gmm(pop, ks=(5,20), nreps=3, reg_covar=False, groups=None):
 	reg_covar : boolean
 		If True, the regularization value will be computed from the feature data
 		If False, 1e-6 default value is used
-	groups : dict, str or None
+	types : dict, str or None
 		Dictionary of cell types.
 		If None, a default PBMC cell types dictionary is provided
 	'''
@@ -1601,7 +1601,7 @@ def build_unique_gmm(pop, ks=(5,20), nreps=3, reg_covar=False, groups=None):
 	gmm = q[np.argmin(BIC)]
 	pop['gmm'] = gmm
 
-	pop['gmm_types'] = typer_func(gmm=gmm, prediction=gmm.predict(C), M=M, genes=pop['genes'], groups=groups)
+	pop['gmm_types'] = typer_func(gmm=gmm, prediction=gmm.predict(C), M=M, genes=pop['genes'], types=types)
 	render_models(pop, mode='unique') # render model
 
 '''

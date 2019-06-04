@@ -1,8 +1,14 @@
+'''
+Generate a .npy file from a folder
+containing one or more gene set files
+'''
+
+#--------- User input required -----------------
+# specify the path to the folder
+# specify the name of the geneset to be saved
 FOLDER = '../rsc/gsea/c5bp/'
 OUTPUT = '../rsc/gsea/c5bp'
-
-###########################################################
-###########################################################
+#-----------------------------------------------
 
 import os
 import numpy as np
