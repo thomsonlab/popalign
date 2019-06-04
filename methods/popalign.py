@@ -1280,7 +1280,7 @@ def typer_func(gmm, prediction, M, genes, types):
 		types = default_types()
 
 	typelist = list(types.keys()) # create a list of cell types
-	types = [] # to store top type for each component
+	finaltypes = [] # to store top type for each component
 
 	for i in range(gmm.n_components): # for each component number i of the gmm
 		idx = np.where(prediction==i)[0] # get the cell indices that match component i
@@ -1293,8 +1293,8 @@ def typer_func(gmm, prediction, M, genes, types):
 				raise Exception('No valid genes in group: %s' % group)
 			gidx = [np.where(genes==g)[0][0] for g in subgenes] # get the gene indices
 			avgs.append(sub[gidx,:].mean(axis=1).mean()) # get the average value 
-		types.append(typelist[np.argmax(avgs)]) # retrieve the cell type with the largest average
-	return types
+		finaltypes.append(typelist[np.argmax(avgs)]) # retrieve the cell type with the largest average
+	return finaltypes
 
 def render_model(pop, gmm, C, pcaproj, name, mean_labels=None):
 	'''
@@ -1994,6 +1994,9 @@ def plot_query(pop):
 		cmap='bone_r',
 		figsize=(10,10)
 	)
+
+	# rotate xlabels
+	plt.setp(g.ax_heatmap.xaxis.get_majorticklabels(), rotation=90)
 
 	# adjusting labels
 	g.ax_heatmap.set_xlabel('GMM components')
