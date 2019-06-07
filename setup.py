@@ -4,7 +4,7 @@ setup(
     name="popalign",
     version="0.1",
     packages=[
-        "methods",
+        "popalign",
     ],
     install_requires=[
         "numpy",
