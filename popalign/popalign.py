@@ -28,7 +28,7 @@ import plotly
 from plotly.graph_objs import graph_objs as go
 import ipywidgets as widgets
 from ipywidgets import interact, interactive, Layout, HBox, VBox, fixed
-#plotly.offline.init_notebook_mode()
+plotly.offline.init_notebook_mode()
 from plotly.offline import iplot
 from textwrap import wrap
 
