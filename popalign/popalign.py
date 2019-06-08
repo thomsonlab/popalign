@@ -589,6 +589,10 @@ def load_dict(dic):
 	'''
 	return np.load(dic).item()
 
+def test():
+	d = load_dict('./rsc/gsea/c5bp.npy')
+	return d
+
 def sf(k, size_total, n, N):
 	'''
 	Calculate value of survival function
