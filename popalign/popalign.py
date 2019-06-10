@@ -24,13 +24,15 @@ from matplotlib.offsetbox import AnchoredText
 import seaborn as sns
 from scipy.stats import multivariate_normal as mvn
 import adjustText
-import plotly
-from plotly.graph_objs import graph_objs as go
 import ipywidgets as widgets
 from ipywidgets import interact, interactive, Layout, HBox, VBox, fixed
-plotly.offline.init_notebook_mode()
-from plotly.offline import iplot
 from textwrap import wrap
+import plotly
+from plotly.graph_objs import graph_objs as go
+from plotly.offline import iplot
+
+plotly.offline.init_notebook_mode()
+
 
 '''
 Misc functions
