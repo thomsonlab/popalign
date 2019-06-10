@@ -587,11 +587,7 @@ def load_dict(dic):
 		Path to a .npy dictionary file
 
 	'''
-	return np.load(dic).item()
-
-def test():
-	d = load_dict('./rsc/gsea/c5bp.npy')
-	return d
+	return np.load(dic, allow_pickle=True).item()
 
 def sf(k, size_total, n, N):
 	'''
@@ -645,7 +641,11 @@ def gsea(pop, geneset='c5bp'):
 	size_total = len(pop['genes']) # get total number of genes
 	pop['feat_labels'] = dict() #create entry to store the top labels for each feature
 
-	d = load_dict('./rsc/gsea/%s.npy' % geneset) # load gene sets
+
+	currpath = os.path.abspath(os.path.dirname(__file__))
+	d = load_dict(os.path.join(currpath, "gsea/%s.npy" % geneset))
+
+	d = load_dict('./gsea/%s.npy' % geneset) # load gene sets
 	genes = pop['filtered_genes'] # load list of filtered genes
 
 	W = pop['W'] # get feature space W

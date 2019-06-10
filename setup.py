@@ -9,9 +9,8 @@ setup(
     packages=[
         "popalign",
     ],
-    package_data={
-        "rsc/gsea/":["*.npy"]
-    },
+    package_dirs={"popalign":"popalign"},
+    package_data={"popalign":["gsea/*.npy"]},
     install_requires=[
         "numpy",
         "pandas",
