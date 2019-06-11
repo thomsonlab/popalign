@@ -31,9 +31,6 @@ import plotly
 from plotly.graph_objs import graph_objs as go
 from plotly.offline import iplot
 
-plotly.offline.init_notebook_mode()
-
-
 '''
 Misc functions
 '''
@@ -646,8 +643,6 @@ def gsea(pop, geneset='c5bp'):
 
 	currpath = os.path.abspath(os.path.dirname(__file__))
 	d = load_dict(os.path.join(currpath, "gsea/%s.npy" % geneset))
-
-	d = load_dict('./gsea/%s.npy' % geneset) # load gene sets
 	genes = pop['filtered_genes'] # load list of filtered genes
 
 	W = pop['W'] # get feature space W
@@ -865,7 +860,6 @@ def plot_top_genes_features(pop):
 	plt.ylabel('Genes')
 	plt.yticks([])
 	plt.xlabel('Features')
-	plt.tight_layout()
 
 	dname = 'qc'
 	mkdir(os.path.join(pop['output'], dname)) # create subfolder
@@ -974,7 +968,7 @@ def onmf(pop, ncells=2000, nfeats=[5,7,9], nreps=3, niter=300):
 	gsea(pop) # run GSEA on feature space
 	split_proj(pop, proj) # split projected data and store it for each individual sample
 	plot_top_genes_features(pop) # plot a heatmap of top genes for W
-	plot_reconstruction(pop) # plot reconstruction data
+	#plot_reconstruction(pop) # plot reconstruction data
 
 def pca(pop, fromspace='genes'):
 	'''
@@ -1365,7 +1359,7 @@ def render_model(pop, gmm, C, pcaproj, name, mean_labels=None):
 		sample_density += w[k]*(np.reshape(mvn.pdf(pos,mean=mean_proj[k].T,cov=cov),X.shape)) # compute the density
 
 	sample_density = np.log(sample_density) # log density
-	pp = plt.pcolor(x1, x2, sample_density, cmap=cmap) # plot density
+	pp = plt.pcolor(x1, x2, sample_density, cmap=cmap, vmin=cbarmin, vmax=cbarmax) # plot density
 	plt.scatter(x=mean_proj[:,0], y=mean_proj[:,1], s=w_factor*w, alpha=alpha, c=mean_color) # plot means
 	texts=[]
 	for i,txt in enumerate(mean_labels):
@@ -1374,7 +1368,6 @@ def render_model(pop, gmm, C, pcaproj, name, mean_labels=None):
 
 	pp.set_edgecolor('face')
 	cb = plt.colorbar(pp)
-	cb.set_clim(cbarmin,cbarmax)
 	cb.set_alpha(1)
 	cb.draw_all()
 	cb.set_label('Weighted log probability')
@@ -1691,7 +1684,7 @@ def plot_deltas(pop):
 			x = np.arange(len(delta_mus)) # create x coordinates 
 
 			# plot delta mus
-			markerline, stemlines, baseline = plt.stem(x, delta_mus, markerfmt='ko')
+			markerline, stemlines, baseline = plt.stem(x, delta_mus, markerfmt='ko', use_line_collection=True)
 			plt.setp(stemlines, 'color', plt.getp(markerline,'color'))
 			plt.setp(stemlines, 'linestyle', 'dotted')
 
@@ -1705,7 +1698,7 @@ def plot_deltas(pop):
 			plt.close()
 
 			#plot delta ws
-			markerline, stemlines, baseline = plt.stem(x, delta_ws, markerfmt='ko')
+			markerline, stemlines, baseline = plt.stem(x, delta_ws, markerfmt='ko', use_line_collection=True)
 			plt.setp(stemlines, 'color', plt.getp(markerline,'color'))
 			plt.setp(stemlines, 'linestyle', 'dotted')
 
@@ -2013,3 +2006,7 @@ def plot_query(pop):
 	mkdir(os.path.join(pop['output'], dname))
 	plt.savefig(os.path.join(pop['output'], dname, 'query_plot.pdf'), bbox_inches='tight')
 
+import sys
+if not sys.warnoptions:
+    import warnings
+    warnings.simplefilter("ignore")
