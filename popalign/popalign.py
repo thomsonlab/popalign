@@ -158,7 +158,7 @@ def load_genes(genes):
 	'''
 	return np.array([row[1].upper() for row in csv.reader(open(genes), delimiter="\t")])
 
-def load_samples(samples, genes, outputfolder='output'):
+def load_samples(samples, genes=None, outputfolder='output', existing_obj=None):
 	'''
 	Load data from a dictionary and gene labels from a file
 
@@ -171,22 +171,25 @@ def load_samples(samples, genes, outputfolder='output'):
 	outputfolder : str
 		Path (or name) of the output folder to create
 	'''
-	obj = {}
-	obj['samples'] = {}
-	order = []
+	if (genes == None) & (existing_obj == None):
+		raise Exception('Please specify path to gene file')
+
+	if existing_obj == None:
+		obj = {}
+		obj['samples'] = {}
+		obj['order'] = []
+		obj['genes'] = load_genes(genes) # load and store genes
+	else:
+		obj = existing_obj
 	for x in samples:
 		x = str(x)
 		# create entry and load sparse matrix
 		obj['samples'][x] = {}
 		obj['samples'][x]['M'] = sio.mmread(samples[x]).tocsc()
-		order.append(x)
-	# save list of sample names to always call them in the same order for consistency
-	obj['order'] = order
-	obj['nsamples'] = len(order)
-	# define name of output folder to save results
-	obj['output'] = outputfolder
-	# load and store genes
-	obj['genes'] = load_genes(genes)
+		obj['order'].append(x) # add sample name to list to always call them in the same order for consistency	
+	
+	obj['nsamples'] = len(obj['order']) # save number of samples
+	obj['output'] = outputfolder # define name of output folder to save results
 	return obj
 
 def check_cols(s,cols):
@@ -203,7 +206,7 @@ def check_cols(s,cols):
 	if s not in cols:
 		raise Exception('Columns of meta data must include: %s' % s)
 
-def load_screen(matrix, barcodes, metafile, genes, outputfolder='output'):
+def load_screen(matrix, barcodes, metafile, genes=None, outputfolder='output', existing_obj=None):
 	'''
 	Load data from a screen experiment and genes from a file
 
@@ -218,50 +221,44 @@ def load_screen(matrix, barcodes, metafile, genes, outputfolder='output'):
 	outputfolder : str
 		Path (or name) of the output folder to create
 	'''
-	obj = {}
-	obj['samples'] = {}
+	if (genes == None) & (existing_obj == None):
+		raise Exception('Please specify path to gene file')
 
-	# load main matrix
-	M = sio.mmread(matrix).tocsc()
+	if existing_obj == None:
+		obj = {}
+		obj['samples'] = {}
+		obj['order'] = []
+		obj['genes'] = load_genes(genes) # load and store genes
+	else:
+		obj = existing_obj
 
-	# load associated barcodes
-	obj['barcodes'] = np.array([row[0] for row in csv.reader(open(barcodes), delimiter="\t")])
-	# store index of each barcode in a dictionary to quickly retrieve indices for a list of barcodes
-	obj['bc_idx'] = {}
-	for i, bc in enumerate(obj['barcodes']):
-		obj['bc_idx'][bc] = i
+	M = sio.mmread(matrix).tocsc() # load main matrix
+	barcodes = np.array([row[0] for row in csv.reader(open(barcodes), delimiter="\t")]) # load associated barcodes
+	bc_idx = {} # store index of each barcode in a dictionary to quickly retrieve indices for a list of barcodes
+	for i, bc in enumerate(barcodes):
+		bc_idx[bc] = i
 
-	# load metadata file
-	obj['meta'] = pd.read_csv(metafile, header=0)
-	cols = obj['meta'].columns.values
+	meta = pd.read_csv(metafile, header=0) # load metadata file
+	cols = meta.columns.values
 	check_cols('cell_barcode', cols)
 	check_cols('sample_id', cols)
 
-	# if additional columns exist in the metadata file, save those under `conditions`
-	if len(obj['meta'].columns.values)>2:
-		tmp = obj['meta'].drop_duplicates(subset='sample_id')
+	if len(meta.columns.values)>2: # if additional columns exist in the metadata file, save those under `conditions`
+		tmp = meta.drop_duplicates(subset='sample_id')
 		tmp.index = tmp.sample_id.values
 		tmp = tmp.drop(columns=['cell_barcode','sample_id'])
 		obj['conditions'] = tmp
 	
-	order = []
-	# go through the sample_id values to split the data and store it for each individual sample
-	for i in obj['meta']['sample_id'].dropna().unique():
+	for i in meta['sample_id'].dropna().unique(): # go through the sample_id values to split the data and store it for each individual sample
 		x = str(i)
-		obj['samples'][x] = {}
-		# get the cell barcodes for sample defined by sample_id
-		sample_bcs = obj['meta'][obj['meta'].sample_id == i].cell_barcode.values
-		# retrieve list of matching indices
-		idx = [obj['bc_idx'][bc] for bc in sample_bcs]
-		# extract matching data from M
-		obj['samples'][x]['M'] = M[:,idx]
-		order.append(x)
+		obj['samples'][x] = {} # create entry for sample x
+		sample_bcs = meta[meta.sample_id == i].cell_barcode.values # get the cell barcodes for sample defined by sample_id
+		idx = [bc_idx[bc] for bc in sample_bcs] # retrieve list of matching indices
+		obj['samples'][x]['M'] = M[:,idx] # extract matching data from M
+		obj['order'].append(x) # save list of sample names to always call them in the same order for consistency
 
-	# save list of sample names to always call them in the same order for consistency
-	obj['order'] = order
-	obj['nsamples'] = len(order)
+	obj['nsamples'] = len(obj['order']) 
 	obj['output'] = outputfolder
-	obj['genes'] = load_genes(genes)
 	return obj
 
 '''
@@ -622,7 +619,7 @@ def enrichment_analysis(d,genelist,size_total):
 	keys = np.array(list(d.keys())) # get a list of gene set names
 	with Pool(None) as p:
 		q = np.array(p.starmap(sf, [(len(set(d[key]) & set(genelist)), size_total, len(d[key]), N) for key in keys])) # For each gene set, compute the p-value of the overlap with the gene list
-	return keys[np.argsort(q)[:3]] # return the most significant gene set names
+	return keys[np.argsort(q)[:10]] # return the most significant gene set names
 
 def gsea(pop, geneset='c5bp'):
 	'''
@@ -963,7 +960,7 @@ def onmf(pop, ncells=2000, nfeats=[5,7,9], nreps=3, niter=300):
 	pop['W'] = q[idx_best] # retrieve matching W
 	pop['nfeats'] = pop['W'].shape[1] # store number of features in best W
 	proj = projs[idx_best] # retrieve matching projection
-	pop['reg_covar'] = max(np.linalg.eig(np.cov(proj.T) )[0])/100 # store a regularization value for GMM covariance matrices
+	pop['reg_covar'] = max(np.linalg.eig(np.cov(proj.T))[0])/100 # store a regularization value for GMM covariance matrices
 
 	gsea(pop) # run GSEA on feature space
 	split_proj(pop, proj) # split projected data and store it for each individual sample
@@ -1493,7 +1490,7 @@ def build_single_GMM(k, C, reg_covar):
 		verbose_interval=10) # create model
 	return gmm.fit(C) # Fit the data
 
-def build_gmms(pop, ks=(5,20), nreps=3, reg_covar=False, rendering='grouped', types=None):
+def build_gmms(pop, ks=(5,20), nreps=3, reg_covar=True, rendering='grouped', types=None):
 	'''
 	Build a Gaussian Mixture Model on feature projected data for each sample
 
@@ -1505,9 +1502,10 @@ def build_gmms(pop, ks=(5,20), nreps=3, reg_covar=False, rendering='grouped', ty
 		Number or range of components to use
 	nreps : int
 		number of replicates to build for each k in `ks`
-	reg_covar : boolean
+	reg_covar : boolean or float
 		If True, the regularization value will be computed from the feature data
 		If False, 1e-6 default value is used
+		If float, value will be used as reg_covar parameter to build GMMs
 	rendering : str
 		One of groupd, individual or unique
 	types : dict, str or None
@@ -1534,11 +1532,13 @@ def build_gmms(pop, ks=(5,20), nreps=3, reg_covar=False, rendering='grouped', ty
 		Cvalid = C[not_idx,:] # subset to get the validation set
 
 		if reg_covar == True:
-			reg_covar = pop['reg_covar'] # retrieve reg value from pop object
+			reg_covar_param = pop['reg_covar'] # retrieve reg value from pop object that was computed from projection data
+		elif reg_covar == False:
+			reg_covar_param = 0 # default value is 0 (no assumption on the data)
 		else:
-			reg_covar = 1e-06 # default value
+			reg_covar_param = reg_covar
 		with Pool(7) as p: # build all the models in parallel
-			q = p.starmap(build_single_GMM, [(k, Ctrain, reg_covar) for k in np.repeat(ks, nreps)])
+			q = p.starmap(build_single_GMM, [(k, Ctrain, reg_covar_param) for k in np.repeat(ks, nreps)])
 
 		# We minimize the BIC score of the validation set
 		# to pick the best fitted gmm
@@ -1551,7 +1551,7 @@ def build_gmms(pop, ks=(5,20), nreps=3, reg_covar=False, rendering='grouped', ty
 	print('Rendering models')
 	render_models(pop, mode=rendering) # render the models
 
-def build_unique_gmm(pop, ks=(5,20), nreps=3, reg_covar=False, types=None):
+def build_unique_gmm(pop, ks=(5,20), nreps=3, reg_covar=True, types=None):
 	'''
 	Build a unique Gaussian Mixture Model on the feature projected data
 
@@ -1563,9 +1563,10 @@ def build_unique_gmm(pop, ks=(5,20), nreps=3, reg_covar=False, types=None):
 		Number or range of components to use
 	nreps : int
 		number of replicates to build for each k in `ks`
-	reg_covar : boolean
+	reg_covar : boolean or float
 		If True, the regularization value will be computed from the feature data
 		If False, 1e-6 default value is used
+		If float, value will be used as reg_covar parameter to build GMMs
 	types : dict, str or None
 		Dictionary of cell types.
 		If None, a default PBMC cell types dictionary is provided
@@ -1588,11 +1589,13 @@ def build_unique_gmm(pop, ks=(5,20), nreps=3, reg_covar=False, types=None):
 	Cvalid = C[not_idx,:]
 
 	if reg_covar == True:
-		reg_covar = pop['reg_covar']
+		reg_covar_param = pop['reg_covar'] # retrieve reg value from pop object that was computed from projection data
+	elif reg_covar == False:
+		reg_covar_param = 0 # default value is 0 (no assumption on the data)
 	else:
-		reg_covar = 1e-06
+		reg_covar_param = reg_covar
 	with Pool(7) as p:
-			q = p.starmap(build_single_GMM, [(k, Ctrain, reg_covar) for k in np.repeat(ks, nreps)])
+			q = p.starmap(build_single_GMM, [(k, Ctrain, reg_covar_param) for k in np.repeat(ks, nreps)])
 	
 	# We minimize the BIC score of the validation set
 	# to pick the best fitted gmm
