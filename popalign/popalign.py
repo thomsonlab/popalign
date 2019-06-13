@@ -12,10 +12,14 @@ from scipy import sparse as ss
 from scipy import optimize as so
 from scipy import stats
 from scipy.stats import linregress
+from scipy.cluster import hierarchy as shc
+from scipy.spatial import distance as scd
 from sklearn.utils.sparsefuncs import mean_variance_axis
 from sklearn.metrics import mean_squared_error
 from sklearn.decomposition import PCA
-import sklearn.mixture as smix
+from sklearn.metrics.pairwise import pairwise_distances
+from sklearn import mixture as smix
+import fastcluster as fc
 from sklearn import cluster as sc
 import matplotlib
 from matplotlib import pyplot as plt
@@ -144,6 +148,18 @@ def otsu(X, nbins=50):
 	# pick threshold that minimizes the intraclass variance
 	return thresholds[np.argmin(q)]
 
+def print_ncells(pop):
+	'''
+	Display number of cells of each sample
+
+	Parameters
+	----------
+	pop : dict
+		Popalign object
+	'''
+	for x in pop['order']:
+		print(x, '\t',pop['samples'][x]['M'].shape[1])
+
 '''
 Load functions
 '''
@@ -154,9 +170,13 @@ def load_genes(genes):
 	Parameters
 	----------
 	genes : str
-		Path to a .tsv 10X gene file
+		Path to a gene file
 	'''
-	return np.array([row[1].upper() for row in csv.reader(open(genes), delimiter="\t")])
+	try:
+		genes = np.array([row[1].upper() for row in csv.reader(open(genes), delimiter="\t")]) # 10X format
+	except:
+		genes = np.array([row[0].upper() for row in csv.reader(open(genes), delimiter="\t")]) # base format with one gene name per row
+	return genes
 
 def load_samples(samples, genes=None, outputfolder='output', existing_obj=None):
 	'''
@@ -167,9 +187,11 @@ def load_samples(samples, genes=None, outputfolder='output', existing_obj=None):
 	samples : dict
 		Dictionary of sample names (keys) and paths to their respective matrix files (values)
 	genes : str
-		Path to a .tsv 10X gene file
+		Path to a .tsv 10X gene file. Optional if existing_obj is provided
 	outputfolder : str
 		Path (or name) of the output folder to create
+	existing_obj : dict, optional
+		Object previously returned by either load_samples() or load_screen(). New samples will be added to that object
 	'''
 	if (genes == None) & (existing_obj == None):
 		raise Exception('Please specify path to gene file')
@@ -218,8 +240,12 @@ def load_screen(matrix, barcodes, metafile, genes=None, outputfolder='output', e
 		Path to a .tsv 10X barcodes file
 	metafile : str
 		Path to a metadata file. Must contains `cell_barcodes` and `sample_id` columns
+	genes : str
+		Path to a .tsv 10X gene file. Optional if existing_obj is provided
 	outputfolder : str
 		Path (or name) of the output folder to create
+	existing_obj : dict, optional
+		Object previously returned by either load_samples() or load_screen(). New samples will be added to that object
 	'''
 	if (genes == None) & (existing_obj == None):
 		raise Exception('Please specify path to gene file')
@@ -925,6 +951,41 @@ def scale_W(W):
 	norms = [np.linalg.norm(np.array(W[:,i]).flatten()) for i in range(W.shape[1])] # compute the L2-norm of each feature
 	return np.divide(W,norms) # divide each feature by its respective L2-norm
 
+def plot_H(pop, method='complete'):
+	'''
+	Plot the projection in feature space of the data
+
+	Parameters
+	----------
+	pop : dict
+		Popalign object
+	method : str
+		Hierarchical clustering method. Default is complete
+	'''
+	HM = [] # heatmap data
+	for x in pop['order']:
+		C = pop['samples'][x]['C'] # get feature data
+		d = pairwise_distances(X=C,metric='correlation',n_jobs=-1) # pairwaise distance matrix
+		np.fill_diagonal(d,0.) # make sure diagonal is not rounded to some small value
+		d = scd.squareform(d,force='tovector',checks=False) # force matrix to vector form
+		d = np.nan_to_num(d)
+		z = fc.linkage(d,method=method) # create linkage from distance matrix
+		z = z.clip(min=0)
+		idx = shc.leaves_list(z) # get clustered ordered
+		HM.append(C[idx,:]) # append ordered feature data
+	X = np.vstack(HM).T # concatenate the clustered matrices of all samples. Cells are columns, features are rows.
+	
+	plt.imshow(X, aspect='auto') # generate heatmap
+	plt.yticks(np.arange(pop['nfeats']), pop['top_feat_labels'])
+	plt.xticks([])
+	plt.xlabel('Cells')
+	plt.title('%d cells from %d samples' % (X.shape[1], pop['nsamples']))
+
+	dname = 'qc'
+	mkdir(os.path.join(pop['output'], dname)) # create subfolder
+	plt.savefig(os.path.join(pop['output'], dname, 'projection_cells.png'), bbox_inches = "tight", dpi=300)
+	plt.close()
+
 def onmf(pop, ncells=2000, nfeats=[5,7,9], nreps=3, niter=300):
 	'''
 	Compute feature spaces and minimize the reconstruction error
@@ -965,6 +1026,7 @@ def onmf(pop, ncells=2000, nfeats=[5,7,9], nreps=3, niter=300):
 	gsea(pop) # run GSEA on feature space
 	split_proj(pop, proj) # split projected data and store it for each individual sample
 	plot_top_genes_features(pop) # plot a heatmap of top genes for W
+	plot_H(pop, method='complete')
 	#plot_reconstruction(pop) # plot reconstruction data
 
 def pca(pop, fromspace='genes'):
@@ -1490,7 +1552,7 @@ def build_single_GMM(k, C, reg_covar):
 		verbose_interval=10) # create model
 	return gmm.fit(C) # Fit the data
 
-def build_gmms(pop, ks=(5,20), nreps=3, reg_covar=True, rendering='grouped', types=None):
+def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar=True, rendering='grouped', types=None):
 	'''
 	Build a Gaussian Mixture Model on feature projected data for each sample
 
@@ -1500,8 +1562,13 @@ def build_gmms(pop, ks=(5,20), nreps=3, reg_covar=True, rendering='grouped', typ
 		Popalign object
 	ks : int or tuple
 		Number or range of components to use
-	nreps : int
+	niters : int
 		number of replicates to build for each k in `ks`
+	training : int or float
+		If training is float, the value will be used a percentage to select cells for the training set. Must follow 0<value<1
+		If training is int, that number of cells will be used for the training set.
+	nreplicates : int
+		Number of replicates to generate. These replicates model will be used to provide confidence intervals later in the analysis.
 	reg_covar : boolean or float
 		If True, the regularization value will be computed from the feature data
 		If False, 1e-6 default value is used
@@ -1525,9 +1592,19 @@ def build_gmms(pop, ks=(5,20), nreps=3, reg_covar=True, rendering='grouped', typ
 		C = pop['samples'][x]['C'] # get sample feature data
 		M = pop['samples'][x]['M'] # get sample gene data
 		m = C.shape[0] # number of cells
-		n = int(m*0.7) # number of cells for the training set (70%)
+
+		if (isinstance(training, int)) & (training<m) & (training > 1): # if training is int and smaller than number of cells
+			n = training
+		elif (isinstance(training, int)) & (training>=m): # if training is int and bigger than number of cells
+			n = int(m*0.8) # since the number of training cells was larger than the number of cells in the sample, take 80%
+		elif (isinstance(training, float)) & (0<training) & (training<1):
+			n = int(m*training) # number of cells for the training set
+		else:
+			raise Exception('Value passed to training argument is invalid. Must be an int or a float between 0 and 1.')
+
 		idx = np.random.choice(m, n, replace=False) # get n random cell indices
 		not_idx = np.setdiff1d(range(m), idx) # get the validation set indices
+
 		Ctrain = C[idx,:] # subset to get the training sdt
 		Cvalid = C[not_idx,:] # subset to get the validation set
 
@@ -1538,20 +1615,34 @@ def build_gmms(pop, ks=(5,20), nreps=3, reg_covar=True, rendering='grouped', typ
 		else:
 			reg_covar_param = reg_covar
 		with Pool(7) as p: # build all the models in parallel
-			q = p.starmap(build_single_GMM, [(k, Ctrain, reg_covar_param) for k in np.repeat(ks, nreps)])
+			q = p.starmap(build_single_GMM, [(k, Ctrain, reg_covar_param) for k in np.repeat(ks, niters)])
 
 		# We minimize the BIC score of the validation set
 		# to pick the best fitted gmm
 		BIC = [gmm.bic(Cvalid) for gmm in q] # compute the BIC for each model with the validation set
 		gmm = q[np.argmin(BIC)] # best gmm is the one that minimizes the BIC
 		pop['samples'][x]['gmm'] = gmm # store gmm
-
 		pop['samples'][x]['gmm_types'] = typer_func(gmm=gmm, prediction=gmm.predict(C), M=M, genes=pop['genes'], types=types)
+
+		# Create replicates
+		if nreplicates >=1: # if replicates are requested
+			pop['nreplicates'] = nreplicates # store number of replicates in pop object
+			pop['samples'][x]['replicates'] =  {} # create replicates entry for sample x
+			for j in range(nreplicates): # for each replicate number j
+				with Pool(7) as p: # build all the models in parallel
+					q = p.starmap(build_single_GMM, [(k, Ctrain, reg_covar_param) for k in np.repeat(ks, niters)])
+				# We minimize the BIC score of the validation set
+				# to pick the best fitted gmm
+				BIC = [gmm.bic(Cvalid) for gmm in q] # compute the BIC for each model with the validation set
+				gmm = q[np.argmin(BIC)] # best gmm is the one that minimizes the BIC
+				pop['samples'][x]['replicates'][j] = {}
+				pop['samples'][x]['replicates'][j]['gmm'] = gmm # store replicate number j
+				pop['samples'][x]['replicates'][j]['gmm_types'] = typer_func(gmm=gmm, prediction=gmm.predict(C), M=M, genes=pop['genes'], types=types)
 
 	print('Rendering models')
 	render_models(pop, mode=rendering) # render the models
 
-def build_unique_gmm(pop, ks=(5,20), nreps=3, reg_covar=True, types=None):
+def build_unique_gmm(pop, ks=(5,20), niters=3, reg_covar=True, types=None):
 	'''
 	Build a unique Gaussian Mixture Model on the feature projected data
 
@@ -1561,7 +1652,7 @@ def build_unique_gmm(pop, ks=(5,20), nreps=3, reg_covar=True, types=None):
 		Popalign object
 	ks : int or tuple
 		Number or range of components to use
-	nreps : int
+	niters : int
 		number of replicates to build for each k in `ks`
 	reg_covar : boolean or float
 		If True, the regularization value will be computed from the feature data
@@ -1595,7 +1686,7 @@ def build_unique_gmm(pop, ks=(5,20), nreps=3, reg_covar=True, types=None):
 	else:
 		reg_covar_param = reg_covar
 	with Pool(7) as p:
-			q = p.starmap(build_single_GMM, [(k, Ctrain, reg_covar_param) for k in np.repeat(ks, nreps)])
+			q = p.starmap(build_single_GMM, [(k, Ctrain, reg_covar_param) for k in np.repeat(ks, niters)])
 	
 	# We minimize the BIC score of the validation set
 	# to pick the best fitted gmm
@@ -1714,6 +1805,59 @@ def plot_deltas(pop):
 						dpi=200, bbox_inches='tight')
 			plt.close()
 
+def aligner(refgmm, testgmm, method):
+	'''
+	Align the components of two models
+
+	Parameters
+	----------
+	refgmm : sklearn.mixture.GaussianMixture
+		Reference model
+	testgmm	: sklearn.mixture.GaussianMixture
+		Test model
+	method : str
+		Alignment method
+	'''
+	ltest = testgmm.n_components # get test number of components
+	lref = refgmm.n_components # get ref number of components
+	arr = np.zeros((ltest, lref)) # create empty array to store all pairwise JD values
+
+	for i in range(ltest):
+		mutest = testgmm.means_[i,:]
+		covtest = testgmm.covariances_[i]
+		for j in range(lref):
+			muref = refgmm.means_[j,:]
+			covref = refgmm.covariances_[j]
+			arr[i, j] = JeffreyDiv(mutest, covtest, muref, covref) # compute all pairwise JD values
+
+	if method == 'aligntest':
+		minsidx = np.argmin(arr, axis=1) # get idx of closest ref mixture for each test mixture
+		mins = np.min(arr, axis=1) # get min divergence values
+		res = np.zeros((ltest, 3))
+		for i in range(ltest):
+			res[i,:] = np.array([i, minsidx[i], mins[i]])
+
+	elif method == 'alignref':
+		minsidx = np.argmin(arr, axis=0) # get idx of closest ref mixture for each test mixture
+		mins = np.min(arr, axis=0) # get min divergence values
+		res = np.zeros((lref, 3))
+		for i in range(lref):
+			res[i,:] = np.array([minsidx[i], i, mins[i]])
+
+	elif method == 'conservative':
+		minstest = [[i,x] for i,x in enumerate(np.argmin(arr,axis=1))]
+		minsref = [[x,i] for i,x in enumerate(np.argmin(arr,axis=0))]
+		mins = np.min(arr, axis=1)
+		minsidx = np.argmin(arr, axis=1)
+		idx = []
+		for i,row in enumerate(minstest):
+			if row in minsref:
+				idx.append(i)
+		res = np.zeros((len(idx), 3))
+		for ii, i in enumerate(idx):
+			res[ii,:] = np.array([i, minsidx[i], mins[i]])
+	return res
+
 def align(pop, ref=None, method='conservative'):
 	'''
 	Align the commponents of each sample's model to the components of a reference model
@@ -1739,50 +1883,14 @@ def align(pop, ref=None, method='conservative'):
 
 	refgmm = pop['samples'][ref]['gmm'] # get reference gmm
 	for x in pop['order']: # for each sample x
+		if pop['nreplicates'] >= 1: # if replicates exist
+			for j in range(pop['nreplicates']): # for each replicate j
+				testgmm = pop['samples'][x]['replicates'][j]['gmm'] # grab replicate gmm
+				pop['samples'][x]['replicates'][j]['alignments'] = aligner(refgmm, testgmm, method) # align that replicate to reference model
+
 		if x != ref: # if sample is not ref
 			testgmm = pop['samples'][x]['gmm'] # get test gmm
-
-			ltest = testgmm.n_components # get test number of components
-			lref = refgmm.n_components # get ref number of components
-			arr = np.zeros((ltest, lref)) # create empty array to store all pairwise JD values
-
-			for i in range(ltest):
-				mutest = testgmm.means_[i,:]
-				covtest = testgmm.covariances_[i]
-				for j in range(lref):
-					muref = refgmm.means_[j,:]
-					covref = refgmm.covariances_[j]
-					arr[i, j] = JeffreyDiv(mutest, covtest, muref, covref) # compute all pairwise JD values
-
-			if method == 'aligntest':
-				minsidx = np.argmin(arr, axis=1) # get idx of closest ref mixture for each test mixture
-				mins = np.min(arr, axis=1) # get min divergence values
-				res = np.zeros((ltest, 3))
-				for i in range(ltest):
-					res[i,:] = np.array([i, minsidx[i], mins[i]])
-
-			elif method == 'alignref':
-				minsidx = np.argmin(arr, axis=0) # get idx of closest ref mixture for each test mixture
-				mins = np.min(arr, axis=0) # get min divergence values
-				res = np.zeros((lref, 3))
-				for i in range(lref):
-					res[i,:] = np.array([minsidx[i], i, mins[i]])
-
-			elif method == 'conservative':
-				minstest = [[i,x] for i,x in enumerate(np.argmin(arr,axis=1))]
-				minsref = [[x,i] for i,x in enumerate(np.argmin(arr,axis=0))]
-				mins = np.min(arr, axis=1)
-				minsidx = np.argmin(arr, axis=1)
-				idx = []
-
-				for i,row in enumerate(minstest):
-					if row in minsref:
-						idx.append(i)
-				res = np.zeros((len(idx), 3))
-				for ii, i in enumerate(idx):
-					res[ii,:] = np.array([i, minsidx[i], mins[i]])
-
-			pop['samples'][x]['alignments'] = res
+			pop['samples'][x]['alignments'] = aligner(refgmm, testgmm, method) # align gmm to reference
 
 	plot_deltas(pop) # generate plot mu and delta w plots
 
