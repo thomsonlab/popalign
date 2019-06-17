@@ -1317,8 +1317,6 @@ def default_types():
 
 def typer_func(gmm, prediction, M, genes, types):
 	'''
-	!!!! Need to work on a normalized matrix. types x components
-
 	Type the components of a Gaussian Mixture Model `gmm`
 
 	Parameters
@@ -1336,23 +1334,36 @@ def typer_func(gmm, prediction, M, genes, types):
 		Dictionary of cell types (keys) and gene lists (values)
 	'''
 	if types == None:
-		types = default_types()
+		types = default_types() # get default types
 
-	typelist = list(types.keys()) # create a list of cell types
 	finaltypes = [] # to store top type for each component
 
-	for i in range(gmm.n_components): # for each component number i of the gmm
-		idx = np.where(prediction==i)[0] # get the cell indices that match component i
-		sub = M[:,idx] # get the matching cells
-		avgs = [] # empty 
-		for j, group in enumerate(typelist): # for each cell type
-			subgenes = types[group] # get the gene list
-			subgenes = [g for g in subgenes if g in genes] # only keep known genes
-			if len(subgenes) == 0:
-				raise Exception('No valid genes in group: %s' % group)
-			gidx = [np.where(genes==g)[0][0] for g in subgenes] # get the gene indices
-			avgs.append(sub[gidx,:].mean(axis=1).mean()) # get the average value 
-		finaltypes.append(typelist[np.argmax(avgs)]) # retrieve the cell type with the largest average
+	markers = np.concatenate([types[x] for x in types]) # get entire list of genes from dict
+	markers = [x for x in markers if x in genes] # make sure to only keep valid genes
+	genes_idx = [np.where(genes==x)[0][0] for x in markers] # get matching indices
+
+	M = M[genes_idx,:] # genes from initial M matrix
+	cols = range(gmm.n_components) # range of components
+
+	arr = np.zeros((len(markers), len(cols))) # create empty genes x components array
+	for i, ii in enumerate(cols): # for each component
+		cells_idx = np.where(prediction == ii)[0] # get indices of cells matching component
+		arr[:,i] = M[:,cells_idx].mean(axis=1).flatten() # compute the means for all the genes
+	df = pd.DataFrame(data=arr, index=markers, columns=cols) # create dataframe from array
+	df = df.T
+	df = ((df-df.min())/(df.max()-df.min())).T # scale between 0 and 1
+
+	for i in cols:
+		series_ = df.iloc[:,i] # get component column
+		names = []
+		avgs = []
+		for t in types: # for each type
+			l = types[t] # get matching gene list
+			l = [g for g in l if g in genes]
+			names.append(t)
+			avgs.append(series_.loc[l].mean()) # get the mean of all the matching genes together
+		imax = np.argmax(avgs) # get the index of the maximum average
+		finaltypes.append(names[imax]) # append name of type with largest average
 	return finaltypes
 
 def render_model(pop, gmm, C, pcaproj, name, mean_labels=None):
@@ -1622,6 +1633,7 @@ def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar=
 		BIC = [gmm.bic(Cvalid) for gmm in q] # compute the BIC for each model with the validation set
 		gmm = q[np.argmin(BIC)] # best gmm is the one that minimizes the BIC
 		pop['samples'][x]['gmm'] = gmm # store gmm
+		pop['samples'][x]['means_genes'] = gmm.means_.dot(pop['W'].T)
 		pop['samples'][x]['gmm_types'] = typer_func(gmm=gmm, prediction=gmm.predict(C), M=M, genes=pop['genes'], types=types)
 
 		# Create replicates
@@ -1637,6 +1649,7 @@ def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar=
 				gmm = q[np.argmin(BIC)] # best gmm is the one that minimizes the BIC
 				pop['samples'][x]['replicates'][j] = {}
 				pop['samples'][x]['replicates'][j]['gmm'] = gmm # store replicate number j
+				pop['samples'][x]['replicates'][j]['means_genes'] = gmm.means_.dot(pop['W'].T)
 				pop['samples'][x]['replicates'][j]['gmm_types'] = typer_func(gmm=gmm, prediction=gmm.predict(C), M=M, genes=pop['genes'], types=types)
 
 	print('Rendering models')
@@ -1737,7 +1750,7 @@ def JeffreyDiv(mu1, cov1, mu2, cov2):
 	'''
 	return np.log10(0.5*KL(mu1, cov1, mu2, cov2)+0.5*KL(mu2, cov2, mu1, cov1))
 
-def plot_deltas(pop):
+def plot_deltas(pop): # generate plot mu and delta w plots
 	'''
 	Genere delta mu and delta w plots for the computed alignments
 
@@ -1746,21 +1759,37 @@ def plot_deltas(pop):
 	pop : dict
 		Popalign object
 	'''
-	for x in pop['order']: # for each sample x
-		pop['samples'][x]['means_genes'] = pop['samples'][x]['gmm'].means_.dot(pop['W'].T) # project feature means into gene space
-
 	dname = 'deltas'
 	mkdir(os.path.join(pop['output'], dname))
 
 	ref = pop['ref'] # get reference sample name
-	for i, lbl in enumerate(pop['samples'][ref]['gmm_types']): # for each component i of the reference model
+	for i, lbl in enumerate(pop['samples'][ref]['gmm_types']): # for each reference subpopulation
 		samplelbls = []
+		xcoords = []
 		delta_mus = []
 		delta_ws = []
 		mu_ref = pop['samples'][ref]['means_genes'][i] # get the mean i value
 		w_ref = pop['samples'][ref]['gmm'].weights_[i] # get the weight i value
 
+		k = 0
 		for x in pop['order']: # for each sample x
+			added = False
+			if pop['nreplicates'] >= 1: # if gmm replicates exist
+				for j in range(pop['nreplicates']):
+					arr = pop['samples'][x]['replicates'][j]['alignments']
+					try:
+						irow = np.where(arr[:,1] == i) # try to get the row where the ref comp number matches i
+						itest = int(arr[irow, 0]) # get test comp number from row
+						mu_test = pop['samples'][x]['replicates'][j]['means_genes'][itest] # get the test comp mean value
+						w_test = pop['samples'][x]['replicates'][j]['gmm'].weights_[itest] # get the test comp weight value
+						samplelbls.append(x)
+						delta_mus.append(np.linalg.norm([np.array(mu_test).flatten() - np.array(mu_ref).flatten()], ord='fro')) # store delta mu
+						delta_ws.append((w_test - w_ref)*100) # store delta w
+						xcoords.append(k)
+						added = True
+					except:
+						pass
+			
 			if x != ref: # if x is not the reference
 				arr = pop['samples'][x]['alignments'] # get the alignments between x and the reference
 				try:
@@ -1771,39 +1800,34 @@ def plot_deltas(pop):
 					samplelbls.append(x) # store test sample label x
 					delta_mus.append(np.linalg.norm([np.array(mu_test).flatten() - np.array(mu_ref).flatten()], ord='fro')) # store delta mu
 					delta_ws.append((w_test - w_ref)*100) # store delta w
+					xcoords.append(k)
+					added = True
 				except:
 					pass
+			if added == True:
+				k += 1
+				
+		seen = set()
+		seen_add = seen.add
+		xlbls = [x for x in samplelbls if not (x in seen or seen_add(x))]
+		x = [x for x in xcoords if not (x in seen or seen_add(x))]
 
-		if len(delta_mus)>0:
-			x = np.arange(len(delta_mus)) # create x coordinates 
+		ax1 = plt.subplot(2,1,1)
+		plt.title('Reference sample %s\nComponent %d: %s' %(ref, i,lbl))
+		plt.scatter(xcoords, delta_mus)
+		plt.xticks(x, xlbls, rotation=90)
+		plt.ylabel('Δ\u03BC')
 
-			# plot delta mus
-			markerline, stemlines, baseline = plt.stem(x, delta_mus, markerfmt='ko', use_line_collection=True)
-			plt.setp(stemlines, 'color', plt.getp(markerline,'color'))
-			plt.setp(stemlines, 'linestyle', 'dotted')
+		plt.subplot(2,1,2, sharex=ax1)
+		plt.scatter(xcoords, delta_ws)
+		plt.xticks(x, xlbls, rotation=90)
+		plt.ylabel('Δ\u03C9')
 
-			plt.xticks(x, samplelbls, rotation=90)
-			plt.ylabel('Δ\u03BC')
-			plt.title('Reference sample %s\nComponent %d: %s' %(ref, i,lbl))
-
-			lbl = lbl.replace('/','')
-			plt.savefig(os.path.join(pop['output'], dname, 'delta_mu_comp%d_%s.png' % (i,lbl)), 
-						dpi=200, bbox_inches='tight')
-			plt.close()
-
-			#plot delta ws
-			markerline, stemlines, baseline = plt.stem(x, delta_ws, markerfmt='ko', use_line_collection=True)
-			plt.setp(stemlines, 'color', plt.getp(markerline,'color'))
-			plt.setp(stemlines, 'linestyle', 'dotted')
-
-			plt.xticks(x, samplelbls, rotation=90)
-			plt.ylabel('Δ\u03C9 (%)')
-			plt.title('Reference sample %s\nComponent %d: %s' %(ref, i,lbl))
-
-			lbl = lbl.replace('/','')
-			plt.savefig(os.path.join(pop['output'], dname, 'delta_w_comp%d_%s.png' % (i,lbl)), 
-						dpi=200, bbox_inches='tight')
-			plt.close()
+		plt.tight_layout()
+		
+		lbl = lbl.replace('/','')
+		plt.savefig(os.path.join(pop['output'], dname, 'deltas_comp%d_%s.png' % (i,lbl)), dpi=200, bbox_inches='tight')
+		plt.close()
 
 def aligner(refgmm, testgmm, method):
 	'''
@@ -2119,5 +2143,5 @@ def plot_query(pop):
 
 import sys
 if not sys.warnoptions:
-    import warnings
-    warnings.simplefilter("ignore")
+	import warnings
+	warnings.simplefilter("ignore")
