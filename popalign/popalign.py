@@ -2100,18 +2100,18 @@ def plot_query(pop):
 	N = len(pop['order'])
 	arr = np.zeros((N, gmm.n_components))
 	for i,x in enumerate(pop['order']):
-	    C = pop['samples'][x]['C']
-	    prediction = gmm.predict(C)
-	    unique, counts = np.unique(prediction, return_counts=True)
-	    l = len(prediction)
-	    counts = np.array([x/l for x in counts])
-	    d = dict(zip(unique, counts))
-	    for j in range(gmm.n_components):
-	        try:
-	            arr[i,j] = d[j]
-	        except:
-	            pass
-        
+		C = pop['samples'][x]['C']
+		prediction = gmm.predict(C)
+		unique, counts = np.unique(prediction, return_counts=True)
+		l = len(prediction)
+		counts = np.array([x/l for x in counts])
+		d = dict(zip(unique, counts))
+		for j in range(gmm.n_components):
+			try:
+				arr[i,j] = d[j]
+			except:
+				pass
+		
 	arr = arr.T # components are rows, samples are columns
 	xvals = np.arange(N)
 	components = [pop['gmm_types'][i] for i in np.arange(gmm.n_components)]
@@ -2119,13 +2119,13 @@ def plot_query(pop):
 	fig, axes = plt.subplots(nrows=arr.shape[0], ncols=1, sharex=True, sharey=True, figsize=(10,20))
 
 	for i, yvals in enumerate(arr): # for each component i and the %age values in yvals
-	    ax = axes[i] # get sub axes
-	    ax.plot(xvals, yvals) # plot proportions
-	    axes[i].set(ylabel=components[i]) # set y label (component cell type)
-	    if i == len(arr)-1: # if last component
-	        xcoords = np.arange(arr.shape[1])
-	        plt.xticks(xcoords, pop['order'], rotation=90) # set sample names as x tick labels
-	        axes[i].set(xlabel=' Samples')
+		ax = axes[i] # get sub axes
+		ax.plot(xvals, yvals) # plot proportions
+		axes[i].set(ylabel=components[i]) # set y label (component cell type)
+		if i == len(arr)-1: # if last component
+			xcoords = np.arange(arr.shape[1])
+			plt.xticks(xcoords, pop['order'], rotation=90) # set sample names as x tick labels
+			axes[i].set(xlabel=' Samples')
 	plt.tight_layout()
 
 	dname = 'query'
