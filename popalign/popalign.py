@@ -951,7 +951,7 @@ def scale_W(W):
 	norms = [np.linalg.norm(np.array(W[:,i]).flatten()) for i in range(W.shape[1])] # compute the L2-norm of each feature
 	return np.divide(W,norms) # divide each feature by its respective L2-norm
 
-def plot_H(pop, method='complete'):
+def plot_H(pop, method='complete', n=None):
 	'''
 	Plot the projection in feature space of the data
 
@@ -961,25 +961,36 @@ def plot_H(pop, method='complete'):
 		Popalign object
 	method : str
 		Hierarchical clustering method. Default is complete
+	n : int or None
+		Number of cells to randomly sample.
 	'''
-	HM = [] # heatmap data
-	for x in pop['order']:
-		C = pop['samples'][x]['C'] # get feature data
-		d = pairwise_distances(X=C,metric='correlation',n_jobs=-1) # pairwaise distance matrix
-		np.fill_diagonal(d,0.) # make sure diagonal is not rounded to some small value
-		d = scd.squareform(d,force='tovector',checks=False) # force matrix to vector form
-		d = np.nan_to_num(d)
-		z = fc.linkage(d,method=method) # create linkage from distance matrix
-		z = z.clip(min=0)
-		idx = shc.leaves_list(z) # get clustered ordered
-		HM.append(C[idx,:]) # append ordered feature data
-	X = np.vstack(HM).T # concatenate the clustered matrices of all samples. Cells are columns, features are rows.
+	C = cat_data(pop, 'C') # get feature data
+
+	if n != None:
+		if not isinstance(n, int): # check that n is an int
+			raise Exception('n must be an int')
+		if n<C.shape[0]: # if n is small than the number of cells in C
+			idx = np.random.choice(C.shape[0], n, replace=False) # randomly select ncells cells
+			C = C[idx,:] # subsample
+
+	d = pairwise_distances(X=C,metric='correlation',n_jobs=-1) # pairwaise distance matrix
+	np.fill_diagonal(d,0.) # make sure diagonal is not rounded to some small value
+	d = scd.squareform(d,force='tovector',checks=False) # force matrix to vector form
+	d = np.nan_to_num(d)
+	z = fc.linkage(d,method=method) # create linkage from distance matrix
+	z = z.clip(min=0)
+	idx = shc.leaves_list(z) # get clustered ordered
+	X = C[idx,:] # append ordered feature data
+	X = X.T # concatenate the clustered matrices of all samples. Cells are columns, features are rows.
 	
 	plt.imshow(X, aspect='auto') # generate heatmap
 	plt.yticks(np.arange(pop['nfeats']), pop['top_feat_labels'])
 	plt.xticks([])
 	plt.xlabel('Cells')
-	plt.title('%d cells from %d samples' % (X.shape[1], pop['nsamples']))
+	if n == None:
+		plt.title('%d cells from %d samples' % (X.shape[1], pop['nsamples']))
+	else:
+		plt.title('%d randomly selected cells from %d samples' % (X.shape[1], pop['nsamples']))
 
 	dname = 'qc'
 	mkdir(os.path.join(pop['output'], dname)) # create subfolder
@@ -1026,7 +1037,7 @@ def onmf(pop, ncells=2000, nfeats=[5,7,9], nreps=3, niter=300):
 	gsea(pop) # run GSEA on feature space
 	split_proj(pop, proj) # split projected data and store it for each individual sample
 	plot_top_genes_features(pop) # plot a heatmap of top genes for W
-	plot_H(pop, method='complete')
+	plot_H(pop, method='complete', n=10000)
 	#plot_reconstruction(pop) # plot reconstruction data
 
 def pca(pop, fromspace='genes'):
@@ -1487,6 +1498,34 @@ def grid_rendering(pop, q):
 	x2 = np.linspace(ylim[0], ylim[1], nbins)
 
 	nr, nc = nr_nc(len(pop['order']))
+	fig, axes = plt.subplots(nr,nc,figsize=(20,20))
+	axes=axes.flatten()
+	for i, name in enumerate(pop['order']):
+		ax = axes[i]
+		pp = ax.pcolor(x1, x2, q[i], cmap=cmap, vmin=cbarmin, vmax=cbarmax)
+		pp.set_edgecolor('face')
+		ax.set(xticks=[])
+		ax.set(yticks=[])
+		ax.set(title=name)
+
+		if i % nc == 0:
+			ax.set(ylabel='PC%d' % (y+1))
+		if i >= len(pop['order'])-nc:
+			ax.set(xlabel='PC%d' % (x+1))
+
+	rr = len(axes)-len(pop['order']) # count how many empty plots in grid
+	for i in range(1,rr+1):
+		ax = axes[-i]
+		ax.axis('off') # clear empty axis from plot
+
+	plt.suptitle('Model renderings')
+	dname = 'renderings'
+	mkdir(os.path.join(pop['output'], dname))
+	name = name.replace('/','')
+	plt.savefig(os.path.join(pop['output'], dname, 'model_rendering_%s.png' % 'allsamples'), dpi=200)
+	plt.close()
+
+	'''
 	for i, name in enumerate(pop['order']):
 		ii = i+1
 		plt.subplot(nr, nc, ii)
@@ -1507,6 +1546,7 @@ def grid_rendering(pop, q):
 	name = name.replace('/','')
 	plt.savefig(os.path.join(pop['output'], dname, 'model_rendering_%s.png' % 'allsamples'), dpi=200)
 	plt.close()
+	'''
 
 def render_models(pop, mode='grouped'):
 	'''
@@ -1625,7 +1665,7 @@ def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar=
 			reg_covar_param = 0 # default value is 0 (no assumption on the data)
 		else:
 			reg_covar_param = reg_covar
-		with Pool(7) as p: # build all the models in parallel
+		with Pool(None) as p: # build all the models in parallel
 			q = p.starmap(build_single_GMM, [(k, Ctrain, reg_covar_param) for k in np.repeat(ks, niters)])
 
 		# We minimize the BIC score of the validation set
@@ -1641,7 +1681,7 @@ def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar=
 			pop['nreplicates'] = nreplicates # store number of replicates in pop object
 			pop['samples'][x]['replicates'] =  {} # create replicates entry for sample x
 			for j in range(nreplicates): # for each replicate number j
-				with Pool(7) as p: # build all the models in parallel
+				with Pool(None) as p: # build all the models in parallel
 					q = p.starmap(build_single_GMM, [(k, Ctrain, reg_covar_param) for k in np.repeat(ks, niters)])
 				# We minimize the BIC score of the validation set
 				# to pick the best fitted gmm
@@ -1698,7 +1738,7 @@ def build_unique_gmm(pop, ks=(5,20), niters=3, reg_covar=True, types=None):
 		reg_covar_param = 0 # default value is 0 (no assumption on the data)
 	else:
 		reg_covar_param = reg_covar
-	with Pool(7) as p:
+	with Pool(None) as p:
 			q = p.starmap(build_single_GMM, [(k, Ctrain, reg_covar_param) for k in np.repeat(ks, niters)])
 	
 	# We minimize the BIC score of the validation set
@@ -1768,12 +1808,18 @@ def plot_deltas(pop): # generate plot mu and delta w plots
 		xcoords = []
 		delta_mus = []
 		delta_ws = []
+		mean_mus = []
+		mean_ws = []
+		stds_mus = []
+		stds_ws = []
 		mu_ref = pop['samples'][ref]['means_genes'][i] # get the mean i value
 		w_ref = pop['samples'][ref]['gmm'].weights_[i] # get the weight i value
 
 		k = 0
 		for x in pop['order']: # for each sample x
 			added = False
+			tmp_delta_mus = []
+			tmp_delta_ws = []
 			if pop['nreplicates'] >= 1: # if gmm replicates exist
 				for j in range(pop['nreplicates']):
 					arr = pop['samples'][x]['replicates'][j]['alignments']
@@ -1783,8 +1829,8 @@ def plot_deltas(pop): # generate plot mu and delta w plots
 						mu_test = pop['samples'][x]['replicates'][j]['means_genes'][itest] # get the test comp mean value
 						w_test = pop['samples'][x]['replicates'][j]['gmm'].weights_[itest] # get the test comp weight value
 						samplelbls.append(x)
-						delta_mus.append(np.linalg.norm([np.array(mu_test).flatten() - np.array(mu_ref).flatten()], ord='fro')) # store delta mu
-						delta_ws.append((w_test - w_ref)*100) # store delta w
+						tmp_delta_mus.append(np.linalg.norm([np.array(mu_test).flatten() - np.array(mu_ref).flatten()], ord='fro')) # store delta mu
+						tmp_delta_ws.append((w_test - w_ref)*100) # store delta w
 						xcoords.append(k)
 						added = True
 					except:
@@ -1798,30 +1844,56 @@ def plot_deltas(pop): # generate plot mu and delta w plots
 					mu_test = pop['samples'][x]['means_genes'][itest] # get the test comp mean value
 					w_test = pop['samples'][x]['gmm'].weights_[itest] # get the test comp weight value
 					samplelbls.append(x) # store test sample label x
-					delta_mus.append(np.linalg.norm([np.array(mu_test).flatten() - np.array(mu_ref).flatten()], ord='fro')) # store delta mu
-					delta_ws.append((w_test - w_ref)*100) # store delta w
+					tmp_delta_mus.append(np.linalg.norm([np.array(mu_test).flatten() - np.array(mu_ref).flatten()], ord='fro')) # store delta mu
+					tmp_delta_ws.append((w_test - w_ref)*100) # store delta w
 					xcoords.append(k)
 					added = True
 				except:
 					pass
+
 			if added == True:
 				k += 1
+				delta_mus += tmp_delta_mus
+				delta_ws += tmp_delta_ws
+				mean_mus.append(np.mean(tmp_delta_mus))
+				mean_ws.append(np.mean(tmp_delta_ws))
+				stds_mus.append(np.std(tmp_delta_mus))
+				stds_ws.append(np.std(tmp_delta_ws))
 				
 		seen = set()
 		seen_add = seen.add
 		xlbls = [x for x in samplelbls if not (x in seen or seen_add(x))]
 		x = [x for x in xcoords if not (x in seen or seen_add(x))]
 
+		# reorder by delta mu mean
+		idx = np.argsort(mean_mus)
+		mean_mus = [mean_mus[i] for i in idx]
+		mean_ws = [mean_ws[i] for i in idx]
+		stds_mus = [stds_mus[i] for i in idx]
+		stds_ws = [stds_ws[i] for i in idx]
+		xlbls = [xlbls[i] for i in idx]
+
+		'''
+		newxcoords = []
+		for value in xcoords:
+			newxcoords.append(np.where(idx==value)[0][0])
+		xcoords = newxcoords
+		'''
+		xcoords = [np.where(idx==value)[0][0] for value in xcoords]
+
 		ax1 = plt.subplot(2,1,1)
 		plt.title('Reference sample %s\nComponent %d: %s' %(ref, i,lbl))
-		plt.scatter(xcoords, delta_mus)
-		plt.xticks(x, xlbls, rotation=90)
-		plt.ylabel('Δ\u03BC')
+		plt.scatter(xcoords, delta_ws, s=2, c='k')
+		plt.errorbar(x, mean_ws, stds_ws, color='k', elinewidth=.5, capsize=1, fmt=' ', label='Standard deviation')
+		plt.xticks([])
+		plt.ylabel('Δ\u03C9 (%)')
 
-		plt.subplot(2,1,2, sharex=ax1)
-		plt.scatter(xcoords, delta_ws)
+		plt.subplot(2,1,2)
+		plt.scatter(xcoords, delta_mus, s=2,c='k')
+		plt.errorbar(x, mean_mus, stds_mus, color='k', elinewidth=.5, capsize=1, fmt=' ', label='Standard deviation')
 		plt.xticks(x, xlbls, rotation=90)
-		plt.ylabel('Δ\u03C9')
+		
+		plt.ylabel('Δ\u03BC')
 
 		plt.tight_layout()
 		
@@ -1930,20 +2002,27 @@ def plot_entropies(pop):
 	pop : dict
 		Popalign object
 	'''
+	yub = [pop['samples'][x]['upperbound'] for x in pop['order']]
+	lbls = pop['order']
+	sidx = np.argsort(yub)
+	yub = [yub[i] for i in sidx]
+	lbls = [lbls[i] for i in sidx]
+
 	xvals = []
 	yvals = []
 	xlbls = []
-	lbls = []
-	for i, x in enumerate(pop['order']): # for each sample
+	for i, x in enumerate(lbls): # for each sample
 		xlbls.append(i)
-		lbls.append(x)
 		E = pop['samples'][x]['entropy'] # get list of entropy values
 		xvals += [i]*len(E) # add x coords
 		yvals += E # add y coords
-	plt.scatter(xvals, yvals) # plot
+
+	plt.scatter(xvals, yvals, label='Gaussian density entropy', s=2) # plot entropies of densities
+	plt.plot(xlbls, yub, color='red', label='Model upperbound') # plot upper bound
 	plt.xticks(xlbls, lbls, rotation=90)
 	plt.ylabel('Entropy')
 	plt.title('Entropies of single gaussian densities')
+	plt.legend()
 	
 	dname = 'entropy'
 	mkdir(os.path.join(pop['output'], dname))
@@ -2086,46 +2165,96 @@ def rank(pop, ref=None, k=100, niter=200, mincells=50):
 Query functions
 '''
 
-def plot_query(pop):
+def cluster_rows(X, metric='correlation', method='complete'):
 	'''
-	Plot proportions of the samples in each of the GMM components
-	
+	Cluster the rows of an array X
+
 	Parameters
 	----------
+	X : ndarray
+		The rows of X will be clustered
+	metric : str
+		Metric to build pairwise distance matrix
+	method : str
+		Method to use for hierarchical clustering
+	'''
+	c = pairwise_distances(X=X,metric='correlation',n_jobs=-1)
+	np.fill_diagonal(c,0.)
+	c = scd.squareform(c,force='tovector',checks=False)
+	c = np.nan_to_num(c)
+	z = fc.linkage(c, method='complete')
+	z = z.clip(min=0)
+	return shc.leaves_list(z)
 
+def plot_query(pop, pcells=.2, nreps=10):
+	'''
+	Plot proportions of the samples in each of the GMM components
+
+	Parameters
+	----------
 	pop: dict
 		Popalign object
+	pcells: float
+		Percentage of random cells to use for each query repetition
+	nreps: int
+		Number of times to repeat the query process with different cells for each sample
 	'''
-	gmm = pop['gmm']
-	N = len(pop['order'])
-	arr = np.zeros((N, gmm.n_components))
-	for i,x in enumerate(pop['order']):
-		C = pop['samples'][x]['C']
-		prediction = gmm.predict(C)
-		unique, counts = np.unique(prediction, return_counts=True)
-		l = len(prediction)
-		counts = np.array([x/l for x in counts])
-		d = dict(zip(unique, counts))
-		for j in range(gmm.n_components):
-			try:
-				arr[i,j] = d[j]
-			except:
-				pass
+
+	#ncells = 1000
+
+	gmm = pop['gmm'] # get unique gmm
+	N = len(pop['order']) # get number of samples
+	arrmus = np.zeros((N, gmm.n_components)) # empty array to store the proportion means of each sample for all components
+	arrstds = np.zeros((N, gmm.n_components)) # matching array to store the matching standard deviations
+
+	for i,x in enumerate(pop['order']): # for each sample x
+		C = pop['samples'][x]['C'] # get feature data
+		ncells = int(C.shape[0]*pcells) # compute number of random cells to select from percentage value
+		concat = [] # list to store the proportion arrays for each rep
+		for rn in range(nreps): # for each repetition rn
+			tmp = np.zeros(gmm.n_components) # create empty proportion array
+			idx = np.random.choice(C.shape[0], ncells, replace=False) # get random indices of ncells cells
+			X = C[idx,:] # subset C witht the random indices
+			prediction = gmm.predict(X) # get the component assignments for cells in subset X
+			unique, counts = np.unique(prediction, return_counts=True) # count how many cells fall in each component
+			counts = np.array([x/ncells for x in counts]) # transform counts to percentage values
+			d = dict(zip(unique, counts)) # zip the percentage values with their respective componen
+			for j in range(gmm.n_components): # for each component j
+				try:
+					tmp[j] = d[j] # try to assign the matching percentage value if it exists to the tmp array
+				except:
+					pass
+			concat.append(tmp) # add tmp proportion array to concat list
+		concat = np.vstack(concat) # stack all proportion arrays for sample x 
+		arrmus[i,:] = concat.mean(axis=0) # get proportion means (one mean per component) for sample x
+		arrstds[i,:] = concat.std(axis=0) # get standard deviations (one std per component)
 		
-	arr = arr.T # components are rows, samples are columns
-	xvals = np.arange(N)
-	components = [pop['gmm_types'][i] for i in np.arange(gmm.n_components)]
+	arrmus = arrmus.T # components are rows, samples are columns
+	arrstds = arrstds.T # components are rows, samples are columns
+	xvals = np.arange(N) # generate x coordinationes (number of samples)
+	components = [pop['gmm_types'][i] for i in np.arange(gmm.n_components)] # retrieve components labels (after cell typing)
 
-	fig, axes = plt.subplots(nrows=arr.shape[0], ncols=1, sharex=True, sharey=True, figsize=(10,20))
+	# cluster samples and components
+	idx_cols = cluster_rows(arrmus.T) # get indices of clustered samples (columns)
+	idx_rows = cluster_rows(arrmus) # get indices of clustered commponents (rows)
+	arrmus = arrmus[:,idx_cols] # reorder columns of means array
+	arrmus = arrmus[idx_rows,:] # reorder rows of means array
+	arrstds = arrstds[:,idx_cols] # reorder columns of std array
+	arrstds = arrstds[idx_rows,:] # reorder rows of std array
+	clusteredlbls = [pop['order'][i] for i in idx_cols] # reordered sample labels to match clustered samples
 
-	for i, yvals in enumerate(arr): # for each component i and the %age values in yvals
+	fig, axes = plt.subplots(nrows=arrmus.shape[0], ncols=1, sharex=True, sharey=True, figsize=(10,20)) # create subplots
+
+	for i, (mus,stds) in enumerate(zip(arrmus,arrstds)): # for each component i and the %age values in yvals
 		ax = axes[i] # get sub axes
-		ax.plot(xvals, yvals) # plot proportions
-		axes[i].set(ylabel=components[i]) # set y label (component cell type)
-		if i == len(arr)-1: # if last component
-			xcoords = np.arange(arr.shape[1])
-			plt.xticks(xcoords, pop['order'], rotation=90) # set sample names as x tick labels
+		ax.plot(xvals, mus, color='k') # plot proportions
+		ax.fill_between(xvals, mus-stds, mus+stds, alpha=.2, color='k') # plot ribbon based on standard deviation from mu
+		axes[i].set(ylabel='Ref. comp %d\n%s' % (idx_rows[i],components[idx_rows[i]])) # set y label (component cell type)
+
+		if i == gmm.n_components-1: # if last component
+			plt.xticks(xvals, clusteredlbls, rotation=90) # set sample names as x tick labels
 			axes[i].set(xlabel=' Samples')
+			
 	plt.tight_layout()
 
 	dname = 'query'
