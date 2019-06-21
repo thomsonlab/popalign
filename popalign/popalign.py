@@ -1432,12 +1432,15 @@ def render_model(pop, gmm, C, pcaproj, name, mean_labels=None):
 	
 	prediction = gmm.predict(C) # get the cells component assignments
 	for k in range(gmm.n_components):
-		idx = np.where(prediction == k)[0] # get the cell indices for component k
-		sub = pcaproj[idx,:] # get the pca projected data for these cells
-		mean = sub.mean(axis=0) # compute the mean
-		cov = np.cov(sub.T) # compute the covariance matrix
-		mean_proj[k,:] = mean # get the mean projected coordinates
-		sample_density += w[k]*(np.reshape(mvn.pdf(pos,mean=mean_proj[k].T,cov=cov),X.shape)) # compute the density
+		try:
+			idx = np.where(prediction == k)[0] # get the cell indices for component k
+			sub = pcaproj[idx,:] # get the pca projected data for these cells
+			mean = sub.mean(axis=0) # compute the mean
+			cov = np.cov(sub.T) # compute the covariance matrix
+			mean_proj[k,:] = mean # get the mean projected coordinates
+			sample_density += w[k]*(np.reshape(mvn.pdf(pos,mean=mean_proj[k].T,cov=cov),X.shape)) # compute the density
+		except:
+			print('Sample %s: Component %d only contains one cell.' % (name, k))
 
 	sample_density = np.log(sample_density) # log density
 	pp = plt.pcolor(x1, x2, sample_density, cmap=cmap, vmin=cbarmin, vmax=cbarmax) # plot density
