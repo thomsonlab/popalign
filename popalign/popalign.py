@@ -1373,7 +1373,7 @@ def typer_func(gmm, prediction, M, genes, types):
 		idx = np.where(prediction==i) # get indices of cells matching component i
 		sub = calls[idx] # get the indices of max means for those cells
 		unique, counts = np.unique(sub, return_counts=True) # count how many counts for each argmax
-		final_types.append(typeslist[unique[np.argmax(counts)]]) # append name of most prominant cell type in component i
+		finaltypes.append(typeslist[unique[np.argmax(counts)]]) # append name of most prominant cell type in component i
 
 	return finaltypes
 
