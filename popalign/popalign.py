@@ -17,6 +17,7 @@ from scipy.spatial import distance as scd
 from sklearn.utils.sparsefuncs import mean_variance_axis
 from sklearn.metrics import mean_squared_error
 from sklearn.decomposition import PCA
+from sklearn import preprocessing as sp
 from sklearn.metrics.pairwise import pairwise_distances
 from sklearn import mixture as smix
 import fastcluster as fc
@@ -1346,7 +1347,9 @@ def typer_func(gmm, prediction, M, genes, types):
 	'''
 	if types == None:
 		types = default_types() # get default types
-
+	
+	typeslist = list(types.keys()) # get list of types for consistency
+	cols = range(gmm.n_components) # range of components
 	finaltypes = [] # to store top type for each component
 
 	markers = np.concatenate([types[x] for x in types]) # get entire list of genes from dict
@@ -1354,27 +1357,24 @@ def typer_func(gmm, prediction, M, genes, types):
 	genes_idx = [np.where(genes==x)[0][0] for x in markers] # get matching indices
 
 	M = M[genes_idx,:] # genes from initial M matrix
-	cols = range(gmm.n_components) # range of components
+	M = sp.normalize(M, norm='max', axis=1) # scale rows by max
 
-	arr = np.zeros((len(markers), len(cols))) # create empty genes x components array
-	for i, ii in enumerate(cols): # for each component
-		cells_idx = np.where(prediction == ii)[0] # get indices of cells matching component
-		arr[:,i] = M[:,cells_idx].mean(axis=1).flatten() # compute the means for all the genes
-	df = pd.DataFrame(data=arr, index=markers, columns=cols) # create dataframe from array
-	df = df.T
-	df = ((df-df.min())/(df.max()-df.min())).T # scale between 0 and 1
+	arr = [] # empty list to store mean vectors for each type
+	for t in typeslist: # for each cell type t
+		l = types[t] # get matching list of genes
+		lidx = [markers.index(g) for g in l if g in markers] # retrieve gene indices from marker list (only valid genes in markers list)
+		sub = M[lidx,:] # pick only genes for cell type t
+		submean = np.array(sub.mean(axis=0)).flatten() # compute mean for each cell
+		arr.append(submean) # store mean vector
+	arr = np.vstack(arr) # stack mean vectors
+	calls = np.argmax(arr,axis=0) # for each cell, get the index of max value
 
-	for i in cols:
-		series_ = df.iloc[:,i] # get component column
-		names = []
-		avgs = []
-		for t in types: # for each type
-			l = types[t] # get matching gene list
-			l = [g for g in l if g in genes]
-			names.append(t)
-			avgs.append(series_.loc[l].mean()) # get the mean of all the matching genes together
-		imax = np.argmax(avgs) # get the index of the maximum average
-		finaltypes.append(names[imax]) # append name of type with largest average
+	for i in cols: # for each component i
+		idx = np.where(prediction==i) # get indices of cells matching component i
+		sub = calls[idx] # get the indices of max means for those cells
+		unique, counts = np.unique(sub, return_counts=True) # count how many counts for each argmax
+		final_types.append(typeslist[unique[np.argmax(counts)]]) # append name of most prominant cell type in component i
+
 	return finaltypes
 
 def render_model(pop, gmm, C, pcaproj, name, mean_labels=None):
@@ -2324,6 +2324,36 @@ def plot_query_heatmap(pop):
 	plt.savefig(path_, bbox_inches='tight')
 	plt.close()
 	print('Plot saved under %s' % path_)
+
+'''
+Differential expression functions
+'''
+def l1norm(ig, sub1, sub2, nbins):
+	'''
+	Compute the L1-norm between two histogram values
+
+	Parameters
+	----------
+	ig : int
+		A gene index
+	sub1 : array
+		Array of cells in gene space of a subpopulation
+	sub2 : array
+		Array of cells in gene space of a subpopulation
+	nbins : int
+		Number of histogram bins to compute
+	'''
+	arr1 = sub1[ig,:].toarray() # get gene ig values by idx
+	arr2 = sub2[ig,:].toarray() # get gene ig values by idx
+	max1, max2 = np.max(arr1), np.max(arr2) # get max values from the two subpopulations
+	max_ = max(max1,max2) # get max value to define histogram range
+	
+	b1, be1 = np.histogram(arr1, bins=nbins, range=(0,max_))
+	b2, be2 = np.histogram(arr2, bins=nbins, range=(0,max_))
+	b1 = b1/len(idx1) # scale bin values
+	b2 = b2/len(idx2) # scale bin values
+	
+	return np.linalg.norm(np.abs(b1-b2))
 
 import sys
 if not sys.warnoptions:
