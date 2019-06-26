@@ -359,7 +359,7 @@ def norm_factor(pop):
 	for i,x in enumerate(pop['order']):
 		pop['samples'][x]['M'].data = q[i] # update data values for each sample
 
-def normalize(pop):
+def normalize(pop, norm_factor=None):
 	'''
 	Normalize the samples of object `pop` and applies a normalization factor
 
@@ -375,12 +375,18 @@ def normalize(pop):
 		pop['original_mean'] = M.mean() # store original mean of the data
 
 		print('Performing column normalization')
-		for x in pop['order']:
+		for x in pop['order']: # for each sample x
 			col_norm(pop['samples'][x]['M']) #column normalize data of sample `x`
 		
-		print('Finding best normalization factor')
-		norm_factor(pop) # Apply normalization factor
-		pop['normed'] = True
+		if norm_factor != None:
+			with Pool(None) as p:
+				q = p.starmap(factor, [(pop['samples'][x]['M'], norm_factor) for x in pop['order']]) #Multiply data values by factor in parallel
+			for i,x in enumerate(pop['order']):
+				pop['samples'][x]['M'].data = q[i] # update data values for each sample
+		else:
+			print('Finding best normalization factor')
+			norm_factor(pop) # Apply normalization factor
+			pop['normed'] = True
 
 def mu_sigma(M, pop):
 	'''
@@ -595,7 +601,7 @@ def removeRBC(pop, species):
 		idx = np.where(cellssums[i]<=T)[0] # get indices of cells with sums inferior to T
 		pop['samples'][x]['M'] = pop['samples'][x]['M'][:,idx] # select cells
 		pop['samples'][x]['M_norm'] = pop['samples'][x]['M_norm'][:,idx] # select cells
-		print(x, '%d cells kept out of %d' % (len(idx), len(cellssums[i])))
+		#print(x, '%d cells kept out of %d' % (len(idx), len(cellssums[i])))
 
 '''
 Gene Set Enrichment Analysis functions
@@ -674,7 +680,7 @@ def gsea(pop, geneset='c5bp'):
 	stdfactor = 2 
 
 	for i in range(pop['nfeats']): # for each feature i
-		print('GSEA progress: %d of %d' % ((i+1), pop['nfeats']))
+		print('GSEA progress: %d of %d' % ((i+1), pop['nfeats']), end='\r')
 		idx = np.where(np.array(W[:,i]).flatten() > stdfactor*stds[i])[0] # get indices of genes that are above stdfactor times the standard deviation of feature i
 		genelist = [genes[j] for j in idx] # gene matching gene names
 		pop['feat_labels'][i] = enrichment_analysis(d, genelist, size_total) # for that list of genes, run GSEA
@@ -791,7 +797,7 @@ def reconstruction_errors(M_norm, q):
 	projs = []
 	D = M_norm.toarray() # dense matrix to compute error
 	for j in range(len(q)): # For each feature space j in q
-		print('Progress: %d of %d' % ((j+1), len(q)))
+		print('Progress: %d of %d' % ((j+1), len(q)), end='\r')
 		Wj = q[j] # Retrieve feature space j from q
 		with Pool(None) as p:
 			Hj = p.starmap(nnls, [(Wj, M_norm[:,i].toarray().flatten()) for i in range(M_norm.shape[1])]) # project each cell i of normalized data onto the current W 
@@ -1754,6 +1760,78 @@ def build_unique_gmm(pop, ks=(5,20), niters=3, reg_covar=True, types=None):
 	render_models(pop, mode='unique') # render model
 
 '''
+Entropy functions
+'''
+def plot_entropies(pop):
+	'''
+	Plot entropy values for each single gaussin density
+
+	Parameters
+	----------
+	pop : dict
+		Popalign object
+	'''
+	yub = [pop['samples'][x]['upperbound'] for x in pop['order']]
+	lbls = pop['order']
+	sidx = np.argsort(yub)
+	yub = [yub[i] for i in sidx]
+	lbls = [lbls[i] for i in sidx]
+
+	xvals = []
+	yvals = []
+	xlbls = []
+	for i, x in enumerate(lbls): # for each sample
+		xlbls.append(i)
+		E = pop['samples'][x]['entropy'] # get list of entropy values
+		xvals += [i]*len(E) # add x coords
+		yvals += E # add y coords
+
+	plt.scatter(xvals, yvals, label='Gaussian density entropy', s=2) # plot entropies of densities
+	plt.plot(xlbls, yub, color='red', label='Model upperbound') # plot upper bound
+	plt.xticks(xlbls, lbls, rotation=90)
+	plt.ylabel('Entropy')
+	plt.title('Entropies of single gaussian densities')
+	plt.legend()
+	
+	dname = 'entropy'
+	mkdir(os.path.join(pop['output'], dname))
+	plt.savefig(os.path.join(pop['output'], dname, 'models_entropy.png'), dpi=200, bbox_inches='tight')
+	plt.close()
+
+def single_entropy(N, S):
+	'''
+	Compute the entropy of a single gaussian density
+
+	Parameters
+	----------
+	N : int
+		Number of features
+	S : array
+		Covariance matrix
+	'''
+	return 0.5*np.log(((2*np.pi*np.exp(1))**N) * np.linalg.det(S));
+
+def entropy(pop):
+	'''
+	For each sample in `pop`, compute the entropy for the gaussian densities of their Gaussian Mixture Model
+	and the mixture of gaussians upper bound
+
+	Parameters
+	----------
+	pop : dict
+		Popalign object
+	'''
+	N = pop['nfeats'] # get number of features
+	for x in pop['order']: # for each sample x
+		gmm = pop['samples'][x]['gmm'] # get gmm
+		w = gmm.weights_ # get weights of components
+		entropy = [single_entropy(N, gmm.covariances_[i]) for i in range(gmm.n_components)] # compute entropy for each gaussian density
+		pop['samples'][x]['entropy'] = entropy # store entropy
+		pop['samples'][x]['upperbound'] = np.sum([w[i]*(-np.log(w[i]) + entropy[i]) for i in range(gmm.n_components)]) # compute sample's entropy upperbound
+
+	plot_entropies(pop) # generate entropy plots
+
+'''
 Align functions
 '''
 def KL(mu1, cov1, mu2, cov2):
@@ -1992,77 +2070,7 @@ def align(pop, ref=None, method='conservative'):
 			pop['samples'][x]['alignments'] = aligner(refgmm, testgmm, method) # align gmm to reference
 
 	plot_deltas(pop) # generate plot mu and delta w plots
-
-'''
-Entropy functions
-'''
-def plot_entropies(pop):
-	'''
-	Plot entropy values for each single gaussin density
-
-	Parameters
-	----------
-	pop : dict
-		Popalign object
-	'''
-	yub = [pop['samples'][x]['upperbound'] for x in pop['order']]
-	lbls = pop['order']
-	sidx = np.argsort(yub)
-	yub = [yub[i] for i in sidx]
-	lbls = [lbls[i] for i in sidx]
-
-	xvals = []
-	yvals = []
-	xlbls = []
-	for i, x in enumerate(lbls): # for each sample
-		xlbls.append(i)
-		E = pop['samples'][x]['entropy'] # get list of entropy values
-		xvals += [i]*len(E) # add x coords
-		yvals += E # add y coords
-
-	plt.scatter(xvals, yvals, label='Gaussian density entropy', s=2) # plot entropies of densities
-	plt.plot(xlbls, yub, color='red', label='Model upperbound') # plot upper bound
-	plt.xticks(xlbls, lbls, rotation=90)
-	plt.ylabel('Entropy')
-	plt.title('Entropies of single gaussian densities')
-	plt.legend()
-	
-	dname = 'entropy'
-	mkdir(os.path.join(pop['output'], dname))
-	plt.savefig(os.path.join(pop['output'], dname, 'models_entropy.png'), dpi=200, bbox_inches='tight')
-
-def single_entropy(N, S):
-	'''
-	Compute the entropy of a single gaussian density
-
-	Parameters
-	----------
-	N : int
-		Number of features
-	S : array
-		Covariance matrix
-	'''
-	return 0.5*np.log(((2*np.pi*np.exp(1))**N) * np.linalg.det(S));
-
-def entropy(pop):
-	'''
-	For each sample in `pop`, compute the entropy for the gaussian densities of their Gaussian Mixture Model
-	and the mixture of gaussians upper bound
-
-	Parameters
-	----------
-	pop : dict
-		Popalign object
-	'''
-	N = pop['nfeats'] # get number of features
-	for x in pop['order']: # for each sample x
-		gmm = pop['samples'][x]['gmm'] # get gmm
-		w = gmm.weights_ # get weights of components
-		entropy = [single_entropy(N, gmm.covariances_[i]) for i in range(gmm.n_components)] # compute entropy for each gaussian density
-		pop['samples'][x]['entropy'] = entropy # store entropy
-		pop['samples'][x]['upperbound'] = np.sum([w[i]*(-np.log(w[i]) + entropy[i]) for i in range(gmm.n_components)]) # compute sample's entropy upperbound
-
-	plot_entropies(pop) # generate entropy plots
+	entropy(pop)
 
 '''
 Rank functions
@@ -2265,7 +2273,6 @@ def plot_query(pop, pcells=.2, nreps=10):
 	path_ = os.path.join(pop['output'], dname, 'query_plot.pdf')
 	plt.savefig(path_, bbox_inches='tight')
 	plt.close()
-	print('Plot saved under %s' % path_)
 
 def plot_query_heatmap(pop):
 	'''
@@ -2323,7 +2330,6 @@ def plot_query_heatmap(pop):
 	path_ = os.path.join(pop['output'], dname, 'query_heatmap.pdf')
 	plt.savefig(path_, bbox_inches='tight')
 	plt.close()
-	print('Plot saved under %s' % path_)
 
 '''
 Differential expression functions
