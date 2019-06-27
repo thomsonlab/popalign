@@ -422,7 +422,7 @@ def mu_sigma(M, pop):
 	pop['nzidx'] = nzidx # store index for future gene selection and filtering
 	return lognzcv, lognzmean
 
-def filter(pop):
+def filter(pop, remove_ribsomal=True):
 	'''
 	Filter genes from data in `pop`. Discards Ribosomal genes that start with RPS or RPL
 
@@ -430,19 +430,22 @@ def filter(pop):
 	----------
 	pop :dict
 		Popalign object
+	remove_ribsomal : bool
+		Wether to remove or not the ribosomal genes.
 	'''
 	gene_idx = pop['filter_idx'] # get indices of genes to keep
 	genes = pop['genes'] # get all genes names
-	tmp = []
-	print('Removing ribosomal genes')
-	for i in gene_idx:
-		g = genes[i]
-		if g.startswith('RPS') or g.startswith('RPL'):
-			pass
-		else:
-			tmp.append(i) # only append gene index if gene name doesn't star with RPS or RPL
-	gene_idx = np.array(tmp)
-
+	if remove_ribsomal == True:
+		tmp = []
+		print('Removing ribosomal genes')
+		for i in gene_idx:
+			g = genes[i]
+			if g.startswith('RPS') or g.startswith('RPL'):
+				pass
+			else:
+				tmp.append(i) # only append gene index if gene name doesn't star with RPS or RPL
+		gene_idx = np.array(tmp)
+		
 	print('Filtering genes ang logging data')
 	for x in pop['order']: # for each sample x
 		M_norm = pop['samples'][x]['M'][gene_idx,:] # filter genes
@@ -501,7 +504,7 @@ def plot_gene_filter(pop, offset=1):
 		pop['genefiltering']['intercept'] = intercept
 	plot_mean_cv(pop, offset)
 
-def gene_filter(pop):
+def gene_filter(pop, remove_ribsomal=True):
 	'''
 	Plot and interactively select genes
 

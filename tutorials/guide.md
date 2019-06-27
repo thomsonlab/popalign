@@ -72,3 +72,8 @@ The normalization function is:
 PA.normalize(pop, scaling_factor=None)
 ```
 The `scaling_factor` parameter can be used to set the scaling factor value. It defaults to None, which means the scaling factor is computed automatically, then applied to the column normalized data.
+
+## Gene filtering
+
+The process of filtering genes is divided into two steps: plotting the genes to select the most variable genes, and then filtering the genes once they have been selected with the first step.
+Plotting the genes
