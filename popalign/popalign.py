@@ -336,9 +336,9 @@ def comparison_factor(tmp, f, ogmean):
 	tmp.data = tmp.data*f # multiply matrix values by factor
 	return np.abs(tmp.mean()-ogmean) # return the absolute value of the difference between the new mean and the original one
 
-def norm_factor(pop):
+def scale_factor(pop):
 	'''
-	Find a normalization factor that minimizes the difference between the original mean of the data and the mean after column normalization and factorization
+	Find a scaling factor that minimizes the difference between the original mean of the data and the mean after column normalization and factorization
 
 	Parameters
 	----------
@@ -352,14 +352,14 @@ def norm_factor(pop):
 
 	with Pool(None) as p:
 		q = p.starmap(comparison_factor, [(M.copy(), f, ogmean) for f in factorlist]) # try different factors
-	normfactor = factorlist[np.argmin(q)] # pick the factor that minimizes the difference between the new mean and the original one 
+	factor = factorlist[np.argmin(q)] # pick the factor that minimizes the difference between the new mean and the original one 
 
 	with Pool(None) as p:
-		q = p.starmap(factor, [(pop['samples'][x]['M'], normfactor) for x in pop['order']]) #Multiply data values by picked factor in parallel
+		q = p.starmap(factor, [(pop['samples'][x]['M'], factor) for x in pop['order']]) #Multiply data values by picked factor in parallel
 	for i,x in enumerate(pop['order']):
 		pop['samples'][x]['M'].data = q[i] # update data values for each sample
 
-def normalize(pop, norm_factor=None):
+def normalize(pop, scaling_factor=None):
 	'''
 	Normalize the samples of object `pop` and applies a normalization factor
 
@@ -367,6 +367,8 @@ def normalize(pop, norm_factor=None):
 	----------
 	pop : dict
 		Popalign object
+	scaling_factor : int or None, optional
+		Number used to scale the data values. If None, that factor is computed automatically.
 	'''
 	if 'normed' in pop:
 		print('Data already column normalized')
@@ -378,14 +380,14 @@ def normalize(pop, norm_factor=None):
 		for x in pop['order']: # for each sample x
 			col_norm(pop['samples'][x]['M']) #column normalize data of sample `x`
 		
-		if norm_factor != None:
+		if scaling_factor != None:
 			with Pool(None) as p:
-				q = p.starmap(factor, [(pop['samples'][x]['M'], norm_factor) for x in pop['order']]) #Multiply data values by factor in parallel
+				q = p.starmap(factor, [(pop['samples'][x]['M'], scaling_factor) for x in pop['order']]) #Multiply data values by factor in parallel
 			for i,x in enumerate(pop['order']):
 				pop['samples'][x]['M'].data = q[i] # update data values for each sample
 		else:
-			print('Finding best normalization factor')
-			norm_factor(pop) # Apply normalization factor
+			print('Finding best scaling factor')
+			scale_factor(pop) # Apply normalization factor
 			pop['normed'] = True
 
 def mu_sigma(M, pop):

@@ -1,6 +1,6 @@
 # PopAlign user guide
 
-This guide covers the worflow and data structures of the PopAlign framework.
+This guide covers the worflow and data structures of the single cell RNA-seq analysis PopAlign framework.
 
 ## Installing PopAlign
 
@@ -62,3 +62,13 @@ pop = PA.load_screen(matrix=mymatrix,
 It returns a dictionary that contains the loaded data, genes and various information. That object is used throughout the entire analysis.
 The `outputfolder` parameter defines where the results of the analysis will be saved. Its default value is `output`. 
 If the user hasn't loaded any samples, `existing_obj` should be `None`. If samples have already been loaded with `load_samples` or `load_screen`, the object that these functions returned should be given as the argument for this parameter.
+
+## Normalize data
+
+The data is normalized to account for sequencing depth differences. This is done by dividing each cell (column in a gene expression matrix) by its transcript count sum. The values are then multiplied by a scaling factor. The scaling factor value can be either set by the user or computed automatically. When computed automatically, multiple factors are tested and the factor that minimizes the difference between the mean of the original data prior to normalization and the mean of the normalized, scaled data is used.
+
+The normalization function is:
+```python
+PA.normalize(pop, scaling_factor=None)
+```
+The `scaling_factor` parameter can be used to set the scaling factor value. It defaults to None, which means the scaling factor is computed automatically, then applied to the column normalized data.
