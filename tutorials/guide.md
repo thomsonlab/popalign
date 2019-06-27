@@ -63,6 +63,16 @@ It returns a dictionary that contains the loaded data, genes and various informa
 The `outputfolder` parameter defines where the results of the analysis will be saved. Its default value is `output`. 
 If the user hasn't loaded any samples, `existing_obj` should be `None`. If samples have already been loaded with `load_samples` or `load_screen`, the object that these functions returned should be given as the argument for this parameter.
 
+The sample gene expression matrices are stored individually. To access the gene expression matrix of `sample1`, use the following:
+```python
+pop['samples']['sample1']['M']
+```
+
+The gene labels are stored in the `pop` object:
+```python
+pop['genes']
+```
+
 ## Normalize data
 
 The data is normalized to account for sequencing depth differences. This is done by dividing each cell (column in a gene expression matrix) by its transcript count sum. The values are then multiplied by a scaling factor. The scaling factor value can be either set by the user or computed automatically. When computed automatically, multiple factors are tested and the factor that minimizes the difference between the mean of the original data prior to normalization and the mean of the normalized, scaled data is used.
@@ -71,9 +81,11 @@ The normalization function is:
 ```python
 PA.normalize(pop, scaling_factor=None)
 ```
+It normalizes the gene expression matrices in-place, i.e. the matrices are directly updated.
 The `scaling_factor` parameter can be used to set the scaling factor value. It defaults to None, which means the scaling factor is computed automatically, then applied to the column normalized data.
 
 ## Gene filtering
 
 The process of filtering genes is divided into two steps: plotting the genes to select the most variable genes, and then filtering the genes once they have been selected with the first step.
+
 Plotting the genes
