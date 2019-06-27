@@ -88,4 +88,27 @@ The `scaling_factor` parameter can be used to set the scaling factor value. It d
 
 The process of filtering genes is divided into two steps: plotting the genes to select the most variable genes, and then filtering the genes once they have been selected with the first step.
 
-Plotting the genes
+The function to plot the genes is:
+```python
+PA.plot_gene_filter(pop, offset=1)
+```
+
+The generated scatter plot shows the logged gene means against the logged coefficient of variation (standard deviation over mean). A line is fitted to the data with linear regression. The expected slope is -1/2 but the intercept value depends on the data points. The line can be moved thanks to the `offset` parameter. The log10 of the argument passed to this parameter will be added to the line intercept. The default offset value is 1, which doesn't move the line since log10(1) is 0. If the offset value is greater than 1, the line will move up, selecting less genes. If the offset value is less than one, the line will move down, keeping more genes. Everytime this function is ran (with a different offset value for example), the indices of genes to keep is updated in the `pop` object under:
+```python
+pop['filter_idx']
+```
+
+Once the user has selected genes with the `plot_gene_filter` function, they can filter the genes with:
+```python
+PA.filter(pop, remove_ribsomal=True)
+```
+This function filters out the genes and then logs the data values in all gene expression matrices. The filtered matrices are stored under a different entry. The filtered matrix of `sample1` is accessed with:
+```python
+pop['samples']['sample1']['M_norm']
+```
+The non-filtered matrices are also logged in-place.
+
+If the `remove_ribsomal` parameter is `True`, genes that start with `RPS` or `RPL` are removed from the filtered genes. If `False`, those ribosomal genes are kept in the filtered matrices. The filtered gene list can be found under:
+```python
+pop['filtered_genes']
+```
