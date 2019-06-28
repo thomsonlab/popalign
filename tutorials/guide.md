@@ -43,7 +43,7 @@ The `outputfolder` parameter defines where the results of the analysis will be s
 If the user hasn't loaded any samples, `existing_obj` should be `None`. If samples have already been loaded with `load_samples` or `load_screen`, the object that these functions returned should be given as the argument for this parameter.
 
 * Format 2:
-All the samples are stored in one unique matrix file. This format requires the paths to the .mtx file, the gene list, the barcode list and a metadata file. The meta data file must be a .csv file that includes two columns: `cell_barcode` and `sample_id`. The cells from the different samples will be selected in the matrix based on their barcode index.
+All the samples are stored in one unique matrix file. This format requires the paths to the .mtx file, the gene list, the barcode list and a metadata file. The meta data file must be a .csv file that includes two columns: `cell_barcode` and `sample_id`. The first column contains the cell barcodes and the second column contains the matching sample names for those cells. The cells from the different samples will be selected in the matrix based on their barcode index.
 ```python
 mymatrix = 'path/to/matrix.mtx'
 mybarcodes = 'path/to/barcodes.tsv'
@@ -61,6 +61,7 @@ pop = PA.load_screen(matrix=mymatrix,
 ```
 It returns a dictionary that contains the loaded data, genes and various information. That object is used throughout the entire analysis.
 The `outputfolder` parameter defines where the results of the analysis will be saved. Its default value is `output`. 
+
 If the user hasn't loaded any samples, `existing_obj` should be `None`. If samples have already been loaded with `load_samples` or `load_screen`, the object that these functions returned should be given as the argument for this parameter.
 
 The sample gene expression matrices are stored individually. To access the gene expression matrix of `sample1`, use the following:
@@ -111,4 +112,22 @@ The non-filtered matrices are also logged in-place.
 If the `remove_ribsomal` parameter is `True`, genes that start with `RPS` or `RPL` are removed from the filtered genes. If `False`, those ribosomal genes are kept in the filtered matrices. The filtered gene list can be found under:
 ```python
 pop['filtered_genes']
+```
+
+## (Optional) Remove red blood cells
+
+If the user is using blood data, they can decide to remove the possible red blood cells with the `removeRBC` function. This function uses different marker genes for human samples (HBB, HBA1, HBA2) and mouse samples (HBB-BT, HBB-BS, HBA-A1, HBA-A2). The function is used as follows:
+```python
+PA.removeRBC(pop, species='human')
+```
+The `species`parameter can either be `human` or `mouse`.
+
+## Perform dimensionality reduction
+
+Dimensionality reduction allows to drastically reduce the number of descriptive variables. The variables in scRNAseq data are the genes. Even though the genes have been filtered in one of previous steps (consider it a cleaning step to keep informative variables), the data is still in a high-dimensional space (hundreds or thousands of genes) and still has high complexity, which makes it harder to analyze and understand. Dimensionality reduction creates macro variables that encapsulates the original variables and could be seen as features or programs.
+
+The first dimensionality reduction method to be used is orthogonal nonnegative matrix factorization (oNMF). It factors a gene expression matrix D of size (m genes, n cells) into two matrices W (m genes, k features) and H (k features, n cells) so that W.H approximates D. W is called the feature space. The function to run oNMF is:
+
+```python
+PA.onmf(pop, ncells=5000, nfeats=[5,7], nreps=3, niter=500)
 ```
