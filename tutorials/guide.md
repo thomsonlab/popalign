@@ -124,10 +124,23 @@ The `species`parameter can either be `human` or `mouse`.
 
 ## Perform dimensionality reduction
 
-Dimensionality reduction allows to drastically reduce the number of descriptive variables. The variables in scRNAseq data are the genes. Even though the genes have been filtered in one of previous steps (consider it a cleaning step to keep informative variables), the data is still in a high-dimensional space (hundreds or thousands of genes) and still has high complexity, which makes it harder to analyze and understand. Dimensionality reduction creates macro variables that encapsulates the original variables and could be seen as features or programs.
+Dimensionality reduction allows to drastically reduce the number of descriptive variables. The variables in scRNAseq data are the genes. Even though the genes have been filtered in one of previous steps (consider it a cleaning step to keep the most informative variables), the data is still in a high-dimensional space (hundreds or thousands of genes) and still has high complexity, which makes it harder to analyze and understand. Dimensionality reduction creates macro variables that encapsulates the original variables and could be seen as features or programs.
 
-The first dimensionality reduction method to be used is orthogonal nonnegative matrix factorization (oNMF). It factors a gene expression matrix D of size (m genes, n cells) into two matrices W (m genes, k features) and H (k features, n cells) so that W.H approximates D. W is called the feature space. The function to run oNMF is:
-
+The first dimensionality reduction method to be used is orthogonal nonnegative matrix factorization (oNMF). This version of NMF applies orthogonality constraints on the feature space. It factors a gene expression matrix D of size (m genes, n cells) into two matrices W (m genes, k features) and H (k features, n cells) so that W.H approximates D. W is called the feature space. The function to run oNMF is:
 ```python
 PA.onmf(pop, ncells=5000, nfeats=[5,7], nreps=3, niter=500)
 ```
+`ncells` is an integer indicates how many cells should be randomly sampled from the loaded data to build the feature spaces. If that number is greater than the number of cells in the data, it will be adjusted down to the total number of cells. If the user wants to check the total number of cells in the loaded data, they can use `PA.print_ncells(pop)`. The `ncells` argument defaults to 2000.
+
+`nfeats` is an integer or a list of integers. It indicates how many features to build with oNMF. If a list of integers is provided, the algorithm will try each value individually.
+
+`nreps` (integer) is how many times to repeat each possible `k` (number of features) from `nfeats`. For example, if `nfeats` is `[5,7,9]` and `nreps` is `2`, 6 distinct feature spaces will be built (two feature spaces with 5 features, two feature spaces with 7 features and two feature spaces with 9 features).
+
+After the feature spaces have been computed in parallel, each feature space is scaled by scaling its features by their respective l2-norm. This helps uniformizing the range of values of the projected data in a feature space.
+
+The goal is to select the best representing feature space among all the computed feature spaces. PopAlign selects the feature space that minimizes the mean square error between the original data and the reconstructed version of the data using the feature space. To do so, the entire data is projected onto each individual feature space W_{j}. The projected data can be notated H_{j}. W is selected so that:
+![](https://www.codecogs.com/eqnedit.php?latex=W&space;=&space;argmin(\frac{1}{n}\sum_{i}^{n}(D-Wj.Hj)))
+
+
+
+
