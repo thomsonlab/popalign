@@ -138,8 +138,7 @@ PA.onmf(pop, ncells=5000, nfeats=[5,7], nreps=3, niter=500)
 
 After the feature spaces have been computed in parallel, each feature space is scaled by scaling its features by their respective l2-norm. This helps uniformizing the range of values of the projected data in a feature space.
 
-<<<<<<< Updated upstream
-The goal is to select the best representing feature space among all the computed feature spaces. PopAlign selects the feature space that minimizes the mean square error between the original data and the reconstructed version of the data using the feature space. To do so, the entire data is projected onto each individual feature space W<sub>j</sub>. The projected data can be notated H<sub>j</sub>. W is selected so that:
+The goal is to select the best representing feature space among all the computed feature spaces. PopAlign selects the feature space that minimizes the mean square error between the original data and the reconstructed version of the data using the feature space. To do so, the normalized gene expression data matrix D is projected onto each individual feature space W<sub>j</sub>. The projected data can be notated H<sub>j</sub>. The final feature space W is selected so that:
 
 ![](https://latex.codecogs.com/svg.latex?W&space;=&space;argmin(\frac{1}{n}\sum_{i}^{n}(D-Wj.Hj)))
 
