@@ -158,8 +158,12 @@ def print_ncells(pop):
 	pop : dict
 		Popalign object
 	'''
+	total = 0
 	for x in pop['order']:
-		print(x, '\t',pop['samples'][x]['M'].shape[1])
+		tmp = pop['samples'][x]['M'].shape[1]
+		total += tmp
+		print(x, '\t', tmp)
+	print('Total number of cells loaded: %d' % total)
 
 '''
 Load functions
@@ -1029,6 +1033,9 @@ def onmf(pop, ncells=2000, nfeats=[5,7,9], nreps=3, niter=300):
 		Maximum number of iterations to perform for each instance of the algoirthm
 	'''
 	M_norm = cat_data(pop, 'M_norm') # grab normalized data
+	maxncells = M_norm.shape[1] # get total number of cells
+	if ncells > maxncells: # if ncells is larger than total number of cells
+		ncells = maxncells # adjust number down
 	idx = np.random.choice(M_norm.shape[1], ncells, replace=False) # randomly select ncells cells
 
 	print('Computing W matrices')
