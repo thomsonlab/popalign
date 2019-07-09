@@ -134,7 +134,7 @@ PA.onmf(pop, ncells=5000, nfeats=[5,7], nreps=3, niter=500)
 
 `nfeats` is an integer or a list of integers. It indicates how many features to build with oNMF. If a list of integers is provided, the algorithm will try each value individually.
 
-`nreps` (integer) is how many times to repeat each possible `k` (number of features) from `nfeats`. For example, if `nfeats` is `[5,7,9]` and `nreps` is `2`, 6 distinct feature spaces will be built (two feature spaces with 5 features, two feature spaces with 7 features and two feature spaces with 9 features).
+`nreps` (integer) is how many times to repeat each possible `k` (number of features) from `nfeats`. For example, if `nfeats` is [5,7,9] and `nreps` is 2, 6 distinct feature spaces will be built (two feature spaces with 5 features, two feature spaces with 7 features and two feature spaces with 9 features).
 
 After the feature spaces have been computed in parallel, each feature space is scaled by scaling its features by their respective l2-norm. This helps uniformizing the range of values of the projected data in a feature space.
 
@@ -142,5 +142,5 @@ The goal is to select the best representing feature space among all the computed
 
 ![](https://latex.codecogs.com/svg.latex?W&space;=&space;argmin(\frac{1}{n}\sum_{i}^{n}(D-Wj.Hj)))
 
-
+Gene set enrichment analysis (GSEA) is run for each feature from the feature space.
 

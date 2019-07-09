@@ -26,6 +26,7 @@ import matplotlib
 from matplotlib import pyplot as plt
 from matplotlib.widgets import Slider, Button
 from matplotlib.offsetbox import AnchoredText
+from matplotlib import gridspec
 import seaborn as sns
 from scipy.stats import multivariate_normal as mvn
 import adjustText
@@ -2372,6 +2373,108 @@ def l1norm(ig, sub1, sub2, nbins):
 	b2 = b2/len(idx2) # scale bin values
 	
 	return np.linalg.norm(np.abs(b1-b2))
+
+'''
+Visualization functions
+'''
+def plot_heatmap(pop, refcomp=0, genelist=[], savename=None, figsize=(15,15), cmap='Purples', samplelimits=False):
+	'''
+	Plot specific genes for cells of a reference subpopulation S and subpopulations that aligned to S
+	
+	Parameters
+	----------
+	pop : dict
+		Popalign dict
+	refcomp : int
+		Reference subpopulation number
+	genelist : list
+		List of genes to plot
+	savename : str, optional
+		The user can specify a name for the file to be written. When savename is None, a filename is computed with the reference component number. Default is None
+	figsize : tuple, optional
+		Size of the figure. Default is (15,15)
+	cmap : str, optional
+		Name of the Matplotlib colormap to use. Default is Purples
+	'''
+	genelist = [g for g in genelist if g in pop['genes']] # only keep valid genes
+	gidx = [np.where(pop['genes']==g)[0][0] for g in genelist] # get indices for those genes
+
+	ref = pop['ref'] # get reference sample label
+	C = pop['samples'][ref]['C'] # get reference data in feature space
+	M = pop['samples'][ref]['M'][gidx,:] # get reference data in gene space, subsample genes
+	prediction = pop['samples'][ref]['gmm'].predict(C) # get cell predictions
+	idx = np.where(prediction == refcomp)[0] # get indices of cells in component #refcomp
+	M = M[:,idx] # get cells from gene space data
+
+	cmetric='correlation' # cluster metric
+	cmethod='single' # cluster method
+	cidx = cluster_rows(M.toarray().T, metric=cmetric, method=cmethod) # cluster cells of subpopulation
+	M = M[:,cidx] # reorder matrix
+
+	MS = [M[:,cidx]] # create list of matrices, with the reference matrix as the first element
+	MSlabels = [ref] # create list of sample labels, with the reference label as the first element
+	ncols = [M.shape[1]] # create list of sample cell numbers, with the number of reference cells as the first element
+
+	for x in pop['order']: # for each sample in pop
+		if x != pop['ref']: # if that sample is not the reference sample
+			try: # check if an aligned subpopulation exists for that sample
+				arr = pop['samples'][x]['alignments'] # retrive test sample alignments
+				irow = np.where(arr[:,1] == refcomp) # get row number in alignments where ref subpop is the desired ref subpop
+				itest = int(arr[irow, 0]) # get test subpopulation number if exists
+				
+				C = pop['samples'][x]['C'] # get test sample feature space data
+				prediction = pop['samples'][x]['gmm'].predict(C) # get the subpopulations assignments
+				idx = np.where(prediction == itest)[0] # get indices of cells that match aligned test subpopulation
+
+				M = pop['samples'][x]['M'][gidx,:] # get test sample gene space data, subsample
+				M = M[:,idx] # select test subpopulation cells
+				cidx = cluster_rows(M.toarray().T, metric=cmetric, method=cmethod) # cluster cells of subpopulation
+				M = M[:,cidx] # reorder matrix
+				ncols.append(M.shape[1])
+				MS.append(M) # append to list
+				MSlabels.append(x) # append matching sample label to list
+			except:
+				pass
+
+	M = ss.hstack(MS) # create full matrix
+	cols = np.concatenate([[0]*x if i%2==0 else [1]*x for i,x in enumerate(ncols)]) # create binary vector to color columns, length equals to number of cells. Should be: [0,...,0,1,...,1,0,...,0,1...,1,etc]
+	cols = cols.reshape(1,len(cols)) # reshape vector to plot it as a heatmap
+	xtickscoords = [x/2 for x in ncols] # calculate label tick offset to center label
+	cumsum = np.cumsum(ncols) # compute cumulative sum of bins 
+	for i,(x,y) in enumerate(zip(ncols,xtickscoords)):
+		if i!=0:
+			xtickscoords[i] += cumsum[i-1] # update x tick coordinates with cumulative sum
+
+	fig = plt.figure(1,figsize=figsize) # create figure with given figure size
+	nr = 20 # number of rows in plot grid
+	nc = 20 # number of cols in plot grid
+	gridspec.GridSpec(nr,nc) # create plot grid
+
+	# heatmap
+	plt.subplot2grid((nr,nc), (0,0), colspan=nc, rowspan=nr-1) # create subplot for heatmap, leave space for column colors
+	plt.imshow(M.toarray(), aspect='auto', interpolation='none', cmap=cmap) # plot heatmap
+	plt.yticks(np.arange(len(genelist)),genelist) # display gene names
+	plt.xticks([]) # remove x ticks
+	plt.title('Reference sample: %s\nSubpopulation #%d: %s' % (ref, refcomp, pop['samples'][ref]['gmm_types'][refcomp]))
+	
+	if samplelimits == True: # if parameter is True
+		for xx in cumsum[:-1]: # for each limit
+			plt.axvline(xx, color='k') # plot vertical line
+
+	# col colors
+	plt.subplot2grid((nr,nc), (nr-1, 0), colspan=nc, rowspan=1) # create subplot for column colors
+	plt.imshow(cols, aspect='auto', cmap='binary') # plot column colors
+	plt.yticks([]) # remove y ticks
+	plt.xticks(xtickscoords, MSlabels, rotation=90) # display sample names
+	
+	dname = 'heatmaps' # define directory name
+	mkdir(os.path.join(pop['output'], dname)) # create directory if needed
+	if savename != None:
+		filename = savename
+	else:
+		filename = 'comp%d_heatmap' % refcomp
+	plt.savefig(os.path.join(pop['output'], dname, '%s.png' % filename), dpi=200, bbox_inches='tight')
+	plt.close()
 
 import sys
 if not sys.warnoptions:
