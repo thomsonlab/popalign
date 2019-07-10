@@ -283,11 +283,12 @@ def load_screen(matrix, barcodes, metafile, genes=None, outputfolder='output', e
 	
 	for i in meta['sample_id'].dropna().unique(): # go through the sample_id values to split the data and store it for each individual sample
 		x = str(i)
-		obj['samples'][x] = {} # create entry for sample x
-		sample_bcs = meta[meta.sample_id == i].cell_barcode.values # get the cell barcodes for sample defined by sample_id
-		idx = [bc_idx[bc] for bc in sample_bcs] # retrieve list of matching indices
-		obj['samples'][x]['M'] = M[:,idx] # extract matching data from M
-		obj['order'].append(x) # save list of sample names to always call them in the same order for consistency
+		if x != 'unknown':
+			obj['samples'][x] = {} # create entry for sample x
+			sample_bcs = meta[meta.sample_id == i].cell_barcode.values # get the cell barcodes for sample defined by sample_id
+			idx = [bc_idx[bc] for bc in sample_bcs] # retrieve list of matching indices
+			obj['samples'][x]['M'] = M[:,idx] # extract matching data from M
+			obj['order'].append(x) # save list of sample names to always call them in the same order for consistency
 
 	obj['nsamples'] = len(obj['order']) 
 	obj['output'] = outputfolder
