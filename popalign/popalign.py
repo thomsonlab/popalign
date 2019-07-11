@@ -234,7 +234,7 @@ def check_cols(s,cols):
 	if s not in cols:
 		raise Exception('Columns of meta data must include: %s' % s)
 
-def load_screen(matrix, barcodes, metafile, genes=None, outputfolder='output', existing_obj=None):
+def load_screen(matrix, barcodes, metafile, genes=None, outputfolder='output', existing_obj=None, only=[]):
 	'''
 	Load data from a screen experiment and genes from a file
 
@@ -248,10 +248,12 @@ def load_screen(matrix, barcodes, metafile, genes=None, outputfolder='output', e
 		Path to a metadata file. Must contains `cell_barcodes` and `sample_id` columns
 	genes : str
 		Path to a .tsv 10X gene file. Optional if existing_obj is provided
-	outputfolder : str
+	outputfolder : str, optional
 		Path (or name) of the output folder to create
 	existing_obj : dict, optional
 		Object previously returned by either load_samples() or load_screen(). New samples will be added to that object
+	only : list, optional
+		List of sample names to load (other samples with names not in list will not be loaded)
 	'''
 	if (genes == None) & (existing_obj == None):
 		raise Exception('Please specify path to gene file')
@@ -281,7 +283,9 @@ def load_screen(matrix, barcodes, metafile, genes=None, outputfolder='output', e
 		tmp = tmp.drop(columns=['cell_barcode','sample_id'])
 		obj['conditions'] = tmp
 	
-	for i in meta['sample_id'].dropna().unique(): # go through the sample_id values to split the data and store it for each individual sample
+	if only == []: # if no specific sample specified
+		only = meta['sample_id'].dropna().unique() # get unique list of sample names
+	for i in only: # go through the sample_id values to split the data and store it for each individual sample
 		x = str(i)
 		if x != 'unknown':
 			obj['samples'][x] = {} # create entry for sample x
@@ -2167,7 +2171,7 @@ def rank(pop, ref=None, k=100, niter=200, mincells=50):
 	plt.tight_layout()
 	dname = 'ranking'
 	mkdir(os.path.join(pop['output'], dname))
-	plt.savefig(os.path.join(pop['output'], dname, 'rankings_boxplot.pdf'))
+	plt.savefig(os.path.join(pop['output'], dname, 'rankings_boxplot.png'), dpi=200)
 
 	plt.close()
 	# create stripplot using the computed order based on score means
@@ -2184,7 +2188,7 @@ def rank(pop, ref=None, k=100, niter=200, mincells=50):
 	plt.tight_layout()
 	dname = 'ranking'
 	mkdir(os.path.join(pop['output'], dname))
-	plt.savefig(os.path.join(pop['output'], dname, 'rankings_stripplot.pdf'))
+	plt.savefig(os.path.join(pop['output'], dname, 'rankings_stripplot.png'), dpi=200)
 
 '''
 Query functions
