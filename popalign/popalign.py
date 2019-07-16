@@ -266,12 +266,7 @@ def load_screen(matrix, barcodes, metafile, genes=None, outputfolder='output', e
 	else:
 		obj = existing_obj
 
-	M = sio.mmread(matrix).tocsc() # load main matrix
-	barcodes = np.array([row[0] for row in csv.reader(open(barcodes), delimiter="\t")]) # load associated barcodes
-	bc_idx = {} # store index of each barcode in a dictionary to quickly retrieve indices for a list of barcodes
-	for i, bc in enumerate(barcodes):
-		bc_idx[bc] = i
-
+	# check straight away if meta data has the minimum requirements
 	meta = pd.read_csv(metafile, header=0) # load metadata file
 	cols = meta.columns.values
 	check_cols('cell_barcode', cols)
@@ -282,9 +277,16 @@ def load_screen(matrix, barcodes, metafile, genes=None, outputfolder='output', e
 		tmp.index = tmp.sample_id.values
 		tmp = tmp.drop(columns=['cell_barcode','sample_id'])
 		obj['conditions'] = tmp
-	
+
 	if only == []: # if no specific sample specified
 		only = meta['sample_id'].dropna().unique() # get unique list of sample names
+
+	M = sio.mmread(matrix).tocsc() # load main matrix
+	barcodes = np.array([row[0] for row in csv.reader(open(barcodes), delimiter="\t")]) # load associated barcodes
+	bc_idx = {} # store index of each barcode in a dictionary to quickly retrieve indices for a list of barcodes
+	for i, bc in enumerate(barcodes):
+		bc_idx[bc] = i
+
 	for i in only: # go through the sample_id values to split the data and store it for each individual sample
 		x = str(i)
 		if x != 'unknown':
@@ -478,7 +480,6 @@ def plot_mean_cv(pop, offset):
 	offset : float
 		Offset value to slide filtering line
 	'''
-	plt.rcParams['figure.figsize'] = [8, 6]
 
 	lognzcv = pop['genefiltering']['lognzcv'] # get cv values
 	lognzmean = pop['genefiltering']['lognzmean'] # get mean values
@@ -489,6 +490,7 @@ def plot_mean_cv(pop, offset):
 	selection_idx = np.where(lognzcv>lognzmean*slope+adjusted_intercept)[0] # get indices of genes above the filtering line
 	print('%d genes selected' % len(selection_idx))
 
+	plt.figure(figsize=(8,6))
 	plt.scatter(lognzmean, lognzcv, s=1) # plot all genes
 	plt.scatter(lognzmean[selection_idx], lognzcv[selection_idx], c='maroon', s=1) # plot genes above line with different color
 	plt.plot(lognzmean,lognzmean*slope+adjusted_intercept, c='darkorange') # plot filtering line
@@ -864,8 +866,10 @@ def save_top_genes_features(pop, stds, stdfactor):
 
 	dname = 'qc'
 	with open(os.path.join(pop['output'], dname, 'top_genes_per_feat.txt'), 'w') as fout: # create file
-		for i in range(pop['nfeats']): # dump selected genes for each feature i
-			fout.write('Feature %d:\n' %i)
+		#for i in range(pop['nfeats']): # dump selected genes for each feature i
+		for i, lbl in enumerate(pop['top_feat_labels']): # dump selected genes for each feature i
+			print(i, lbl)
+			fout.write('Feature %d, %s:\n' % (i,lbl))
 			fout.write('\n'.join(out[i]))
 			fout.write('\n\n')
 
@@ -1299,9 +1303,9 @@ def plotfeatures(pop):
 '''
 GMM functions
 '''
-def default_types():
+def default_pbmc_types():
 	'''
-	Return a default dictionary of cell types (key) and gene lists (value) pairs
+	Return a default dictionary of cell types (key) and gene lists (value) pairs for PBMC cell types
 	'''
 	types = {
 		'Monocytes' : [
@@ -1369,8 +1373,8 @@ def typer_func(gmm, prediction, M, genes, types):
 	types : dict
 		Dictionary of cell types (keys) and gene lists (values)
 	'''
-	if types == None:
-		types = default_types() # get default types
+	if types == 'defaultpbmc':
+		types = default_pbmc_types() # get default types
 	
 	typeslist = list(types.keys()) # get list of types for consistency
 	cols = range(gmm.n_components) # range of components
@@ -1401,7 +1405,7 @@ def typer_func(gmm, prediction, M, genes, types):
 
 	return finaltypes
 
-def render_model(pop, gmm, C, pcaproj, name, mean_labels=None):
+def render_model(pop, gmm, C, pcaproj, name, figsizesingle, mean_labels=None):
 	'''
 	Render a model as a density heatmap
 
@@ -1420,7 +1424,8 @@ def render_model(pop, gmm, C, pcaproj, name, mean_labels=None):
 	mean_labels : list
 		List of cell type labels. If None, the labels are the component number
 	'''
-	plt.rcParams['figure.figsize'] = [7, 6]
+
+	plt.figure(figsize=figsizesingle)
 	pcacomps = pop['pca']['components'] # get the pca space
 	cmap = 'jet' # define colormap
 	w_factor = 3000 # factor to get the mean point sizes (multiplied by the mean weights)
@@ -1491,7 +1496,7 @@ def render_model(pop, gmm, C, pcaproj, name, mean_labels=None):
 	plt.close()
 	return sample_density
 
-def grid_rendering(pop, q):
+def grid_rendering(pop, q, figsize):
 	'''
 	Generate a grid plot of gmm renderings
 
@@ -1501,8 +1506,9 @@ def grid_rendering(pop, q):
 		Popalign object
 	q : list
 		list of sample density arrays
+	figsize : tuple, optional
+		Size of the figure. Default is (10,10)
 	'''
-	plt.rcParams['figure.figsize'] = [7, 6]
 	pcacomps = pop['pca']['components']
 	cmap = 'jet'
 	cbarmin = -15
@@ -1525,7 +1531,7 @@ def grid_rendering(pop, q):
 	x2 = np.linspace(ylim[0], ylim[1], nbins)
 
 	nr, nc = nr_nc(len(pop['order']))
-	fig, axes = plt.subplots(nr,nc,figsize=(20,20))
+	fig, axes = plt.subplots(nr,nc,figsize=figsize)
 	axes=axes.flatten()
 	for i, name in enumerate(pop['order']):
 		ax = axes[i]
@@ -1575,7 +1581,7 @@ def grid_rendering(pop, q):
 	plt.close()
 	'''
 
-def render_models(pop, mode='grouped'):
+def render_models(pop, figsizegrouped, figsizesingle, mode='grouped'):
 	'''
 	Parameters
 	----------
@@ -1589,12 +1595,12 @@ def render_models(pop, mode='grouped'):
 	'''
 	if mode == 'grouped':
 		with Pool(None) as p:
-			q = p.starmap(render_model, [(pop, pop['samples'][x]['gmm'], pop['samples'][x]['C'], pop['samples'][x]['pcaproj'], x, pop['samples'][x]['gmm_types']) for x in pop['order']])
-		grid_rendering(pop, q)
+			q = p.starmap(render_model, [(pop, pop['samples'][x]['gmm'], pop['samples'][x]['C'], pop['samples'][x]['pcaproj'], x, figsizesingle, pop['samples'][x]['gmm_types']) for x in pop['order']])
+		grid_rendering(pop, q, figsizegrouped)
 
 	elif mode == 'individual':
 		with Pool(None) as p:
-			q = p.starmap(render_model, [(pop, pop['samples'][x]['gmm'], pop['samples'][x]['C'], pop['samples'][x]['pcaproj'], x, pop['samples'][x]['gmm_types']) for x in pop['order']])
+			q = p.starmap(render_model, [(pop, pop['samples'][x]['gmm'], pop['samples'][x]['C'], pop['samples'][x]['pcaproj'], x, figsizesingle, pop['samples'][x]['gmm_types']) for x in pop['order']])
 
 	elif mode == 'unique':
 		sd = render_model(pop, pop['gmm'], cat_data(pop, 'C'), pop['pca']['proj'], 'uniquegmm', pop['gmm_types'])
@@ -1630,7 +1636,7 @@ def build_single_GMM(k, C, reg_covar):
 		verbose_interval=10) # create model
 	return gmm.fit(C) # Fit the data
 
-def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar=True, rendering='grouped', types=None):
+def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar=True, rendering='grouped', types=None, figsizegrouped=(20,20), figsizesingle=(5,5)):
 	'''
 	Build a Gaussian Mixture Model on feature projected data for each sample
 
@@ -1656,6 +1662,10 @@ def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar=
 	types : dict, str or None
 		Dictionary of cell types.
 		If None, a default PBMC cell types dictionary is provided
+	figsizegrouped : tuple, optional
+		Size of the figure for the renderings together. Default is (20,20)
+	figsizesingle : tuple, optional
+		Size of the figure for each single sample rendering. Default is (5,5)
 	'''
 	if isinstance(ks, tuple): # if ks is tuple
 		ks = np.arange(ks[0], ks[1]) # create array of ks
@@ -1701,7 +1711,11 @@ def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar=
 		gmm = q[np.argmin(BIC)] # best gmm is the one that minimizes the BIC
 		pop['samples'][x]['gmm'] = gmm # store gmm
 		pop['samples'][x]['means_genes'] = gmm.means_.dot(pop['W'].T)
-		pop['samples'][x]['gmm_types'] = typer_func(gmm=gmm, prediction=gmm.predict(C), M=M, genes=pop['genes'], types=types)
+
+		if types != None:
+			pop['samples'][x]['gmm_types'] = typer_func(gmm=gmm, prediction=gmm.predict(C), M=M, genes=pop['genes'], types=types)
+		else:
+			pop['samples'][x]['gmm_types'] = None
 
 		# Create replicates
 		if nreplicates >=1: # if replicates are requested
@@ -1717,12 +1731,15 @@ def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar=
 				pop['samples'][x]['replicates'][j] = {}
 				pop['samples'][x]['replicates'][j]['gmm'] = gmm # store replicate number j
 				pop['samples'][x]['replicates'][j]['means_genes'] = gmm.means_.dot(pop['W'].T)
-				pop['samples'][x]['replicates'][j]['gmm_types'] = typer_func(gmm=gmm, prediction=gmm.predict(C), M=M, genes=pop['genes'], types=types)
+				if types != None:
+					pop['samples'][x]['replicates'][j]['gmm_types'] = typer_func(gmm=gmm, prediction=gmm.predict(C), M=M, genes=pop['genes'], types=types)
+				else:
+					pop['samples'][x]['replicates'][j]['gmm_types'] = None
 
 	print('Rendering models')
-	render_models(pop, mode=rendering) # render the models
+	render_models(pop, figsizegrouped=figsizegrouped, figsizesingle=figsizesingle, mode=rendering) # render the models
 
-def build_unique_gmm(pop, ks=(5,20), niters=3, reg_covar=True, types=None):
+def build_unique_gmm(pop, ks=(5,20), niters=3, training=0.2, reg_covar=True, types=None, figsize=(6,5)):
 	'''
 	Build a unique Gaussian Mixture Model on the feature projected data
 
@@ -1734,6 +1751,9 @@ def build_unique_gmm(pop, ks=(5,20), niters=3, reg_covar=True, types=None):
 		Number or range of components to use
 	niters : int
 		number of replicates to build for each k in `ks`
+	training : int or float
+		If training is float, the value will be used a percentage to select cells for the training set. Must follow 0<value<1
+		If training is int, that number of cells will be used for the training set.
 	reg_covar : boolean or float
 		If True, the regularization value will be computed from the feature data
 		If False, 1e-6 default value is used
@@ -1753,9 +1773,19 @@ def build_unique_gmm(pop, ks=(5,20), niters=3, reg_covar=True, types=None):
 	C = cat_data(pop, 'C') # get feature data
 	M = cat_data(pop, 'M') # get gene data
 	m = C.shape[0] # get training and validation sets ready
-	n = int(m*0.7)
-	idx = np.random.choice(m, n, replace=False)
-	not_idx = np.setdiff1d(range(m), idx)
+	
+	if (isinstance(training, int)) & (training<m) & (training > 1): # if training is int and smaller than number of cells
+		n = training
+	elif (isinstance(training, int)) & (training>=m): # if training is int and bigger than number of cells
+		n = int(m*0.8) # since the number of training cells was larger than the number of cells in the sample, take 80%
+	elif (isinstance(training, float)) & (0<training) & (training<1):
+		n = int(m*training) # number of cells for the training set
+	else:
+		raise Exception('Value passed to training argument is invalid. Must be an int or a float between 0 and 1.')
+
+	idx = np.random.choice(m, n, replace=False) # get n random cell indices
+	not_idx = np.setdiff1d(range(m), idx) # get the validation set indices
+
 	Ctrain = C[idx,:]
 	Cvalid = C[not_idx,:]
 
@@ -1774,13 +1804,16 @@ def build_unique_gmm(pop, ks=(5,20), niters=3, reg_covar=True, types=None):
 	gmm = q[np.argmin(BIC)]
 	pop['gmm'] = gmm
 
-	pop['gmm_types'] = typer_func(gmm=gmm, prediction=gmm.predict(C), M=M, genes=pop['genes'], types=types)
-	render_models(pop, mode='unique') # render model
+	if types != None:
+		pop['gmm_types'] = typer_func(gmm=gmm, prediction=gmm.predict(C), M=M, genes=pop['genes'], types=types)
+	else:
+		pop['gmm_types'] = None
+	sd = render_model(pop, pop['gmm'], cat_data(pop, 'C'), pop['pca']['proj'], 'uniquegmm', figsize, pop['gmm_types'])
 
 '''
 Entropy functions
 '''
-def plot_entropies(pop):
+def plot_entropies(pop, figsize):
 	'''
 	Plot entropy values for each single gaussin density
 
@@ -1788,6 +1821,8 @@ def plot_entropies(pop):
 	----------
 	pop : dict
 		Popalign object
+	figsize : tuple, optional
+		Size of the figure. Default is (10,10)
 	'''
 	yub = [pop['samples'][x]['upperbound'] for x in pop['order']]
 	lbls = pop['order']
@@ -1804,6 +1839,7 @@ def plot_entropies(pop):
 		xvals += [i]*len(E) # add x coords
 		yvals += E # add y coords
 
+	plt.figure(figsize=figsize)
 	plt.scatter(xvals, yvals, label='Gaussian density entropy', s=2) # plot entropies of densities
 	plt.plot(xlbls, yub, color='red', label='Model upperbound') # plot upper bound
 	plt.xticks(xlbls, lbls, rotation=90)
@@ -1829,7 +1865,7 @@ def single_entropy(N, S):
 	'''
 	return 0.5*np.log(((2*np.pi*np.exp(1))**N) * np.linalg.det(S));
 
-def entropy(pop):
+def entropy(pop, figsize):
 	'''
 	For each sample in `pop`, compute the entropy for the gaussian densities of their Gaussian Mixture Model
 	and the mixture of gaussians upper bound
@@ -1838,6 +1874,8 @@ def entropy(pop):
 	----------
 	pop : dict
 		Popalign object
+	figsize : tuple, optional
+		Size of the figure. Default is (10,10)
 	'''
 	N = pop['nfeats'] # get number of features
 	for x in pop['order']: # for each sample x
@@ -1847,7 +1885,7 @@ def entropy(pop):
 		pop['samples'][x]['entropy'] = entropy # store entropy
 		pop['samples'][x]['upperbound'] = np.sum([w[i]*(-np.log(w[i]) + entropy[i]) for i in range(gmm.n_components)]) # compute sample's entropy upperbound
 
-	plot_entropies(pop) # generate entropy plots
+	plot_entropies(pop, figsize) # generate entropy plots
 
 '''
 Align functions
@@ -1889,7 +1927,7 @@ def JeffreyDiv(mu1, cov1, mu2, cov2):
 	'''
 	return np.log10(0.5*KL(mu1, cov1, mu2, cov2)+0.5*KL(mu2, cov2, mu1, cov1))
 
-def plot_deltas(pop): # generate plot mu and delta w plots
+def plot_deltas(pop, figsize): # generate plot mu and delta w plots
 	'''
 	Genere delta mu and delta w plots for the computed alignments
 
@@ -1897,12 +1935,19 @@ def plot_deltas(pop): # generate plot mu and delta w plots
 	----------
 	pop : dict
 		Popalign object
+	figsize : tuple, optional
+		Size of the figure. Default is (10,10)
 	'''
 	dname = 'deltas'
 	mkdir(os.path.join(pop['output'], dname))
 
 	ref = pop['ref'] # get reference sample name
-	for i, lbl in enumerate(pop['samples'][ref]['gmm_types']): # for each reference subpopulation
+	
+	list_ = pop['samples'][ref]['gmm_types']
+	if list_ == None:
+		list_ = [str(i) for i in range(pop['samples'][ref]['gmm'].n_components)]
+
+	for i, lbl in enumerate(list_): # for each reference subpopulation
 		samplelbls = []
 		xcoords = []
 		delta_mus = []
@@ -1980,8 +2025,10 @@ def plot_deltas(pop): # generate plot mu and delta w plots
 		'''
 		xcoords = [np.where(idx==value)[0][0] for value in xcoords]
 
+		plt.figure(figsize=figsize)
+
 		ax1 = plt.subplot(2,1,1)
-		plt.title('Reference sample %s\nComponent %d: %s' %(ref, i,lbl))
+		plt.title('Reference sample %s\nComponent %d: %s' %(ref, i, lbl))
 		plt.scatter(xcoords, delta_ws, s=2, c='k')
 		plt.errorbar(x, mean_ws, stds_ws, color='k', elinewidth=.5, capsize=1, fmt=' ', label='Standard deviation')
 		plt.xticks([])
@@ -2053,7 +2100,7 @@ def aligner(refgmm, testgmm, method):
 			res[ii,:] = np.array([i, minsidx[i], mins[i]])
 	return res
 
-def align(pop, ref=None, method='conservative'):
+def align(pop, ref=None, method='conservative', figsizedeltas=(10,10), figsizeentropy=(10,10)):
 	'''
 	Align the commponents of each sample's model to the components of a reference model
 
@@ -2068,6 +2115,10 @@ def align(pop, ref=None, method='conservative'):
 		If conservative, the reference component and the test component have to be each other's best match to align
 		If aligntest, the closest reference component is found for each test component
 		If alignref, the closest test component is found for each test component
+	figsizedeltas : tuple, optional
+		Size of the figure for the delta plot. Default is (10,5)
+	figsizeentropy : tuple, optional
+		Size of the figure for the entropy plot. Default is (10,5)
 	'''
 	if ref == None:
 		raise Exception('Please provide sample id of reference')
@@ -2087,13 +2138,13 @@ def align(pop, ref=None, method='conservative'):
 			testgmm = pop['samples'][x]['gmm'] # get test gmm
 			pop['samples'][x]['alignments'] = aligner(refgmm, testgmm, method) # align gmm to reference
 
-	plot_deltas(pop) # generate plot mu and delta w plots
-	entropy(pop)
+	plot_deltas(pop, figsizedeltas) # generate plot mu and delta w plots
+	entropy(pop, figsizeentropy)
 
 '''
 Rank functions
 '''
-def rank(pop, ref=None, k=100, niter=200, mincells=50):
+def rank(pop, ref=None, k=100, niter=200, mincells=50, figsize=(10,5)):
 	'''
 	Generate a ranking plot of the samples against a reference model
 
@@ -2109,6 +2160,8 @@ def rank(pop, ref=None, k=100, niter=200, mincells=50):
 		Number of iterations to perform
 	mincells : int
 		If a sample has less than `mincells` cells, is discarded
+	figsize : tuple, optional
+		Size of the figure. Default is (10,5)
 	'''
 	# For a given sample S, k random cells are scored against the reference
 	# model. This process is repeated niter times and the results are 
@@ -2149,7 +2202,6 @@ def rank(pop, ref=None, k=100, niter=200, mincells=50):
 	means = df2.mean().sort_values()
 	lblorder = means.index.values.tolist()
 
-	plt.rcParams['figure.figsize'] = [10,5]
 	x = range(len(lblorder))
 
 	# find min and max of the control samples scores
@@ -2159,6 +2211,7 @@ def rank(pop, ref=None, k=100, niter=200, mincells=50):
 	max_ = df[df.labels == ref].scores.max()
 	
 	# create boxplot using the computed order based on score means
+	plt.figure(figsize=figsize)
 	ax = sns.boxplot(x="labels", y="scores", data=df, order=lblorder, palette='tab20')
 	x = plt.xlim()
 	plt.fill_between(x, min_, max_, alpha=0.1, color='black')
@@ -2172,9 +2225,10 @@ def rank(pop, ref=None, k=100, niter=200, mincells=50):
 	dname = 'ranking'
 	mkdir(os.path.join(pop['output'], dname))
 	plt.savefig(os.path.join(pop['output'], dname, 'rankings_boxplot.png'), dpi=200)
-
 	plt.close()
+
 	# create stripplot using the computed order based on score means
+	plt.figure(figsize=figsize)
 	ax = sns.stripplot(x="labels", y="scores", data=df, order=lblorder, palette='tab20', size=2)
 	x = plt.xlim()
 	plt.fill_between(x, min_, max_, alpha=0.1, color='black')
@@ -2189,6 +2243,7 @@ def rank(pop, ref=None, k=100, niter=200, mincells=50):
 	dname = 'ranking'
 	mkdir(os.path.join(pop['output'], dname))
 	plt.savefig(os.path.join(pop['output'], dname, 'rankings_stripplot.png'), dpi=200)
+	plt.close()
 
 '''
 Query functions
@@ -2207,15 +2262,15 @@ def cluster_rows(X, metric='correlation', method='complete'):
 	method : str
 		Method to use for hierarchical clustering
 	'''
-	c = pairwise_distances(X=X,metric='correlation',n_jobs=-1)
-	np.fill_diagonal(c,0.)
-	c = scd.squareform(c,force='tovector',checks=False)
-	c = np.nan_to_num(c)
-	z = fc.linkage(c, method='complete')
+	c = pairwise_distances(X=X,metric=metric,n_jobs=-1) # create pairwise distance matrix
+	np.fill_diagonal(c,0.) # make sure diagonal is not rounded
+	c = scd.squareform(c,force='tovector',checks=False) # force distance matrix to vector
+	c = np.nan_to_num(c) 
+	z = fc.linkage(c, method=method) # create linkage
 	z = z.clip(min=0)
 	return shc.leaves_list(z)
 
-def plot_query(pop, pcells=.2, nreps=10):
+def plot_query(pop, pcells=.2, nreps=10, figsize=(10,20), sharey=True):
 	'''
 	Plot proportions of the samples in each of the GMM components
 
@@ -2227,6 +2282,8 @@ def plot_query(pop, pcells=.2, nreps=10):
 		Percentage of random cells to use for each query repetition
 	nreps: int
 		Number of times to repeat the query process with different cells for each sample
+	figsize : tuple, optional
+		Size of the figure. Default is (10,20)
 	'''
 
 	#ncells = 1000
@@ -2272,7 +2329,7 @@ def plot_query(pop, pcells=.2, nreps=10):
 	arrstds = arrstds[idx_rows,:] # reorder rows of std array
 	clusteredlbls = [pop['order'][i] for i in idx_cols] # reordered sample labels to match clustered samples
 
-	fig, axes = plt.subplots(nrows=arrmus.shape[0], ncols=1, sharex=True, sharey=True, figsize=(10,20)) # create subplots
+	fig, axes = plt.subplots(nrows=arrmus.shape[0], ncols=1, sharex=True, sharey=sharey, figsize=figsize) # create subplots
 
 	for i, (mus,stds) in enumerate(zip(arrmus,arrstds)): # for each component i and the %age values in yvals
 		ax = axes[i] # get sub axes
@@ -2292,7 +2349,7 @@ def plot_query(pop, pcells=.2, nreps=10):
 	plt.savefig(path_, bbox_inches='tight')
 	plt.close()
 
-def plot_query_heatmap(pop):
+def plot_query_heatmap(pop, figsize=(10,10)):
 	'''
 	Plot heatmap samples x components matrix (how many % of cells of sample i in component j)
 	
@@ -2301,6 +2358,8 @@ def plot_query_heatmap(pop):
 
 	pop: dict
 		Popalign object
+	figsize : tuple, optional
+		Size of the figure. Default is (10,10)
 	'''
 			
 	# for each sample
@@ -2332,7 +2391,7 @@ def plot_query_heatmap(pop):
 		metric='correlation', 
 		method='complete', 
 		cmap='bone_r',
-		figsize=(10,10)
+		figsize=figsize
 	)
 
 	# rotate xlabels
