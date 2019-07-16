@@ -234,7 +234,7 @@ def check_cols(s,cols):
 	if s not in cols:
 		raise Exception('Columns of meta data must include: %s' % s)
 
-def load_screen(matrix, barcodes, metafile, genes=None, outputfolder='output', existing_obj=None, only=[]):
+def load_screen(matrix, barcodes, metafile, genes=None, outputfolder='output', existing_obj=None, only=[], col=None, value=None):
 	'''
 	Load data from a screen experiment and genes from a file
 
@@ -254,6 +254,10 @@ def load_screen(matrix, barcodes, metafile, genes=None, outputfolder='output', e
 		Object previously returned by either load_samples() or load_screen(). New samples will be added to that object
 	only : list, optional
 		List of sample names to load (other samples with names not in list will not be loaded)
+	col : str, optional
+		Name of a specific column in the meta data to use
+	value : str or int, optional
+		Value in the specified meta data column `col` to use to filter samples to load
 	'''
 	if (genes == None) & (existing_obj == None):
 		raise Exception('Please specify path to gene file')
@@ -271,15 +275,20 @@ def load_screen(matrix, barcodes, metafile, genes=None, outputfolder='output', e
 	cols = meta.columns.values
 	check_cols('cell_barcode', cols)
 	check_cols('sample_id', cols)
+	if col != None:
+		check_cols(col, cols)
 
-	if len(meta.columns.values)>2: # if additional columns exist in the metadata file, save those under `conditions`
-		tmp = meta.drop_duplicates(subset='sample_id')
-		tmp.index = tmp.sample_id.values
-		tmp = tmp.drop(columns=['cell_barcode','sample_id'])
-		obj['conditions'] = tmp
+	if (value != None) and (col != None):
+		tmp_only = meta[meta[col]==value]['sample_id'].dropna().unique()
+	elif (value != None) and (col == None):
+		raise Exception('col and value arguments must be specified together, or both equal to None')
+	elif (value == None) and (col != None):
+		raise Exception('col and value arguments must be specified together, or both equal to None')
+	else:
+		tmp_only =  meta['sample_id'].dropna().unique() # get unique list of sample names
 
 	if only == []: # if no specific sample specified
-		only = meta['sample_id'].dropna().unique() # get unique list of sample names
+		only = tmp_only # get unique list of sample names
 
 	M = sio.mmread(matrix).tocsc() # load main matrix
 	barcodes = np.array([row[0] for row in csv.reader(open(barcodes), delimiter="\t")]) # load associated barcodes
