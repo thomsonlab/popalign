@@ -40,7 +40,7 @@ pop = PA.load_samples(samples=mysamples,
 ```
 It returns a dictionary that contains the loaded data, genes and various information. That object is used throughout the entire analysis.
 The `outputfolder` parameter defines where the results of the analysis will be saved. Its default value is `output`. 
-If the user hasn't loaded any samples, `existing_obj` should be `None`. If samples have already been loaded with `load_samples` or `load_screen`, the object that these functions returned should be given as the argument for this parameter.
+If the user hasn't loaded any samples, `existing_obj` should be `None`. If samples have already been loaded with `load_samples` or `load_multiplexed`, the object that these functions returned should be given as the argument for this parameter.
 
 * Format 2:
 All the samples are stored in one unique matrix file. This format requires the paths to the .mtx file, the gene list, the barcode list and a metadata file. The meta data file must be a .csv file that includes two columns: `cell_barcode` and `sample_id`. The first column contains the cell barcodes and the second column contains the matching sample names for those cells. The cells from the different samples will be selected in the matrix based on their barcode index.
@@ -53,16 +53,19 @@ mymetadata = 'path/to/metadata.csv'
 
 The function to be used with that data format is:
 ```python
-pop = PA.load_screen(matrix=mymatrix, 
+pop = PA.load_multiplexed(matrix=mymatrix, 
 	barcodes=mybarcodes, 
 	metafile=mymetadata, 
 	genes=mygenes,
-	outputfolder='output_screen')
+	outputfolder='output_multiplexed',
+	only=[],
+	col=None,
+	value=None)
 ```
 It returns a dictionary that contains the loaded data, genes and various information. That object is used throughout the entire analysis.
 The `outputfolder` parameter defines where the results of the analysis will be saved. Its default value is `output`. 
 
-If the user hasn't loaded any samples, `existing_obj` should be `None`. If samples have already been loaded with `load_samples` or `load_screen`, the object that these functions returned should be given as the argument for this parameter.
+If the user hasn't loaded any samples, `existing_obj` should be `None`. If samples have already been loaded with `load_samples` or `load_multiplexed`, the object that these functions returned should be given as the argument for this parameter.
 
 The sample gene expression matrices are stored individually. To access the gene expression matrix of `sample1`, use the following:
 ```python
