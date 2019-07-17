@@ -1722,7 +1722,11 @@ def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar=
 		pop['samples'][x]['means_genes'] = gmm.means_.dot(pop['W'].T)
 
 		if types != None:
-			pop['samples'][x]['gmm_types'] = typer_func(gmm=gmm, prediction=gmm.predict(C), M=M, genes=pop['genes'], types=types)
+			try:
+				pop['samples'][x]['gmm_types'] = typer_func(gmm=gmm, prediction=gmm.predict(C), M=M, genes=pop['genes'], types=types)
+			except:
+				print('Something went wrong while typing the GMM subopulations. Skipping subpopulation typing.')
+				pop['samples'][x]['gmm_types'] = None
 		else:
 			pop['samples'][x]['gmm_types'] = None
 
