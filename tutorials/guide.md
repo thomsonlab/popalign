@@ -79,7 +79,13 @@ pop['genes']
 
 ## Normalize data
 
-The data is normalized to account for sequencing depth differences. This is done by dividing each cell (column in a gene expression matrix) by its transcript count sum. The values are then multiplied by a scaling factor. The scaling factor value can be either set by the user or computed automatically. When computed automatically, multiple factors are tested and the factor that minimizes the difference between the mean of the original data prior to normalization and the mean of the normalized, scaled data is used.
+The data is normalized to account for sequencing depth differences. This is done by dividing each cell (column in a gene expression matrix) by its transcript count sum. 
+
+![](https://latex.codecogs.com/svg.latex?M_{j}=\frac{M_{j}}{\sum&space;M_{j}})
+
+The values are then multiplied by a scaling factor. The scaling factor value can be either set by the user or computed automatically. When computed automatically, multiple factors are tested and the factor that minimizes the difference between the mean of the original data `D` prior to normalization and the mean of the normalized, scaled data is used.
+
+![](https://latex.codecogs.com/svg.latex?D_{scaled}=argmin(\left&space;|&space;mean(D)-mean(D_{scaled_{i}})&space;\right&space;|))
 
 The normalization function is:
 ```python
@@ -143,7 +149,7 @@ After the feature spaces have been computed in parallel, each feature space is s
 
 The goal is to select the best representing feature space among all the computed feature spaces. PopAlign selects the feature space that minimizes the mean square error between the original data and the reconstructed version of the data using the feature space. To do so, the normalized gene expression data matrix D is projected onto each individual feature space W<sub>j</sub>. The projected data can be notated H<sub>j</sub>. The final feature space W is selected so that:
 
-![](https://latex.codecogs.com/svg.latex?W&space;=&space;argmin(\frac{1}{n}\sum_{i}^{n}(D-Wj.Hj)))
+![](https://latex.codecogs.com/svg.latex?W&space;=&space;argmin(\frac{1}{n}\sum_{i}^{n}(D-Wj.Hj)^{2}))
 
 Gene set enrichment analysis (GSEA) is run for each feature from the feature space.
 

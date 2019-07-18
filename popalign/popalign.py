@@ -232,7 +232,7 @@ def check_cols(s,cols):
 		List of strings
 	'''
 	if s not in cols:
-		raise Exception('Columns of meta data must include: %s' % s)
+		raise Exception('%s not a valid column. Must be one of:' % s, cols.tolist())
 
 def load_multiplexed(matrix, barcodes, metafile, genes=None, outputfolder='output', existing_obj=None, only=[], col=None, value=None):
 	'''
@@ -277,6 +277,8 @@ def load_multiplexed(matrix, barcodes, metafile, genes=None, outputfolder='outpu
 	check_cols('sample_id', cols)
 	if col != None:
 		check_cols(col, cols)
+		if value not in meta[col].unique():
+    		raise Exception('Provided value not in column %s' % col) 
 
 	if (value != None) and (col != None):
 		tmp_only = meta[meta[col]==value]['sample_id'].dropna().unique()
