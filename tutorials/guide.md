@@ -151,5 +151,14 @@ The goal is to select the best representing feature space among all the computed
 
 ![](https://latex.codecogs.com/svg.latex?W&space;=&space;argmin(\frac{1}{n}\sum_{i}^{n}(D-Wj.Hj)^{2}))
 
+To access the feature space:
+```python
+pop['W']
+```
+
 Gene set enrichment analysis (GSEA) is run for each feature from the feature space.
 
+To access the data of sample1 in feature space, use the following (`C` stands for Cast, ie the gene expression data of `sample1` has been cast onto the feature space `W`):
+```python
+pop['samples']['sample1']['C']
+```
