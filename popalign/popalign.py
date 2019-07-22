@@ -278,7 +278,7 @@ def load_multiplexed(matrix, barcodes, metafile, genes=None, outputfolder='outpu
 	if col != None:
 		check_cols(col, cols)
 		if value not in meta[col].unique():
-    		raise Exception('Provided value not in column %s' % col) 
+			raise Exception('Provided value not in column %s' % col) 
 
 	if (value != None) and (col != None):
 		tmp_only = meta[meta[col]==value]['sample_id'].dropna().unique()
@@ -2428,35 +2428,90 @@ Differential expression functions
 '''
 def l1norm(ig, sub1, sub2, nbins):
 	'''
-	Compute the L1-norm between two histogram values
-
+	Compute the l1-norm between two histograms
+	
 	Parameters
 	----------
 	ig : int
-		A gene index
-	sub1 : array
-		Array of cells in gene space of a subpopulation
-	sub2 : array
-		Array of cells in gene space of a subpopulation
+		Index of gene
+	sub1 : sparse matrix
+		Matrix of first subpopulation
+	sub2 : sparse matrix
+		Matrix of second subpopulation
 	nbins : int
-		Number of histogram bins to compute
+		Number of histogram bins to use
 	'''
-	arr1 = sub1[ig,:].toarray() # get gene ig values by idx
-	arr2 = sub2[ig,:].toarray() # get gene ig values by idx
+	arr1 = sub1[ig,:].toarray().flatten() # get gene ig values by idx
+	arr2 = sub2[ig,:].toarray().flatten() # get gene ig values by idx
 	max1, max2 = np.max(arr1), np.max(arr2) # get max values from the two subpopulations
 	max_ = max(max1,max2) # get max value to define histogram range
 	
 	b1, be1 = np.histogram(arr1, bins=nbins, range=(0,max_))
 	b2, be2 = np.histogram(arr2, bins=nbins, range=(0,max_))
-	b1 = b1/len(idx1) # scale bin values
-	b2 = b2/len(idx2) # scale bin values
+	b1 = b1/len(arr1) # scale bin values
+	b2 = b2/len(arr2) # scale bin values
 	
-	return np.linalg.norm(np.abs(b1-b2))
+	if arr1.mean()>=arr2.mean():
+		return -np.linalg.norm(b1-b2, ord=1)
+	else:
+		return np.linalg.norm(b1-b2, ord=1)
+
+def diffexp(pop, refcomp=0, sample='', nbins=20, nleft=15, nright=15):
+	'''
+	Find differentially expressed genes between a refernce subpopulation
+	and the subpopulation of a sample that aligned to it
+
+	Parameters
+	----------
+	refcomp : int
+		Subpopulation number of the reference sample's GMM
+	sample : str
+		Name of the sample to compare
+	nbins : int, optional
+		Number of histogram bins to use
+	'''
+	xref = pop['ref'] # get reference sample label
+	ncomps = pop['samples'][xref]['gmm'].n_components-1
+
+	if sample not in pop['order']:
+		raise Exception('Sample name not valid. Use show_samples(pop) to display valid sample names.')
+	if refcomp > ncomps:
+		raise Exception('Component number too high. Must be between 0 and %d' % ncomps)
+
+	xtest = sample # test sample label
+
+	try:
+		arr = pop['samples'][xtest]['alignments'] # get alignments between reference and test
+		irow = np.where(arr[:,1] == refcomp) # get alignment that match reference subpopulation
+		itest = int(arr[irow, 0]) # get test subpopulation number
+	except:
+		raise Exception('Could not retrieve a matching alignment between sample %s and reference component %d' % (sample, refcomp))
+
+	Mref = pop['samples'][xref]['M'] # get reference sample matrix
+	Mtest = pop['samples'][xtest]['M'] # get test sample matrix
+
+	predictionref = pop['samples'][xref]['gmm'].predict(pop['samples'][xref]['C']) # get ref cell assignments
+	predictiontest = pop['samples'][xtest]['gmm'].predict(pop['samples'][xtest]['C']) # get test cell assignments
+
+	idxref = np.where(predictionref==refcomp)[0] # get matching indices
+	idxtest = np.where(predictiontest==itest)[0] # get matching indices
+
+	subref = Mref[:,idxref] # subset cells that match subpopulation refcomp
+	subtest = Mtest[:,idxtest] # subset cells that match subpopulation itest
+
+	with Pool(None) as p:
+		q = p.starmap(l1norm, [(ig, subref, subtest, nbins) for ig in range(subref.shape[0])]) # for each gene idx ig, call the l1norm function
+
+	idx = np.argsort(q)
+	lidx = np.concatenate([idx[:nleft],idx[-nright:]])
+	lidx = [pop['genes'][i] for i in lidx]
+	return lidx
 
 '''
 Visualization functions
 '''
-def plot_heatmap(pop, refcomp=0, genelist=[], savename=None, figsize=(15,15), cmap='Purples', samplelimits=False):
+
+def plot_heatmap(pop, refcomp, genelist, cluster=True, savename=None, figsize=(15,15), cmap='Purples', samplelimits=False, scalegenes=False):
 	'''
 	Plot specific genes for cells of a reference subpopulation S and subpopulations that aligned to S
 	
@@ -2474,6 +2529,10 @@ def plot_heatmap(pop, refcomp=0, genelist=[], savename=None, figsize=(15,15), cm
 		Size of the figure. Default is (15,15)
 	cmap : str, optional
 		Name of the Matplotlib colormap to use. Default is Purples
+	samplelimits : bool, optional
+		Wether to draw vertical lines on the heatmap to visually separate cells from different samples
+	scalegenes : bool, optional
+		Wether to scale the genes by substracting the min and dividing by the max for each gene
 	'''
 	genelist = [g for g in genelist if g in pop['genes']] # only keep valid genes
 	gidx = [np.where(pop['genes']==g)[0][0] for g in genelist] # get indices for those genes
@@ -2493,6 +2552,7 @@ def plot_heatmap(pop, refcomp=0, genelist=[], savename=None, figsize=(15,15), cm
 	MS = [M[:,cidx]] # create list of matrices, with the reference matrix as the first element
 	MSlabels = [ref] # create list of sample labels, with the reference label as the first element
 	ncols = [M.shape[1]] # create list of sample cell numbers, with the number of reference cells as the first element
+	means = [M.mean(axis=1)]
 
 	for x in pop['order']: # for each sample in pop
 		if x != pop['ref']: # if that sample is not the reference sample
@@ -2511,11 +2571,24 @@ def plot_heatmap(pop, refcomp=0, genelist=[], savename=None, figsize=(15,15), cm
 				M = M[:,cidx] # reorder matrix
 				ncols.append(M.shape[1])
 				MS.append(M) # append to list
+				means.append(M.mean(axis=1))
 				MSlabels.append(x) # append matching sample label to list
 			except:
 				pass
 
+	if cluster == True: # if cluster == True
+		means = np.hstack(means) # stack means together horizontally
+		l = cluster_rows(means.T) # cluster mean vectors
+		MSlabels = [MSlabels[ii] for ii in l] # reorder labels
+		MS = [MS[ii] for ii in l] # reorder matrices
+		ncols = [ncols[ii] for ii in l] # reorder number of cells
+
 	M = ss.hstack(MS) # create full matrix
+	M = M.toarray() # to dense
+	if scalegenes == True:
+		tmp = (M.T-M.min(axis=1)).T # substract min
+		M = (tmp.T/tmp.max(axis=1)).T # divide by max
+
 	cols = np.concatenate([[0]*x if i%2==0 else [1]*x for i,x in enumerate(ncols)]) # create binary vector to color columns, length equals to number of cells. Should be: [0,...,0,1,...,1,0,...,0,1...,1,etc]
 	cols = cols.reshape(1,len(cols)) # reshape vector to plot it as a heatmap
 	xtickscoords = [x/2 for x in ncols] # calculate label tick offset to center label
@@ -2531,7 +2604,7 @@ def plot_heatmap(pop, refcomp=0, genelist=[], savename=None, figsize=(15,15), cm
 
 	# heatmap
 	plt.subplot2grid((nr,nc), (0,0), colspan=nc, rowspan=nr-1) # create subplot for heatmap, leave space for column colors
-	plt.imshow(M.toarray(), aspect='auto', interpolation='none', cmap=cmap) # plot heatmap
+	plt.imshow(M, aspect='auto', interpolation='none', cmap=cmap) # plot heatmap
 	plt.yticks(np.arange(len(genelist)),genelist) # display gene names
 	plt.xticks([]) # remove x ticks
 	plt.title('Reference sample: %s\nSubpopulation #%d: %s' % (ref, refcomp, pop['samples'][ref]['gmm_types'][refcomp]))
@@ -2554,7 +2627,7 @@ def plot_heatmap(pop, refcomp=0, genelist=[], savename=None, figsize=(15,15), cm
 		filename = 'comp%d_heatmap' % refcomp
 	plt.savefig(os.path.join(pop['output'], dname, '%s.png' % filename), dpi=200, bbox_inches='tight')
 	plt.close()
-
+	
 import sys
 if not sys.warnoptions:
 	import warnings
