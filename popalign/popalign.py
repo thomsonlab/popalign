@@ -2456,7 +2456,7 @@ def l1norm(ig, sub1, sub2, nbins):
 	else:
 		return np.linalg.norm(b1-b2, ord=1)
 
-def diffexp(pop, refcomp=0, sample='', nbins=20, nleft=15, nright=15):
+def diffexp(pop, refcomp=0, sample='', nbins=20, nleft=15, nright=15, renderhists=True):
 	'''
 	Find differentially expressed genes between a refernce subpopulation
 	and the subpopulation of a sample that aligned to it
@@ -2504,6 +2504,35 @@ def diffexp(pop, refcomp=0, sample='', nbins=20, nleft=15, nright=15):
 
 	idx = np.argsort(q)
 	lidx = np.concatenate([idx[:nleft],idx[-nright:]])
+
+	if renderhists == True: # if variable is True, then start histogram rendering
+		samplename = sample.replace('/','')
+		dname = 'diffexp/%d_%s' % (refcomp, samplename) # define directory name
+		mkdir(os.path.join(pop['output'], dname)) # create directory if needed
+		for i in lidx: # for each gene index in final list
+			gname = pop['genes'][i] 
+			
+			arrref = subref[i,:].toarray().flatten() 
+			arrtest = subtest[i,:].toarray().flatten()
+			maxref, maxtest = np.max(arrref), np.max(arrtest)
+			max_ = max(maxref,maxtest)
+
+			nbins = 20
+			bref, beref = np.histogram(arrref, bins=nbins, range=(0,max_))
+			btest, betest = np.histogram(arrtest, bins=nbins, range=(0,max_))
+			bref = bref/len(arrref)
+			btest = btest/len(arrtest)
+
+			width = beref[-1]/nbins
+			plt.bar(beref[:-1], bref, label=xref, alpha=.3, width=width)
+			plt.bar(beref[:-1], btest, label=xtest, alpha=0.3, width=width)
+			plt.legend()
+			plt.title('Gene %s\nSubpopulation #%d of %s' % (gname, refcomp, xref))
+
+			filename = '%s' % gname
+			plt.savefig(os.path.join(pop['output'], dname, '%s.png' % filename), dpi=200, bbox_inches='tight')
+			plt.close()
+
 	lidx = [pop['genes'][i] for i in lidx]
 	return lidx
 
@@ -2625,6 +2654,7 @@ def plot_heatmap(pop, refcomp, genelist, cluster=True, savename=None, figsize=(1
 		filename = savename
 	else:
 		filename = 'comp%d_heatmap' % refcomp
+	filename = filename.replace('/','')
 	plt.savefig(os.path.join(pop['output'], dname, '%s.png' % filename), dpi=200, bbox_inches='tight')
 	plt.close()
 	
