@@ -1728,9 +1728,9 @@ def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar=
 				pop['samples'][x]['gmm_types'] = typer_func(gmm=gmm, prediction=gmm.predict(C), M=M, genes=pop['genes'], types=types)
 			except:
 				print('Something went wrong while typing the GMM subopulations. Skipping subpopulation typing.')
-				pop['samples'][x]['gmm_types'] = None
+				pop['samples'][x]['gmm_types'] = [str(ii) for ii in range(gmm.n_components)]
 		else:
-			pop['samples'][x]['gmm_types'] = None
+			pop['samples'][x]['gmm_types'] = [str(ii) for ii in range(gmm.n_components)]
 
 		# Create replicates
 		if nreplicates >=1: # if replicates are requested
@@ -1822,7 +1822,7 @@ def build_unique_gmm(pop, ks=(5,20), niters=3, training=0.2, reg_covar=True, typ
 	if types != None:
 		pop['gmm_types'] = typer_func(gmm=gmm, prediction=gmm.predict(C), M=M, genes=pop['genes'], types=types)
 	else:
-		pop['gmm_types'] = None
+		pop['gmm_types'] = [str(ii) for ii in range(gmm.n_components)]
 	sd = render_model(pop, pop['gmm'], cat_data(pop, 'C'), pop['pca']['proj'], 'uniquegmm', figsize, pop['gmm_types'])
 
 '''
