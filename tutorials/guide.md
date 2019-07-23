@@ -78,7 +78,7 @@ pop['genes']
 ```
 
 ```diff
-- Important note
+! Important: It is important to provide valid gene names for PopAlign to behave as expected. Some custom references modify the gene symbols, which will cause downstream issues when performing GSEA or cell typing, which are steps that rely on gene label comparisons.
 ```
 
 ## Normalize data
