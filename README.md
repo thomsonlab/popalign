@@ -13,6 +13,11 @@ Install the package with `pip` in a terminal. This will install the required dep
 pip install git+https://github.com/thomsonlab/popalign.git
 ```
 
+Update the package with:
+```
+pip install --upgrade git+https://github.com/thomsonlab/popalign.git
+```
+
 Import the package in `python`:
 ```python
 import popalign
