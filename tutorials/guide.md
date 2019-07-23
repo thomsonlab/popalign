@@ -77,6 +77,10 @@ The gene labels are stored in the `pop` object:
 pop['genes']
 ```
 
+```diff
+- Important note
+```
+
 ## Normalize data
 
 The data is normalized to account for sequencing depth differences. This is done by dividing each cell (column in a gene expression matrix) by its transcript count sum. 
