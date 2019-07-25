@@ -1142,7 +1142,7 @@ def matplotlib_to_plotly(cmap, pl_entries):
 		pl_colorscale.append([k*h, 'rgb'+str((C[0], C[1], C[2]))])
 	return pl_colorscale
 
-def plotfeaturesfunc(pop, labeloptions, coloroptions, C, samplenums, samplelbls, colorscale, x, y, z, color, size, opacity):	
+def plotfeaturesfunc(pop, labeloptions, coloroptions, C, samplenums, samplelbls, colorscale, x, y, z, color, size, opacity):
 	'''
 	Plot a 3D scatter plot in feature space
 	Update view with widgets values
@@ -1181,9 +1181,9 @@ def plotfeaturesfunc(pop, labeloptions, coloroptions, C, samplenums, samplelbls,
 	
 	# define color vectors based on color value from dropdown
 	if color==coloroptions[0]:
-		c='#1f77b4'
+		c = '#1f77b4'
 	elif color==coloroptions[1]:
-		c=samplenums
+		c = samplenums
 	elif color==coloroptions[2]:
 		gmm = pop['gmm']
 		c = gmm.predict(C)
@@ -1306,7 +1306,7 @@ def plotfeatures(pop):
 		x=x, 
 		y=y, 
 		z=z, 
-		color=color, 
+		color=color,
 		size=size, 
 		opacity=opacity)
 	display(w)
@@ -2424,6 +2424,229 @@ def plot_query_heatmap(pop, figsize=(10,10)):
 	plt.close()
 
 '''
+Visualization functions
+'''
+def plot_heatmap(pop, refcomp, genelist, cluster=True, savename=None, figsize=(15,15), cmap='Purples', samplelimits=False, scalegenes=False, only=None):
+	'''
+	Plot specific genes for cells of a reference subpopulation S and subpopulations that aligned to S
+	
+	Parameters
+	----------
+	pop : dict
+		Popalign dict
+	refcomp : int
+		Reference subpopulation number
+	genelist : list
+		List of genes to plot
+	savename : str, optional
+		The user can specify a name for the file to be written. When savename is None, a filename is computed with the reference component number. Default is None
+	figsize : tuple, optional
+		Size of the figure. Default is (15,15)
+	cmap : str, optional
+		Name of the Matplotlib colormap to use. Default is Purples
+	samplelimits : bool, optional
+		Wether to draw vertical lines on the heatmap to visually separate cells from different samples
+	scalegenes : bool, optional
+		Wether to scale the genes by substracting the min and dividing by the max for each gene
+	'''
+	genelist = [g for g in genelist if g in pop['genes']] # only keep valid genes
+	gidx = [np.where(pop['genes']==g)[0][0] for g in genelist] # get indices for those genes
+
+	ref = pop['ref'] # get reference sample label
+	C = pop['samples'][ref]['C'] # get reference data in feature space
+	M = pop['samples'][ref]['M'][gidx,:] # get reference data in gene space, subsample genes
+	prediction = pop['samples'][ref]['gmm'].predict(C) # get cell predictions
+	idx = np.where(prediction == refcomp)[0] # get indices of cells in component #refcomp
+	M = M[:,idx] # get cells from gene space data
+
+	cmetric='correlation' # cluster metric
+	cmethod='single' # cluster method
+	cidx = cluster_rows(M.toarray().T, metric=cmetric, method=cmethod) # cluster cells of subpopulation
+	M = M[:,cidx] # reorder matrix
+
+	MS = [M[:,cidx]] # create list of matrices, with the reference matrix as the first element
+	MSlabels = [ref] # create list of sample labels, with the reference label as the first element
+	ncols = [M.shape[1]] # create list of sample cell numbers, with the number of reference cells as the first element
+	means = [M.mean(axis=1)]
+
+	if only == None:
+		for x in pop['order']: # for each sample in pop
+			if x != pop['ref']: # if that sample is not the reference sample
+				try: # check if an aligned subpopulation exists for that sample
+					arr = pop['samples'][x]['alignments'] # retrive test sample alignments
+					irow = np.where(arr[:,1] == refcomp) # get row number in alignments where ref subpop is the desired ref subpop
+					itest = int(arr[irow, 0]) # get test subpopulation number if exists
+					
+					C = pop['samples'][x]['C'] # get test sample feature space data
+					prediction = pop['samples'][x]['gmm'].predict(C) # get the subpopulations assignments
+					idx = np.where(prediction == itest)[0] # get indices of cells that match aligned test subpopulation
+
+					M = pop['samples'][x]['M'][gidx,:] # get test sample gene space data, subsample
+					M = M[:,idx] # select test subpopulation cells
+					cidx = cluster_rows(M.toarray().T, metric=cmetric, method=cmethod) # cluster cells of subpopulation
+					M = M[:,cidx] # reorder matrix
+					ncols.append(M.shape[1])
+					MS.append(M) # append to list
+					means.append(M.mean(axis=1))
+					MSlabels.append(x) # append matching sample label to list
+				except:
+					pass
+	else:
+		try:
+			x = only
+			arr = pop['samples'][x]['alignments'] # retrive test sample alignments
+			irow = np.where(arr[:,1] == refcomp) # get row number in alignments where ref subpop is the desired ref subpop
+			itest = int(arr[irow, 0]) # get test subpopulation number if exists
+			
+			C = pop['samples'][x]['C'] # get test sample feature space data
+			prediction = pop['samples'][x]['gmm'].predict(C) # get the subpopulations assignments
+			idx = np.where(prediction == itest)[0] # get indices of cells that match aligned test subpopulation
+
+			M = pop['samples'][x]['M'][gidx,:] # get test sample gene space data, subsample
+			M = M[:,idx] # select test subpopulation cells
+			cidx = cluster_rows(M.toarray().T, metric=cmetric, method=cmethod) # cluster cells of subpopulation
+			M = M[:,cidx] # reorder matrix
+			ncols.append(M.shape[1])
+			MS.append(M) # append to list
+			means.append(M.mean(axis=1))
+			MSlabels.append(x) # append matching sample label to list
+		except:
+			pass
+
+	if cluster == True: # if cluster == True
+		means = np.hstack(means) # stack means together horizontally
+		l = cluster_rows(means.T) # cluster mean vectors
+		MSlabels = [MSlabels[ii] for ii in l] # reorder labels
+		MS = [MS[ii] for ii in l] # reorder matrices
+		ncols = [ncols[ii] for ii in l] # reorder number of cells
+
+	M = ss.hstack(MS) # create full matrix
+	M = M.toarray() # to dense
+	if scalegenes == True:
+		tmp = (M.T-M.min(axis=1)).T # substract min
+		M = (tmp.T/tmp.max(axis=1)).T # divide by max
+
+	cols = np.concatenate([[0]*x if i%2==0 else [1]*x for i,x in enumerate(ncols)]) # create binary vector to color columns, length equals to number of cells. Should be: [0,...,0,1,...,1,0,...,0,1...,1,etc]
+	cols = cols.reshape(1,len(cols)) # reshape vector to plot it as a heatmap
+	xtickscoords = [x/2 for x in ncols] # calculate label tick offset to center label
+	cumsum = np.cumsum(ncols) # compute cumulative sum of bins 
+	for i,(x,y) in enumerate(zip(ncols,xtickscoords)):
+		if i!=0:
+			xtickscoords[i] += cumsum[i-1] # update x tick coordinates with cumulative sum
+
+	fig = plt.figure(1,figsize=figsize) # create figure with given figure size
+	nr = 20 # number of rows in plot grid
+	nc = 20 # number of cols in plot grid
+	gridspec.GridSpec(nr,nc) # create plot grid
+
+	# heatmap
+	plt.subplot2grid((nr,nc), (0,0), colspan=nc, rowspan=nr-1) # create subplot for heatmap, leave space for column colors
+	plt.imshow(M, aspect='auto', interpolation='none', cmap=cmap) # plot heatmap
+	plt.yticks(np.arange(len(genelist)),genelist) # display gene names
+	plt.xticks([]) # remove x ticks
+	plt.title('Reference sample: %s\nSubpopulation #%d: %s' % (ref, refcomp, pop['samples'][ref]['gmm_types'][refcomp]))
+	
+	if samplelimits == True: # if parameter is True
+		for xx in cumsum[:-1]: # for each limit
+			plt.axvline(xx, color='k') # plot vertical line
+
+	# col colors
+	plt.subplot2grid((nr,nc), (nr-1, 0), colspan=nc, rowspan=1) # create subplot for column colors
+	plt.imshow(cols, aspect='auto', cmap='binary') # plot column colors
+	plt.yticks([]) # remove y ticks
+	plt.xticks(xtickscoords, MSlabels, rotation=90) # display sample names
+	
+	dname = 'heatmaps' # define directory name
+	mkdir(os.path.join(pop['output'], dname)) # create directory if needed
+	if savename != None:
+		filename = savename
+	else:
+		filename = 'comp%d_heatmap' % refcomp
+	filename = filename.replace('/','')
+	plt.savefig(os.path.join(pop['output'], dname, '%s.png' % filename), dpi=200, bbox_inches='tight')
+	plt.close()
+
+def plot_genes_gmm(pop, sample='', genelist=[], savename='', metric='correlation', method='single', clustergenes=True, clustersubpops=True, hiderowdendrogram=False, hidecoldendrogram=False,scale=0, cmap='magma', figsize=(10,15)):
+	'''
+	Plot a heatmap of genes ~ GMM subpopulations for a given model
+
+	Parameters
+	----------
+	pop : dict
+		Popalign object
+	sample : str
+		Sample name to select model from pop dictionary
+	genelist : list
+		List of gene names
+	savename : str
+		File name to use
+	metric : str
+		Metric to use to cluster
+	method : str
+		Method to use to cluster
+	clustergenes : boolean
+		Wether or not to cluster the genes (rows)
+	clustersubpops : boolean
+		Wether or not to cluster the GMM subpopulations (cols)
+	hiderowdendrogram : boolean
+		Hide the row dendrogram (genes)
+	hidecoldendrogram : boolean
+		Hide the col dendrogram (subpopulations)
+	scale : 0, 1 or None
+		If 0, genes (rows) will be scaled from 0 to 1
+		If 1, subpopulations (columns) will be scaled from 0 to 1
+		If None, no data scaling is performed
+	cmap : str
+		Name of the colormap to use
+	figsize : tuple
+		Figure size
+	'''
+	if sample == 'unique': # if the user wants to access the unique model
+		gmm = pop['gmm'] # get unique gmm
+		M = cat_data(pop,'M') # get data in gene space from all samples
+		C = cat_data(pop,'C') # get data in feat space from all samples
+		columns = pop['gmm_types'] # get the GMM subpopulation labels
+	elif sample in pop['order']: # if the user wants to access the gmm of a given sample
+		gmm = pop['samples'][sample]['gmm'] # get sample's gmm
+		M = pop['samples'][sample]['M'] # get sample data in gene space
+		C = pop['samples'][sample]['C'] # get sample data in feat space
+		columns = pop['samples'][sample]['gmm_types'] # get the GMM subpopulation labels
+	else:
+		raise Exception('sample should be `unique` or a valid sample name.')
+
+	genes = pop['genes'] # get gene names
+	genelist = [g for g in genelist if g in genes] # only keep valid gene names
+	gidx = [np.where(genes==g)[0][0] for g in genelist] # get gene indices
+	M = M[gidx,:] # subset genes from data
+	prediction = gmm.predict(C) # get subpopulation assignments for all the cells
+	cols = [] # empty list to store averages
+	for i in range(gmm.n_components): # for each subpopulation i from GMM
+		idx = np.where(prediction==i)[0] # get indices of cells that match subpopulation i 
+		sub = M[:,idx] # subset cells from data
+		cols.append(np.array(sub.mean(axis=1))) # store gene averages for these cells
+	X = np.hstack(cols) # create (genes,subpopulations) array
+	df = pd.DataFrame(X, columns=columns, index=genelist) # create (genes, subpopulations) dataframe
+	cg = sns.clustermap(df,
+				  row_cluster=clustergenes,
+				  col_cluster=clustersubpops,
+				  standard_scale=scale,
+				  figsize=figsize,
+				  cmap=cmap)
+	
+	if hiderowdendrogram == True: 
+		cg.ax_row_dendrogram.set_visible(False) # hide row dendrogram
+	if hidecoldendrogram == True:
+		cg.ax_col_dendrogram.set_visible(False) # hide col dendrogram
+	
+	dname = 'heatmaps' # define directory name
+	mkdir(os.path.join(pop['output'], dname)) # create directory if needed
+	if savename == '':
+		savename = 'gmm_%s' % sample # default name if none is provided
+	savename = savename.replace('/','')
+	plt.savefig(os.path.join(pop['output'], dname, '%s.png' % savename), dpi=200, bbox_inches='tight')
+	plt.close()
+
+'''
 Differential expression functions
 '''
 def l1norm(ig, sub1, sub2, nbins):
@@ -2527,6 +2750,8 @@ def diffexp(pop, refcomp=0, sample='', nbins=20, nleft=15, nright=15, renderhist
 			plt.bar(beref[:-1], bref, label=xref, alpha=.3, width=width)
 			plt.bar(beref[:-1], btest, label=xtest, alpha=0.3, width=width)
 			plt.legend()
+			plt.xlabel('Normalized counts')
+			plt.ylabel('Percentage of cells in subpopulation')
 			plt.title('Gene %s\nSubpopulation #%d of %s' % (gname, refcomp, xref))
 
 			filename = '%s' % gname
@@ -2534,129 +2759,8 @@ def diffexp(pop, refcomp=0, sample='', nbins=20, nleft=15, nright=15, renderhist
 			plt.close()
 
 	lidx = [pop['genes'][i] for i in lidx]
+	plot_heatmap(pop, refcomp, lidx, cluster=False, savename='%d_%s_only' % (refcomp, sample), figsize=(15,15), cmap='Purples', samplelimits=False, scalegenes=True, only=sample)
 	return lidx
-
-'''
-Visualization functions
-'''
-
-def plot_heatmap(pop, refcomp, genelist, cluster=True, savename=None, figsize=(15,15), cmap='Purples', samplelimits=False, scalegenes=False):
-	'''
-	Plot specific genes for cells of a reference subpopulation S and subpopulations that aligned to S
-	
-	Parameters
-	----------
-	pop : dict
-		Popalign dict
-	refcomp : int
-		Reference subpopulation number
-	genelist : list
-		List of genes to plot
-	savename : str, optional
-		The user can specify a name for the file to be written. When savename is None, a filename is computed with the reference component number. Default is None
-	figsize : tuple, optional
-		Size of the figure. Default is (15,15)
-	cmap : str, optional
-		Name of the Matplotlib colormap to use. Default is Purples
-	samplelimits : bool, optional
-		Wether to draw vertical lines on the heatmap to visually separate cells from different samples
-	scalegenes : bool, optional
-		Wether to scale the genes by substracting the min and dividing by the max for each gene
-	'''
-	genelist = [g for g in genelist if g in pop['genes']] # only keep valid genes
-	gidx = [np.where(pop['genes']==g)[0][0] for g in genelist] # get indices for those genes
-
-	ref = pop['ref'] # get reference sample label
-	C = pop['samples'][ref]['C'] # get reference data in feature space
-	M = pop['samples'][ref]['M'][gidx,:] # get reference data in gene space, subsample genes
-	prediction = pop['samples'][ref]['gmm'].predict(C) # get cell predictions
-	idx = np.where(prediction == refcomp)[0] # get indices of cells in component #refcomp
-	M = M[:,idx] # get cells from gene space data
-
-	cmetric='correlation' # cluster metric
-	cmethod='single' # cluster method
-	cidx = cluster_rows(M.toarray().T, metric=cmetric, method=cmethod) # cluster cells of subpopulation
-	M = M[:,cidx] # reorder matrix
-
-	MS = [M[:,cidx]] # create list of matrices, with the reference matrix as the first element
-	MSlabels = [ref] # create list of sample labels, with the reference label as the first element
-	ncols = [M.shape[1]] # create list of sample cell numbers, with the number of reference cells as the first element
-	means = [M.mean(axis=1)]
-
-	for x in pop['order']: # for each sample in pop
-		if x != pop['ref']: # if that sample is not the reference sample
-			try: # check if an aligned subpopulation exists for that sample
-				arr = pop['samples'][x]['alignments'] # retrive test sample alignments
-				irow = np.where(arr[:,1] == refcomp) # get row number in alignments where ref subpop is the desired ref subpop
-				itest = int(arr[irow, 0]) # get test subpopulation number if exists
-				
-				C = pop['samples'][x]['C'] # get test sample feature space data
-				prediction = pop['samples'][x]['gmm'].predict(C) # get the subpopulations assignments
-				idx = np.where(prediction == itest)[0] # get indices of cells that match aligned test subpopulation
-
-				M = pop['samples'][x]['M'][gidx,:] # get test sample gene space data, subsample
-				M = M[:,idx] # select test subpopulation cells
-				cidx = cluster_rows(M.toarray().T, metric=cmetric, method=cmethod) # cluster cells of subpopulation
-				M = M[:,cidx] # reorder matrix
-				ncols.append(M.shape[1])
-				MS.append(M) # append to list
-				means.append(M.mean(axis=1))
-				MSlabels.append(x) # append matching sample label to list
-			except:
-				pass
-
-	if cluster == True: # if cluster == True
-		means = np.hstack(means) # stack means together horizontally
-		l = cluster_rows(means.T) # cluster mean vectors
-		MSlabels = [MSlabels[ii] for ii in l] # reorder labels
-		MS = [MS[ii] for ii in l] # reorder matrices
-		ncols = [ncols[ii] for ii in l] # reorder number of cells
-
-	M = ss.hstack(MS) # create full matrix
-	M = M.toarray() # to dense
-	if scalegenes == True:
-		tmp = (M.T-M.min(axis=1)).T # substract min
-		M = (tmp.T/tmp.max(axis=1)).T # divide by max
-
-	cols = np.concatenate([[0]*x if i%2==0 else [1]*x for i,x in enumerate(ncols)]) # create binary vector to color columns, length equals to number of cells. Should be: [0,...,0,1,...,1,0,...,0,1...,1,etc]
-	cols = cols.reshape(1,len(cols)) # reshape vector to plot it as a heatmap
-	xtickscoords = [x/2 for x in ncols] # calculate label tick offset to center label
-	cumsum = np.cumsum(ncols) # compute cumulative sum of bins 
-	for i,(x,y) in enumerate(zip(ncols,xtickscoords)):
-		if i!=0:
-			xtickscoords[i] += cumsum[i-1] # update x tick coordinates with cumulative sum
-
-	fig = plt.figure(1,figsize=figsize) # create figure with given figure size
-	nr = 20 # number of rows in plot grid
-	nc = 20 # number of cols in plot grid
-	gridspec.GridSpec(nr,nc) # create plot grid
-
-	# heatmap
-	plt.subplot2grid((nr,nc), (0,0), colspan=nc, rowspan=nr-1) # create subplot for heatmap, leave space for column colors
-	plt.imshow(M, aspect='auto', interpolation='none', cmap=cmap) # plot heatmap
-	plt.yticks(np.arange(len(genelist)),genelist) # display gene names
-	plt.xticks([]) # remove x ticks
-	plt.title('Reference sample: %s\nSubpopulation #%d: %s' % (ref, refcomp, pop['samples'][ref]['gmm_types'][refcomp]))
-	
-	if samplelimits == True: # if parameter is True
-		for xx in cumsum[:-1]: # for each limit
-			plt.axvline(xx, color='k') # plot vertical line
-
-	# col colors
-	plt.subplot2grid((nr,nc), (nr-1, 0), colspan=nc, rowspan=1) # create subplot for column colors
-	plt.imshow(cols, aspect='auto', cmap='binary') # plot column colors
-	plt.yticks([]) # remove y ticks
-	plt.xticks(xtickscoords, MSlabels, rotation=90) # display sample names
-	
-	dname = 'heatmaps' # define directory name
-	mkdir(os.path.join(pop['output'], dname)) # create directory if needed
-	if savename != None:
-		filename = savename
-	else:
-		filename = 'comp%d_heatmap' % refcomp
-	filename = filename.replace('/','')
-	plt.savefig(os.path.join(pop['output'], dname, '%s.png' % filename), dpi=200, bbox_inches='tight')
-	plt.close()
 	
 import sys
 if not sys.warnoptions:
