@@ -682,7 +682,7 @@ def enrichment_analysis(d,genelist,size_total):
 	keys = np.array(list(d.keys())) # get a list of gene set names
 	with Pool(None) as p:
 		q = np.array(p.starmap(sf, [(len(set(d[key]) & set(genelist)), size_total, len(d[key]), N) for key in keys])) # For each gene set, compute the p-value of the overlap with the gene list
-	return keys[np.argsort(q)[:10]] # return the most significant gene set names
+	return keys[np.argsort(q)[:20]] # return the most significant gene set names
 
 def gsea(pop, geneset='c5bp'):
 	'''
@@ -1418,7 +1418,7 @@ def typer_func(gmm, prediction, M, genes, types):
 
 	return finaltypes
 
-def render_model(pop, gmm, C, pcaproj, name, figsizesingle, mean_labels=None):
+def render_model(pop, name, figsizesingle):
 	'''
 	Render a model as a density heatmap
 
@@ -1426,17 +1426,20 @@ def render_model(pop, gmm, C, pcaproj, name, figsizesingle, mean_labels=None):
 	----------
 	pop : dict
 		Popalign object
-	gmm : sklearn.mixture.GaussianMixture
-		Mixture model
-	C : array
-		Feature projected data
-	pcaproj : array
-		Data projected in pca space
 	name : str
 		Sample name
-	mean_labels : list
-		List of cell type labels. If None, the labels are the component number
 	'''
+
+	if name == 'unique_gmm':
+		gmm = pop['gmm']
+		C = cat_data(pop,'C')
+		pcaproj = pop['pca']['proj']
+		mean_labels = pop['gmm_types']
+	else:
+		gmm = pop['samples'][name]['gmm']
+		C = pop['samples'][name]['C']
+		pcaproj = pop['samples'][name]['pcaproj']
+		mean_labels = pop['samples'][name]['gmm_types']
 
 	plt.figure(figsize=figsizesingle)
 	pcacomps = pop['pca']['components'] # get the pca space
@@ -1469,9 +1472,9 @@ def render_model(pop, gmm, C, pcaproj, name, figsizesingle, mean_labels=None):
 	sample_density = np.zeros(X.shape)
 	w = gmm.weights_ # get the model component weights
 
-	if mean_labels==None:
-		mean_labels = list(range(gmm.n_components))
-	
+	if mean_labels != [str(i) for i in range(gmm.n_components)]:
+		mean_labels = ['%d: %s' % (i,lbl) for i,lbl in enumerate(mean_labels)]
+
 	prediction = gmm.predict(C) # get the cells component assignments
 	for k in range(gmm.n_components):
 		try:
@@ -1489,7 +1492,7 @@ def render_model(pop, gmm, C, pcaproj, name, figsizesingle, mean_labels=None):
 	plt.scatter(x=mean_proj[:,0], y=mean_proj[:,1], s=w_factor*w, alpha=alpha, c=mean_color) # plot means
 	texts=[]
 	for i,txt in enumerate(mean_labels):
-		texts.append(plt.text(mean_proj[i,0], mean_proj[i,1], txt)) # plot mean labels (or numbers)
+		texts.append(plt.text(mean_proj[i,0], mean_proj[i,1], txt, color='black')) # plot mean labels (or numbers)
 	adjustText.adjust_text(texts)
 
 	pp.set_edgecolor('face')
@@ -1600,23 +1603,23 @@ def render_models(pop, figsizegrouped, figsizesingle, mode='grouped'):
 	----------
 	pop : dict
 		Popalign object
+	figsizegrouped : tuple
+		Figure size for the grid rendering plotof all samples together
+	figsizesingle : tuple
+		Figure size of an individual sample rendering plot
 	mode : str
 		One of grouped, individual or unique.
 		Grouped will render the models individually and together in a separate grid
 		Inidividual will only render the models individually
 		Unique will render the data's unique model
 	'''
-	if mode == 'grouped':
+	if mode == 'unique':
+		sd = render_model(pop, 'unique_gmm', figsizesingle)
+	else:
 		with Pool(None) as p:
-			q = p.starmap(render_model, [(pop, pop['samples'][x]['gmm'], pop['samples'][x]['C'], pop['samples'][x]['pcaproj'], x, figsizesingle, pop['samples'][x]['gmm_types']) for x in pop['order']])
-		grid_rendering(pop, q, figsizegrouped)
-
-	elif mode == 'individual':
-		with Pool(None) as p:
-			q = p.starmap(render_model, [(pop, pop['samples'][x]['gmm'], pop['samples'][x]['C'], pop['samples'][x]['pcaproj'], x, figsizesingle, pop['samples'][x]['gmm_types']) for x in pop['order']])
-
-	elif mode == 'unique':
-		sd = render_model(pop, pop['gmm'], cat_data(pop, 'C'), pop['pca']['proj'], 'uniquegmm', pop['gmm_types'])
+			q = p.starmap(render_model, [(pop, x, figsizesingle) for x in pop['order']])
+		if mode == 'grouped':
+			grid_rendering(pop, q, figsizegrouped)	
 
 def build_single_GMM(k, C, reg_covar):
 	'''
@@ -1735,8 +1738,8 @@ def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar=
 			pop['samples'][x]['gmm_types'] = [str(ii) for ii in range(gmm.n_components)]
 
 		# Create replicates
+		pop['nreplicates'] = nreplicates # store number of replicates in pop object
 		if nreplicates >=1: # if replicates are requested
-			pop['nreplicates'] = nreplicates # store number of replicates in pop object
 			pop['samples'][x]['replicates'] =  {} # create replicates entry for sample x
 			for j in range(nreplicates): # for each replicate number j
 				with Pool(None) as p: # build all the models in parallel
@@ -1825,7 +1828,7 @@ def build_unique_gmm(pop, ks=(5,20), niters=3, training=0.2, reg_covar=True, typ
 		pop['gmm_types'] = typer_func(gmm=gmm, prediction=gmm.predict(C), M=M, genes=pop['genes'], types=types)
 	else:
 		pop['gmm_types'] = [str(ii) for ii in range(gmm.n_components)]
-	sd = render_model(pop, pop['gmm'], cat_data(pop, 'C'), pop['pca']['proj'], 'uniquegmm', figsize, pop['gmm_types'])
+	sd = render_model(pop, 'unique_gmm', figsize)
 
 '''
 Entropy functions
@@ -2467,7 +2470,7 @@ def plot_heatmap(pop, refcomp, genelist, cluster=True, savename=None, figsize=(1
 	M = M[:,cidx] # reorder matrix
 
 	MS = [M[:,cidx]] # create list of matrices, with the reference matrix as the first element
-	MSlabels = [ref] # create list of sample labels, with the reference label as the first element
+	MSlabels = ['%s (%d)' % (ref,refcomp)] # create list of sample labels, with the reference label as the first element
 	ncols = [M.shape[1]] # create list of sample cell numbers, with the number of reference cells as the first element
 	means = [M.mean(axis=1)]
 
@@ -2490,7 +2493,7 @@ def plot_heatmap(pop, refcomp, genelist, cluster=True, savename=None, figsize=(1
 					ncols.append(M.shape[1])
 					MS.append(M) # append to list
 					means.append(M.mean(axis=1))
-					MSlabels.append(x) # append matching sample label to list
+					MSlabels.append('%s (%d)' % (x,itest)) # append matching sample label to list
 				except:
 					pass
 	else:
@@ -2511,7 +2514,7 @@ def plot_heatmap(pop, refcomp, genelist, cluster=True, savename=None, figsize=(1
 			ncols.append(M.shape[1])
 			MS.append(M) # append to list
 			means.append(M.mean(axis=1))
-			MSlabels.append(x) # append matching sample label to list
+			MSlabels.append('%s (%d)' % (x,itest)) # append matching sample label to list
 		except:
 			pass
 
