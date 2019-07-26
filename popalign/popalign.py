@@ -34,8 +34,10 @@ import ipywidgets as widgets
 from ipywidgets import interact, interactive, Layout, HBox, VBox, fixed
 from textwrap import wrap
 import plotly
-from plotly.graph_objs import graph_objs as go
+#from plotly.graph_objs import graph_objs as go
+import plotly.graph_objs as go
 from plotly.offline import iplot
+from IPython.html import widgets
 
 '''
 Misc functions
@@ -2614,6 +2616,7 @@ def plot_genes_gmm(pop, sample='', genelist=[], savename='', metric='correlation
 	else:
 		raise Exception('sample should be `unique` or a valid sample name.')
 
+	columns = ['%d: %s' % (i,lbl) for i,lbl in enumerate(columns)]
 	genes = pop['genes'] # get gene names
 	genelist = [g for g in genelist if g in genes] # only keep valid gene names
 	gidx = [np.where(genes==g)[0][0] for g in genelist] # get gene indices
@@ -2761,7 +2764,7 @@ def diffexp(pop, refcomp=0, sample='', nbins=20, nleft=15, nright=15, renderhist
 	lidx = [pop['genes'][i] for i in lidx]
 	plot_heatmap(pop, refcomp, lidx, cluster=False, savename='%d_%s_only' % (refcomp, sample), figsize=(15,15), cmap='Purples', samplelimits=False, scalegenes=True, only=sample)
 	return lidx
-	
+
 import sys
 if not sys.warnoptions:
 	import warnings
