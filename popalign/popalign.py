@@ -37,7 +37,6 @@ import plotly
 #from plotly.graph_objs import graph_objs as go
 import plotly.graph_objs as go
 from plotly.offline import iplot
-from IPython.html import widgets
 
 '''
 Misc functions
@@ -361,7 +360,7 @@ def comparison_factor(tmp, f, ogmean):
 	tmp.data = tmp.data*f # multiply matrix values by factor
 	return np.abs(tmp.mean()-ogmean) # return the absolute value of the difference between the new mean and the original one
 
-def scale_factor(pop):
+def scale_factor(pop, ncells):
 	'''
 	Find a scaling factor that minimizes the difference between the original mean of the data and the mean after column normalization and factorization
 
@@ -371,6 +370,10 @@ def scale_factor(pop):
 		Popalign object
 	'''
 	M = cat_data(pop, 'M') # Aggregatre data from all samples
+	if ncells != None:
+		if ncells<M.shape[1]:
+			idx = np.random.choice(M.shape[1], ncells, replace=False) # select 200 cells randomly
+			M = M[:,idx]
 
 	ogmean = pop['original_mean'] # Retrive original mean of the data prior to normalization
 	factorlist = [1,500,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000] # list of factors to try
@@ -384,7 +387,7 @@ def scale_factor(pop):
 	for i,x in enumerate(pop['order']):
 		pop['samples'][x]['M'].data = q[i] # update data values for each sample
 
-def normalize(pop, scaling_factor=None):
+def normalize(pop, scaling_factor=None, ncells=None):
 	'''
 	Normalize the samples of object `pop` and applies a normalization factor
 
@@ -394,6 +397,8 @@ def normalize(pop, scaling_factor=None):
 		Popalign object
 	scaling_factor : int or None, optional
 		Number used to scale the data values. If None, that factor is computed automatically.
+	ncells : int or None
+		Number of cells to randomly subsample to try different normalization factors to use less memory. If None, all cells are used.
 	'''
 	if 'normed' in pop:
 		print('Data already column normalized')
@@ -412,7 +417,7 @@ def normalize(pop, scaling_factor=None):
 				pop['samples'][x]['M'].data = q[i] # update data values for each sample
 		else:
 			print('Finding best scaling factor')
-			scale_factor(pop) # Apply normalization factor
+			scale_factor(pop, ncells) # Apply normalization factor
 		pop['normed'] = True
 
 def mu_sigma(M, pop):
