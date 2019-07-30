@@ -2164,7 +2164,7 @@ def align(pop, ref=None, method='conservative', figsizedeltas=(10,10), figsizeen
 '''
 Rank functions
 '''
-def rank(pop, ref=None, k=100, niter=200, mincells=50, figsize=(10,5)):
+def rank(pop, ref=None, k=100, niter=200, method='LLR', mincells=50, figsize=(10,5)):
 	'''
 	Generate a ranking plot of the samples against a reference model
 
@@ -2178,6 +2178,8 @@ def rank(pop, ref=None, k=100, niter=200, mincells=50, figsize=(10,5)):
 		Number of random cells to use
 	niter : int
 		Number of iterations to perform
+	method : str
+		Scoring method to use. 'LLR' for log-likelihood ratio, 'LL' for log-likelihood.
 	mincells : int
 		If a sample has less than `mincells` cells, is discarded
 	figsize : tuple, optional
@@ -2204,12 +2206,16 @@ def rank(pop, ref=None, k=100, niter=200, mincells=50, figsize=(10,5)):
 				nk = m-5
 			# Score nk different random cells, niter times
 			# keep track of scores, labels and drug classes
-			#gmmtest = pop['samples'][x]['gmm']
+			gmmtest = pop['samples'][x]['gmm']
 			for _ in range(niter):
 				idx = np.random.choice(m, nk, replace=False)
 				sub = C[idx,:]
-				#scores.append(gmmctrl.score(sub) / gmmtest.score(sub)) # for Log Likelihood Ratio LLR
-				scores.append(gmmctrl.score(sub))
+				if method == 'LLR':
+					scores.append(gmmctrl.score(sub) / gmmtest.score(sub)) # for Log Likelihood Ratio LLR
+				elif method == 'LL':
+					scores.append(gmmctrl.score(sub))
+				else:
+					raise Exception('method must be one of: LLR, LL')
 				lbls.append(x)
 		else:
 			print('Not enough cells for samples: %s' % x)
