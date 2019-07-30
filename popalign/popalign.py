@@ -2228,7 +2228,8 @@ def rank(pop, ref=None, k=100, niter=200, method='LLR', mincells=50, figsize=(10
 	# create dataframe from scores, labels and drug classes
 	# find sample order based on score means
 	df = pd.DataFrame({'scores': scores, 'labels': lbls})
-	df.scores = df.scores - df.scores.max()
+	if method == 'LL':
+		df.scores = df.scores - df.scores.max()
 	df2 = pd.DataFrame({col:vals["scores"] for col, vals in df.groupby("labels")})
 	means = df2.mean().sort_values()
 	lblorder = means.index.values.tolist()
