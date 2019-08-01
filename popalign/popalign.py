@@ -2583,9 +2583,9 @@ def plot_heatmap(pop, refcomp, genelist, cluster=True, savename=None, figsize=(1
 	plt.savefig(os.path.join(pop['output'], dname, '%s.png' % filename), dpi=200, bbox_inches='tight')
 	plt.close()
 
-def plot_genes_gmm(pop, sample='', genelist=[], savename='', metric='correlation', method='single', clustergenes=True, clustersubpops=True, hiderowdendrogram=False, hidecoldendrogram=False,scale=0, cmap='magma', figsize=(10,15)):
+def plot_genes_gmm_cells(pop, sample='', genelist=[], savename='', metric='correlation', method='single', clustergenes=True, cmap='magma', figsize=(10,15)):
 	'''
-	Plot a heatmap of genes ~ GMM subpopulations for a given model
+	Plot a heatmap of genes ~ GMM subpopulations cells for a given model
 
 	Parameters
 	----------
@@ -2594,7 +2594,7 @@ def plot_genes_gmm(pop, sample='', genelist=[], savename='', metric='correlation
 	sample : str
 		Sample name to select model from pop dictionary
 	genelist : list
-		List of gene names
+		List of gene names. If empty, the filtered genes will be used.
 	savename : str
 		File name to use
 	metric : str
@@ -2603,65 +2603,87 @@ def plot_genes_gmm(pop, sample='', genelist=[], savename='', metric='correlation
 		Method to use to cluster
 	clustergenes : boolean
 		Wether or not to cluster the genes (rows)
-	clustersubpops : boolean
-		Wether or not to cluster the GMM subpopulations (cols)
-	hiderowdendrogram : boolean
-		Hide the row dendrogram (genes)
-	hidecoldendrogram : boolean
-		Hide the col dendrogram (subpopulations)
-	scale : 0, 1 or None
-		If 0, genes (rows) will be scaled from 0 to 1
-		If 1, subpopulations (columns) will be scaled from 0 to 1
-		If None, no data scaling is performed
 	cmap : str
 		Name of the colormap to use
 	figsize : tuple
 		Figure size
 	'''
+	if genelist == []: 
+		datatype = 'M_norm' # if no gene list, use filtered genes data
+	else:
+		datatype = 'M' # if gene list, use non filtered data to extract genes
+
 	if sample == 'unique': # if the user wants to access the unique model
 		gmm = pop['gmm'] # get unique gmm
-		M = cat_data(pop,'M') # get data in gene space from all samples
+		M = cat_data(pop,datatype) # get data in gene space from all samples
 		C = cat_data(pop,'C') # get data in feat space from all samples
 		columns = pop['gmm_types'] # get the GMM subpopulation labels
 	elif sample in pop['order']: # if the user wants to access the gmm of a given sample
 		gmm = pop['samples'][sample]['gmm'] # get sample's gmm
-		M = pop['samples'][sample]['M'] # get sample data in gene space
+		M = pop['samples'][sample][datatype] # get sample data in gene space
 		C = pop['samples'][sample]['C'] # get sample data in feat space
 		columns = pop['samples'][sample]['gmm_types'] # get the GMM subpopulation labels
-	else:
+	else: 
 		raise Exception('sample should be `unique` or a valid sample name.')
-
 	columns = ['%d: %s' % (i,lbl) for i,lbl in enumerate(columns)]
 	genes = pop['genes'] # get gene names
-	genelist = [g for g in genelist if g in genes] # only keep valid gene names
-	gidx = [np.where(genes==g)[0][0] for g in genelist] # get gene indices
-	M = M[gidx,:] # subset genes from data
+
+	if genelist != []: # if gene list is specified
+		genelist = [g for g in genelist if g in genes] # only keep valid gene names
+		gidx = [np.where(genes==g)[0][0] for g in genelist] # get gene indices
+		M = M[gidx,:] # subset genes from data
+
 	prediction = gmm.predict(C) # get subpopulation assignments for all the cells
 	cols = [] # empty list to store averages
+	ncols = [] # empty list to store number of cells per subpopulation
+	MS = [] # empty list to store matrices
 	for i in range(gmm.n_components): # for each subpopulation i from GMM
 		idx = np.where(prediction==i)[0] # get indices of cells that match subpopulation i 
 		sub = M[:,idx] # subset cells from data
-		cols.append(np.array(sub.mean(axis=1))) # store gene averages for these cells
-	X = np.hstack(cols) # create (genes,subpopulations) array
-	df = pd.DataFrame(X, columns=columns, index=genelist) # create (genes, subpopulations) dataframe
-	cg = sns.clustermap(df,
-				  row_cluster=clustergenes,
-				  col_cluster=clustersubpops,
-				  standard_scale=scale,
-				  figsize=figsize,
-				  cmap=cmap)
-	
-	if hiderowdendrogram == True: 
-		cg.ax_row_dendrogram.set_visible(False) # hide row dendrogram
-	if hidecoldendrogram == True:
-		cg.ax_col_dendrogram.set_visible(False) # hide col dendrogram
-	
+		ncols.append(sub.shape[1])
+		MS.append(sub)
+
+	MS = ss.hstack(MS).toarray() # concatenate matrices
+	cols = np.concatenate([[0]*x if i%2==0 else [1]*x for i,x in enumerate(ncols)]) # create binary vector to color columns, length equals to number of cells. Should be: [0,...,0,1,...,1,0,...,0,1...,1,etc]
+	cols = cols.reshape(1,len(cols)) # reshape vector to plot it as a heatmap
+	xtickscoords = [x/2 for x in ncols] # calculate label tick offset to center label
+	cumsum = np.cumsum(ncols) # compute cumulative sum of bins 
+	for i,(x,y) in enumerate(zip(ncols,xtickscoords)):
+		if i!=0:
+			xtickscoords[i] += cumsum[i-1] # update x tick coordinates with cumulative sum
+
+	if genelist == []:
+		genelist = pop['filtered_genes']
+	if clustergenes == True:
+		cidx = cluster_rows(MS, method=method, metric=metric)
+		genelist = [genelist[i] for i in cidx]
+		MS = MS[cidx,:]
+
+	fig = plt.figure(1,figsize=figsize) # create figure with given figure size
+	nr = 20 # number of rows in plot grid
+	nc = 20 # number of cols in plot grid
+	gridspec.GridSpec(nr,nc) # create plot grid
+
+	cmap='magma'
+	# heatmap
+	plt.subplot2grid((nr,nc), (0,0), colspan=nc, rowspan=nr-1) # create subplot for heatmap, leave space for column colors
+	plt.imshow(MS, aspect='auto', interpolation='none', cmap=cmap) # plot heatmap
+	plt.yticks(np.arange(len(genelist)),genelist) # display gene names
+	plt.xticks([]) # remove x ticks
+	plt.title('%s GMM' % sample)
+
+	# col colors
+	plt.subplot2grid((nr,nc), (nr-1, 0), colspan=nc, rowspan=1) # create subplot for column colors
+	plt.imshow(cols, aspect='auto', cmap='binary') # plot column colors
+	plt.yticks([]) # remove y ticks
+	plt.xticks(xtickscoords, columns, rotation=90) # display sample names
+
 	dname = 'heatmaps' # define directory name
 	mkdir(os.path.join(pop['output'], dname)) # create directory if needed
 	if savename == '':
 		savename = 'gmm_%s' % sample # default name if none is provided
 	savename = savename.replace('/','')
-	plt.savefig(os.path.join(pop['output'], dname, '%s.png' % savename), dpi=200, bbox_inches='tight')
+	plt.savefig(os.path.join(pop['output'], dname, '%s_cells.png' % savename), dpi=200, bbox_inches='tight')
 	plt.close()
 
 '''

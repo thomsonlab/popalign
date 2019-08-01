@@ -162,9 +162,34 @@ To access the feature space:
 pop['W']
 ```
 
-Gene set enrichment analysis (GSEA) is run for each feature from the feature space.
+Gene set enrichment analysis (GSEA) is run for each feature from the feature space. The feature labels can be found under:
+```python
+pop['top_feat_labels']
+```
+
+To acess the top 20 gene set labels assigned to each feature:
+```python
+pop['feat_labels']
+```
 
 To access the data of sample1 in feature space, use the following (`C` stands for Cast, ie the gene expression data of `sample1` has been cast onto the feature space `W`):
 ```python
 pop['samples']['sample1']['C']
+```
+
+## Modeling samples individually with Gaussian Mixture Models
+
+To compare samples at the subpopulation level, we model each sample with a Gaussian Mixture Model. This step fits multiple models with various numbers of 
+
+```python
+PA.build_gmms(pop, 
+	ks=(4,10), 
+	niters=2, 
+	training=.8, 
+	nreplicates=1,
+	reg_covar=True, 
+	rendering='grouped', 
+	types='defaultpbmc', # either None, 'defaultpbmc' or a dictionary
+	figsizegrouped=(20,20),
+	figsizesingle=(6,5))
 ```
