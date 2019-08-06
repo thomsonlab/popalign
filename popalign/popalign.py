@@ -37,6 +37,7 @@ import plotly
 #from plotly.graph_objs import graph_objs as go
 import plotly.graph_objs as go
 from plotly.offline import iplot
+import umap
 
 '''
 Misc functions
@@ -1084,7 +1085,7 @@ def onmf(pop, ncells=2000, nfeats=[5,7,9], nreps=3, niter=300):
 	gsea(pop) # run GSEA on feature space
 	split_proj(pop, proj) # split projected data and store it for each individual sample
 	plot_top_genes_features(pop) # plot a heatmap of top genes for W
-	plot_H(pop, method='complete', n=10000)
+	plot_H(pop, method='complete', n=2000)
 	#plot_reconstruction(pop) # plot reconstruction data
 
 def pca(pop, fromspace='genes'):
@@ -2216,7 +2217,7 @@ def rank(pop, ref=None, k=100, niter=200, method='LLR', mincells=50, figsize=(10
 				idx = np.random.choice(m, nk, replace=False)
 				sub = C[idx,:]
 				if method == 'LLR':
-					scores.append(gmmctrl.score(sub) / gmmtest.score(sub)) # for Log Likelihood Ratio LLR
+					scores.append(gmmctrl.score(sub) - gmmtest.score(sub)) # for Log Likelihood Ratio LLR
 				elif method == 'LL':
 					scores.append(gmmctrl.score(sub))
 				else:
@@ -2481,7 +2482,7 @@ def plot_heatmap(pop, refcomp, genelist, cluster=True, savename=None, figsize=(1
 	cidx = cluster_rows(M.toarray().T, metric=cmetric, method=cmethod) # cluster cells of subpopulation
 	M = M[:,cidx] # reorder matrix
 
-	MS = [M[:,cidx]] # create list of matrices, with the reference matrix as the first element
+	MS = [M] # create list of matrices, with the reference matrix as the first element
 	MSlabels = ['%s (%d)' % (ref,refcomp)] # create list of sample labels, with the reference label as the first element
 	ncols = [M.shape[1]] # create list of sample cell numbers, with the number of reference cells as the first element
 	means = [M.mean(axis=1)]
@@ -2583,7 +2584,7 @@ def plot_heatmap(pop, refcomp, genelist, cluster=True, savename=None, figsize=(1
 	plt.savefig(os.path.join(pop['output'], dname, '%s.png' % filename), dpi=200, bbox_inches='tight')
 	plt.close()
 
-def plot_genes_gmm_cells(pop, sample='', genelist=[], savename='', metric='correlation', method='single', clustergenes=True, cmap='magma', figsize=(10,15)):
+def plot_genes_gmm_cells(pop, sample='', genelist=[], savename='', metric='correlation', method='single', clustergenes=True, clustercells=True, cmap='magma', figsize=(10,15)):
 	'''
 	Plot a heatmap of genes ~ GMM subpopulations cells for a given model
 
@@ -2641,6 +2642,9 @@ def plot_genes_gmm_cells(pop, sample='', genelist=[], savename='', metric='corre
 		idx = np.where(prediction==i)[0] # get indices of cells that match subpopulation i 
 		sub = M[:,idx] # subset cells from data
 		ncols.append(sub.shape[1])
+		if clustercells == True:
+			cidx = cluster_rows(sub.toarray().T, method=method, metric=metric)
+			sub = sub[:,cidx]
 		MS.append(sub)
 
 	MS = ss.hstack(MS).toarray() # concatenate matrices
@@ -2686,6 +2690,30 @@ def plot_genes_gmm_cells(pop, sample='', genelist=[], savename='', metric='corre
 	plt.savefig(os.path.join(pop['output'], dname, '%s_cells.png' % savename), dpi=200, bbox_inches='tight')
 	plt.close()
 
+def scatter(pop, method='umap'):
+	'''
+	Run an embedding algorithm and plot the data in a scatter plot
+	'''
+	if method == 'umap':
+		if 'umap' not in pop:
+			X = cat_data(pop, 'C')
+			X = umap.UMAP().fit_transform(X)
+			pop[method] = X
+		else:
+			X = pop[method]
+	elif method == 'tsne':
+		if 'tsne' not in pop:
+			X = cat_data(pop, 'C')
+			tsne = TSNE.tsne = TSNE(n_jobs=-1)
+			X = tsne.fit_transform(X)
+			pop[method]
+		else:
+			X = pop[method]
+
+	c = [pop['samples'][x]['C'].shape[0] for x in pop['order']]
+	c = np.concatenate([[i]*x for i,x in enumerate(c)]) # color vector
+	plt.scatter(X[:,0], X[:,1], s=1)
+
 '''
 Differential expression functions
 '''
@@ -2719,7 +2747,7 @@ def l1norm(ig, sub1, sub2, nbins):
 	else:
 		return np.linalg.norm(b1-b2, ord=1)
 
-def diffexp(pop, refcomp=0, sample='', nbins=20, nleft=15, nright=15, renderhists=True):
+def diffexp(pop, refcomp=0, sample='', nbins=20, nleft=15, nright=15, renderhists=True, usefiltered=True):
 	'''
 	Find differentially expressed genes between a refernce subpopulation
 	and the subpopulation of a sample that aligned to it
@@ -2732,6 +2760,14 @@ def diffexp(pop, refcomp=0, sample='', nbins=20, nleft=15, nright=15, renderhist
 		Name of the sample to compare
 	nbins : int, optional
 		Number of histogram bins to use
+	nleft : int
+		Number of underexpressed genes to retrieve
+	nright : int
+		Number of overexpressed genes to retrieve
+	renderhists : bool
+		Render histograms or not for the top differentially expressed genes
+	usefiltered : bool
+		Wether to use filtered genes or not. If False, all genes will be used to run the differential expression
 	'''
 	xref = pop['ref'] # get reference sample label
 	ncomps = pop['samples'][xref]['gmm'].n_components-1
@@ -2750,8 +2786,14 @@ def diffexp(pop, refcomp=0, sample='', nbins=20, nleft=15, nright=15, renderhist
 	except:
 		raise Exception('Could not retrieve a matching alignment between sample %s and reference component %d' % (sample, refcomp))
 
-	Mref = pop['samples'][xref]['M'] # get reference sample matrix
-	Mtest = pop['samples'][xtest]['M'] # get test sample matrix
+	if usefiltered == True:
+		Mref = pop['samples'][xref]['M_norm'] # get filtered reference sample matrix
+		Mtest = pop['samples'][xtest]['M_norm'] # get filtered test sample matrix
+		genes = pop['filtered_genes'] # get filtered gene labels
+	elif usefiltered == False:
+		Mref = pop['samples'][xref]['M'] # get reference sample matrix
+		Mtest = pop['samples'][xtest]['M'] # get test sample matrix
+		genes = pop['genes'] # get gene labels
 
 	predictionref = pop['samples'][xref]['gmm'].predict(pop['samples'][xref]['C']) # get ref cell assignments
 	predictiontest = pop['samples'][xtest]['gmm'].predict(pop['samples'][xtest]['C']) # get test cell assignments
@@ -2798,7 +2840,7 @@ def diffexp(pop, refcomp=0, sample='', nbins=20, nleft=15, nright=15, renderhist
 			plt.savefig(os.path.join(pop['output'], dname, '%s.png' % filename), dpi=200, bbox_inches='tight')
 			plt.close()
 
-	lidx = [pop['genes'][i] for i in lidx]
+	lidx = [genes[i] for i in lidx]
 	plot_heatmap(pop, refcomp, lidx, cluster=False, savename='%d_%s_only' % (refcomp, sample), figsize=(15,15), cmap='Purples', samplelimits=False, scalegenes=True, only=sample)
 	return lidx
 

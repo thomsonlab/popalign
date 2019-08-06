@@ -21,6 +21,7 @@ setup(
 		"seaborn",
 		"adjustText",
 		"ipywidgets",
-		"fastcluster"
+		"fastcluster",
+		"umap"
 	]
 )
