@@ -2690,7 +2690,7 @@ def plot_genes_gmm_cells(pop, sample='', genelist=[], savename='', metric='corre
 	plt.savefig(os.path.join(pop['output'], dname, '%s_cells.png' % savename), dpi=200, bbox_inches='tight')
 	plt.close()
 
-def scatter(pop, method='umap'):
+def scatter(pop, method='umap', color=None):
 	'''
 	Run an embedding algorithm and plot the data in a scatter plot
 	'''
@@ -2709,11 +2709,39 @@ def scatter(pop, method='umap'):
 			pop[method]
 		else:
 			X = pop[method]
+	else:
+		raise Exception('method value not supported. Must be one of umap, tsne.')
 
-	c = [pop['samples'][x]['C'].shape[0] for x in pop['order']]
-	c = np.concatenate([[i]*x for i,x in enumerate(c)]) # color vector
-	plt.scatter(X[:,0], X[:,1], s=1)
+	#c = [pop['samples'][x]['C'].shape[0] for x in pop['order']]
+	#c = np.concatenate([[i]*x for i,x in enumerate(c)]) # color vector
 
+	if color == 'samples':
+		#c = 'green'
+		c = [pop['samples'][x]['C'].shape[0] for x in pop['order']]
+		c = np.concatenate([[i]*x for i,x in enumerate(c)]) # color vector
+		cmap = 'tab20'
+	elif color:
+		try:
+			ig = np.where(pop['genes']==color)[0][0]
+			c = cat_data(pop,'M')[ig,:].toarray().flatten()
+			cmap = 'magma'
+		except:
+			raise Exception('Gene name not valid')
+	else: # if None
+		c = 'red'
+		cmap=None
+
+	plt.scatter(X[:,0], X[:,1], s=.1, c=c, cmap=cmap)
+	'''
+	if color:
+		plt.colorbar()
+	'''
+	if color == 'samples':
+		plt.legend()
+	plt.xticks([])
+	plt.yticks([])
+	plt.xlabel('%s 1' % method)
+	plt.ylabel('%s 2' % method)
 '''
 Differential expression functions
 '''

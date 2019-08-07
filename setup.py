@@ -22,6 +22,7 @@ setup(
 		"adjustText",
 		"ipywidgets",
 		"fastcluster",
-		"umap-learn"
+		"umap-learn",
+		"MulticoreTSNE"
 	]
 )
