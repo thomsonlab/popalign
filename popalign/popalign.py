@@ -37,7 +37,7 @@ import plotly
 #from plotly.graph_objs import graph_objs as go
 import plotly.graph_objs as go
 from plotly.offline import iplot
-import umap
+import umap.umap_ as umap
 from MulticoreTSNE import MulticoreTSNE as TSNE
 
 '''
@@ -2691,9 +2691,18 @@ def plot_genes_gmm_cells(pop, sample='', genelist=[], savename='', metric='corre
 	plt.savefig(os.path.join(pop['output'], dname, '%s_cells.png' % savename), dpi=200, bbox_inches='tight')
 	plt.close()
 
-def scatter(pop, method='umap', color=None):
+def scatter(pop, method='umap', color=None, size=.1):
 	'''
 	Run an embedding algorithm and plot the data in a scatter plot
+
+	pop: dict
+		Popalign object
+	method : str
+		Embedding method. One of umap, tsne. Defaults to umap
+	color : str
+		Either `samples` or a valid gene symbol. Defaults to None
+	size : float or int
+		Point size. Defaults to .1
 	'''
 	if method == 'umap':
 		if 'umap' not in pop:
@@ -2707,7 +2716,7 @@ def scatter(pop, method='umap', color=None):
 			X = cat_data(pop, 'C')
 			tsne = TSNE.tsne = TSNE(n_jobs=-1)
 			X = tsne.fit_transform(X)
-			pop[method]
+			pop[method] = X
 		else:
 			X = pop[method]
 	else:
@@ -2717,7 +2726,6 @@ def scatter(pop, method='umap', color=None):
 	#c = np.concatenate([[i]*x for i,x in enumerate(c)]) # color vector
 
 	if color == 'samples':
-		#c = 'green'
 		c = [pop['samples'][x]['C'].shape[0] for x in pop['order']]
 		c = np.concatenate([[i]*x for i,x in enumerate(c)]) # color vector
 		cmap = 'tab20'
@@ -2730,19 +2738,25 @@ def scatter(pop, method='umap', color=None):
 			raise Exception('Gene name not valid')
 	else: # if None
 		c = 'red'
-		cmap=None
+		cmap = None
 
-	plt.scatter(X[:,0], X[:,1], s=.1, c=c, cmap=cmap)
-	'''
-	if color:
-		plt.colorbar()
-	'''
-	if color == 'samples':
-		plt.legend()
+	plt.scatter(X[:,0], X[:,1], s=size, c=c, cmap=cmap)
 	plt.xticks([])
 	plt.yticks([])
 	plt.xlabel('%s 1' % method)
 	plt.ylabel('%s 2' % method)
+	try:
+		plt.title('%s plot\nColor:%s' % (method, color))
+		plt.colorbar()
+		filename = '%s_%s' % (method, color)
+	except:
+		plt.title('%s plot' % method)
+		filename = '%s' % method
+	dname = 'embedding'
+	mkdir(os.path.join(pop['output'], dname)) # create directory if needed
+	plt.savefig(os.path.join(pop['output'], dname, '%s.png' % filename), dpi=200, bbox_inches='tight')
+	plt.close()
+
 '''
 Differential expression functions
 '''
@@ -2776,9 +2790,9 @@ def l1norm(ig, sub1, sub2, nbins):
 	else:
 		return np.linalg.norm(b1-b2, ord=1)
 
-def diffexp(pop, refcomp=0, sample='', nbins=20, nleft=15, nright=15, renderhists=True, usefiltered=True):
+def diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True, usefiltered=True):
 	'''
-	Find differentially expressed genes between a refernce subpopulation
+	Find  differentially expressed genes between a refernce subpopulation
 	and the subpopulation of a sample that aligned to it
 
 	Parameters
@@ -2836,16 +2850,35 @@ def diffexp(pop, refcomp=0, sample='', nbins=20, nleft=15, nright=15, renderhist
 	with Pool(None) as p:
 		q = p.starmap(l1norm, [(ig, subref, subtest, nbins) for ig in range(subref.shape[0])]) # for each gene idx ig, call the l1norm function
 
-	idx = np.argsort(q)
-	lidx = np.concatenate([idx[:nleft],idx[-nright:]])
+	#idx = np.argsort(q)
+	#lidx = np.concatenate([idx[:nleft],idx[-nright:]])
+	lidx = np.concatenate([np.where(np.array(q)<-cutoff)[0],np.where(np.array(q)>cutoff)[0]])
 
+	# render l1norm values
+	x = np.arange(len(q))
+	idx = np.argsort(q)
+	y = [q[i] for i in idx]
+	plt.scatter(x, y, s=.1, alpha=1)
+	plt.axhline(y=cutoff, color='red', linewidth=.5, label='Cutoff')
+	plt.axhline(y=-cutoff, color='red', linewidth=.5)
+	plt.xticks([])	
+	plt.ylabel('l1-norm')
+	plt.xlabel('Genes')
+	plt.legend()
+	samplename = sample.replace('/','')
+	dname = 'diffexp/%d_%s' % (refcomp, samplename) # define directory name
+	mkdir(os.path.join(pop['output'], dname)) # create directory if needed
+	filename = 'l1norm_values'
+	plt.savefig(os.path.join(pop['output'], dname, '%s.png' % filename), dpi=200, bbox_inches='tight')
+	plt.close()
+	
 	if renderhists == True: # if variable is True, then start histogram rendering
-		samplename = sample.replace('/','')
-		dname = 'diffexp/%d_%s' % (refcomp, samplename) # define directory name
-		mkdir(os.path.join(pop['output'], dname)) # create directory if needed
 		for i in lidx: # for each gene index in final list
-			gname = pop['genes'][i] 
-			
+			if usefiltered==False:
+				gname = pop['genes'][i] 
+			elif usefiltered==True:
+				gname = pop['filtered_genes'][i] 
+
 			arrref = subref[i,:].toarray().flatten() 
 			arrtest = subtest[i,:].toarray().flatten()
 			maxref, maxtest = np.max(arrref), np.max(arrtest)
