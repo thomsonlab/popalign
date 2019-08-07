@@ -1749,6 +1749,11 @@ def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar=
 		if nreplicates >=1: # if replicates are requested
 			pop['samples'][x]['replicates'] =  {} # create replicates entry for sample x
 			for j in range(nreplicates): # for each replicate number j
+				idx = np.random.choice(m, n, replace=False) # get n random cell indices
+				not_idx = np.setdiff1d(range(m), idx) # get the validation set indices
+				Ctrain = C[idx,:] # subset to get the training sdt
+				Cvalid = C[not_idx,:] # subset to get the validation set
+
 				with Pool(None) as p: # build all the models in parallel
 					q = p.starmap(build_single_GMM, [(k, Ctrain, reg_covar_param) for k in np.repeat(ks, niters)])
 				# We minimize the BIC score of the validation set
@@ -2213,7 +2218,13 @@ def rank(pop, ref=None, k=100, niter=200, method='LLR', mincells=50, figsize=(10
 				nk = m-5
 			# Score nk different random cells, niter times
 			# keep track of scores, labels and drug classes
-			gmmtest = pop['samples'][x]['gmm']
+			if x == ref:
+				try:
+					gmmtest = pop['samples'][x]['replicates'][0]['gmm']
+				except:
+					gmmtest = pop['samples'][x]['gmm']
+			else:
+				gmmtest = pop['samples'][x]['gmm']
 			for _ in range(niter):
 				idx = np.random.choice(m, nk, replace=False)
 				sub = C[idx,:]
