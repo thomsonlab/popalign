@@ -38,6 +38,7 @@ import plotly
 import plotly.graph_objs as go
 from plotly.offline import iplot
 import umap
+from MulticoreTSNE import MulticoreTSNE as TSNE
 
 '''
 Misc functions
