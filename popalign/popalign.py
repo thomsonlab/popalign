@@ -39,6 +39,7 @@ import plotly.graph_objs as go
 from plotly.offline import iplot
 import umap.umap_ as umap
 from MulticoreTSNE import MulticoreTSNE as TSNE
+import time
 
 '''
 Misc functions
@@ -147,7 +148,7 @@ def otsu(X, nbins=50):
 	thresholds = np.linspace(min(X), max(X), nbins+1)
 	
 	# compute the intraclass variance for each possible threshold in parallel
-	with Pool(None) as p:
+	with Pool(pop['ncores']) as p:
 		q = p.starmap(intraclass_var, [(X,t) for t in thresholds[:-1]])
 		
 	# pick threshold that minimizes the intraclass variance
@@ -210,6 +211,7 @@ def load_samples(samples, genes=None, outputfolder='output', existing_obj=None):
 		obj['samples'] = {}
 		obj['order'] = []
 		obj['genes'] = load_genes(genes) # load and store genes
+		obj['ncores'] = None
 	else:
 		obj = existing_obj
 	for x in samples:
@@ -270,6 +272,7 @@ def load_multiplexed(matrix, barcodes, metafile, genes=None, outputfolder='outpu
 		obj['samples'] = {}
 		obj['order'] = []
 		obj['genes'] = load_genes(genes) # load and store genes
+		obj['ncores'] = None
 	else:
 		obj = existing_obj
 
@@ -380,11 +383,11 @@ def scale_factor(pop, ncells):
 	ogmean = pop['original_mean'] # Retrive original mean of the data prior to normalization
 	factorlist = [1,500,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000] # list of factors to try
 
-	with Pool(None) as p:
+	with Pool(pop['ncores']) as p:
 		q = p.starmap(comparison_factor, [(M.copy(), f, ogmean) for f in factorlist]) # try different factors
 	scalingfactor = factorlist[np.argmin(q)] # pick the factor that minimizes the difference between the new mean and the original one 
 
-	with Pool(None) as p:
+	with Pool(pop['ncores']) as p:
 		q = p.starmap(factor, [(pop['samples'][x]['M'], scalingfactor) for x in pop['order']]) #Multiply data values by picked factor in parallel
 	for i,x in enumerate(pop['order']):
 		pop['samples'][x]['M'].data = q[i] # update data values for each sample
@@ -413,7 +416,7 @@ def normalize(pop, scaling_factor=None, ncells=None):
 			col_norm(pop['samples'][x]['M']) #column normalize data of sample `x`
 		
 		if scaling_factor != None:
-			with Pool(None) as p:
+			with Pool(pop['ncores']) as p:
 				q = p.starmap(factor, [(pop['samples'][x]['M'], scaling_factor) for x in pop['order']]) #Multiply data values by factor in parallel
 			for i,x in enumerate(pop['order']):
 				pop['samples'][x]['M'].data = q[i] # update data values for each sample
@@ -525,6 +528,14 @@ def plot_mean_cv(pop, offset):
 	pop['filter_idx'] = pop['nzidx'][selection_idx]
 
 def plot_gene_filter(pop, offset=1):
+	'''
+	Plot genes by their log(mean) and log(coefficient of variation)
+
+	Parameters
+	----------
+	offset: float
+		Value (its log) will be added to the intercept of the linear fit to filter genes
+	'''
 	M = cat_data(pop, 'M') # get column normalized, factored data
 	if 'genefiltering' not in pop:
 		lognzcv, lognzmean = mu_sigma(M, pop)
@@ -687,7 +698,7 @@ def enrichment_analysis(d,genelist,size_total):
 	'''
 	N = len(genelist) # get number of genes in the gene list
 	keys = np.array(list(d.keys())) # get a list of gene set names
-	with Pool(None) as p:
+	with Pool(pop['ncores']) as p:
 		q = np.array(p.starmap(sf, [(len(set(d[key]) & set(genelist)), size_total, len(d[key]), N) for key in keys])) # For each gene set, compute the p-value of the overlap with the gene list
 	return keys[np.argsort(q)[:20]] # return the most significant gene set names
 
@@ -836,7 +847,7 @@ def reconstruction_errors(M_norm, q):
 	for j in range(len(q)): # For each feature space j in q
 		print('Progress: %d of %d' % ((j+1), len(q)), end='\r')
 		Wj = q[j] # Retrieve feature space j from q
-		with Pool(None) as p:
+		with Pool(pop['ncores']) as p:
 			Hj = p.starmap(nnls, [(Wj, M_norm[:,i].toarray().flatten()) for i in range(M_norm.shape[1])]) # project each cell i of normalized data onto the current W 
 		Hj = np.vstack(Hj) # Hj is projected data onto Wj
 		projs.append(Hj) # store projection
@@ -1069,7 +1080,7 @@ def onmf(pop, ncells=2000, nfeats=[5,7,9], nreps=3, niter=300):
 	idx = np.random.choice(M_norm.shape[1], ncells, replace=False) # randomly select ncells cells
 
 	print('Computing W matrices')
-	with Pool(None) as p:
+	with Pool(pop['ncores']) as p:
 		q = p.starmap(oNMF, [(M_norm[:,idx], x, niter) for x in np.repeat(nfeats,nreps)]) # run ONMF in parallel for each possible k nreps times
 
 	q = [scale_W(q[i][0]) for i in range(len(q))] # scale the different feature spaces
@@ -1623,7 +1634,7 @@ def render_models(pop, figsizegrouped, figsizesingle, mode='grouped'):
 	if mode == 'unique':
 		sd = render_model(pop, 'unique_gmm', figsizesingle)
 	else:
-		with Pool(None) as p:
+		with Pool(pop['ncores']) as p:
 			q = p.starmap(render_model, [(pop, x, figsizesingle) for x in pop['order']])
 		if mode == 'grouped':
 			grid_rendering(pop, q, figsizegrouped)	
@@ -1659,7 +1670,7 @@ def build_single_GMM(k, C, reg_covar):
 		verbose_interval=10) # create model
 	return gmm.fit(C) # Fit the data
 
-def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar=True, rendering='grouped', types=None, figsizegrouped=(20,20), figsizesingle=(5,5)):
+def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar='auto', rendering='grouped', types=None, figsizegrouped=(20,20), figsizesingle=(5,5)):
 	'''
 	Build a Gaussian Mixture Model on feature projected data for each sample
 
@@ -1676,12 +1687,11 @@ def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar=
 		If training is int, that number of cells will be used for the training set.
 	nreplicates : int
 		Number of replicates to generate. These replicates model will be used to provide confidence intervals later in the analysis.
-	reg_covar : boolean or float
-		If True, the regularization value will be computed from the feature data
-		If False, 1e-6 default value is used
+	reg_covar : str or float
+		If 'auto', the regularization value will be computed from the feature data
 		If float, value will be used as reg_covar parameter to build GMMs
 	rendering : str
-		One of groupd, individual or unique
+		One of grouped, individual or unique
 	types : dict, str or None
 		Dictionary of cell types.
 		If None, a default PBMC cell types dictionary is provided
@@ -1719,13 +1729,11 @@ def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar=
 		Ctrain = C[idx,:] # subset to get the training sdt
 		Cvalid = C[not_idx,:] # subset to get the validation set
 
-		if reg_covar == True:
+		if reg_covar == 'auto':
 			reg_covar_param = pop['reg_covar'] # retrieve reg value from pop object that was computed from projection data
-		elif reg_covar == False:
-			reg_covar_param = 0 # default value is 0 (no assumption on the data)
 		else:
 			reg_covar_param = reg_covar
-		with Pool(None) as p: # build all the models in parallel
+		with Pool(pop['ncores']) as p: # build all the models in parallel
 			q = p.starmap(build_single_GMM, [(k, Ctrain, reg_covar_param) for k in np.repeat(ks, niters)])
 
 		# We minimize the BIC score of the validation set
@@ -1754,7 +1762,7 @@ def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar=
 				Ctrain = C[idx,:] # subset to get the training sdt
 				Cvalid = C[not_idx,:] # subset to get the validation set
 
-				with Pool(None) as p: # build all the models in parallel
+				with Pool(pop['ncores']) as p: # build all the models in parallel
 					q = p.starmap(build_single_GMM, [(k, Ctrain, reg_covar_param) for k in np.repeat(ks, niters)])
 				# We minimize the BIC score of the validation set
 				# to pick the best fitted gmm
@@ -1827,7 +1835,7 @@ def build_unique_gmm(pop, ks=(5,20), niters=3, training=0.2, reg_covar=True, typ
 		reg_covar_param = 0 # default value is 0 (no assumption on the data)
 	else:
 		reg_covar_param = reg_covar
-	with Pool(None) as p:
+	with Pool(pop['ncores']) as p:
 			q = p.starmap(build_single_GMM, [(k, Ctrain, reg_covar_param) for k in np.repeat(ks, niters)])
 	
 	# We minimize the BIC score of the validation set
@@ -2858,7 +2866,7 @@ def diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True, us
 	subref = Mref[:,idxref] # subset cells that match subpopulation refcomp
 	subtest = Mtest[:,idxtest] # subset cells that match subpopulation itest
 
-	with Pool(None) as p:
+	with Pool(pop['ncores']) as p:
 		q = p.starmap(l1norm, [(ig, subref, subtest, nbins) for ig in range(subref.shape[0])]) # for each gene idx ig, call the l1norm function
 
 	#idx = np.argsort(q)
