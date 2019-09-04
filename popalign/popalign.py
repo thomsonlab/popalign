@@ -131,7 +131,7 @@ def intraclass_var(X,t):
 	# return weighted intra class variance
 	return w1*var1 + w2*var2
 
-def otsu(X, nbins=50):
+def otsu(pop, X, nbins=50):
 	'''
 	Implementation of Otsu's method
 	Find optimal threshold to split
@@ -643,7 +643,7 @@ def removeRBC(pop, species):
 	for x in pop['order']: # for each sample
 		cellssums.append(np.array(pop['samples'][x]['M'][gidx,:].sum(axis=0)).flatten()) # compute cell sums for the specific genes
 
-	T = otsu(np.concatenate(cellssums)) # find optimal threshold to seperate the low sums from the high sums
+	T = otsu(pop, np.concatenate(cellssums)) # find optimal threshold to seperate the low sums from the high sums
 
 	for i,x in enumerate(pop['order']): # for each sample
 		idx = np.where(cellssums[i]<=T)[0] # get indices of cells with sums inferior to T
@@ -683,7 +683,7 @@ def sf(k, size_total, n, N):
 	'''
 	return stats.hypergeom.sf(k,size_total,n,N)
 
-def enrichment_analysis(d,genelist,size_total):
+def enrichment_analysis(pop,d,genelist,size_total):
 	'''
 	Find the top gene sets for a given list of genes `genelist`
 
@@ -731,7 +731,7 @@ def gsea(pop, geneset='c5bp'):
 		print('GSEA progress: %d of %d' % ((i+1), pop['nfeats']), end='\r')
 		idx = np.where(np.array(W[:,i]).flatten() > stdfactor*stds[i])[0] # get indices of genes that are above stdfactor times the standard deviation of feature i
 		genelist = [genes[j] for j in idx] # gene matching gene names
-		pop['feat_labels'][i] = enrichment_analysis(d, genelist, size_total) # for that list of genes, run GSEA
+		pop['feat_labels'][i] = enrichment_analysis(pop, d, genelist, size_total) # for that list of genes, run GSEA
 
 	pop['top_feat_labels'] = [pop['feat_labels'][i][0] for i in range(pop['nfeats'])] # store the top gene set of each feature
 
@@ -829,7 +829,7 @@ def nnls(W, V):
 	'''
 	return so.nnls(W, V)[0]
 
-def reconstruction_errors(M_norm, q):
+def reconstruction_errors(pop, M_norm, q):
 	'''
 	Compute the mean square errors between the original data `M_norm`
 	and reconstructed matrices using projection spaces from list `q`
@@ -1085,7 +1085,7 @@ def onmf(pop, ncells=2000, nfeats=[5,7,9], nreps=3, niter=300):
 
 	q = [scale_W(q[i][0]) for i in range(len(q))] # scale the different feature spaces
 	print('Computing reconstruction errors')
-	errors, projs = reconstruction_errors(M_norm, q) # compute the reconstruction errors for all the different spaces in q and a list of the different data projections for each feature spaces
+	errors, projs = reconstruction_errors(pop, M_norm, q) # compute the reconstruction errors for all the different spaces in q and a list of the different data projections for each feature spaces
 	
 	print('Retrieving W with lowest error')
 	idx_best = np.argmin(errors) # get idx of lowest error
@@ -2866,9 +2866,12 @@ def diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True, us
 	subref = Mref[:,idxref] # subset cells that match subpopulation refcomp
 	subtest = Mtest[:,idxtest] # subset cells that match subpopulation itest
 
+	start = time.time()
 	with Pool(pop['ncores']) as p:
 		q = p.starmap(l1norm, [(ig, subref, subtest, nbins) for ig in range(subref.shape[0])]) # for each gene idx ig, call the l1norm function
-
+	end = time.time()
+	print(end-start)
+	print(len(q))
 	#idx = np.argsort(q)
 	#lidx = np.concatenate([idx[:nleft],idx[-nright:]])
 	lidx = np.concatenate([np.where(np.array(q)<-cutoff)[0],np.where(np.array(q)>cutoff)[0]])
