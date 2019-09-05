@@ -23,6 +23,5 @@ setup(
 		"ipywidgets",
 		"fastcluster",
 		"umap-learn",
-		"MulticoreTSNE"
 	]
 )
