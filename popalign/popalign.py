@@ -38,7 +38,6 @@ import plotly
 import plotly.graph_objs as go
 from plotly.offline import iplot
 import umap.umap_ as umap
-from MulticoreTSNE import MulticoreTSNE as TSNE
 import time
 
 '''
@@ -2112,6 +2111,8 @@ def aligner(refgmm, testgmm, method):
 			covref = refgmm.covariances_[j]
 			arr[i, j] = JeffreyDiv(mutest, covtest, muref, covref) # compute all pairwise JD values
 
+	if method not in ['aligntest', 'alignref', 'conservative']:
+		raise Exception('method must be one of: aligntest, alignref, conservative')
 	if method == 'aligntest':
 		minsidx = np.argmin(arr, axis=1) # get idx of closest ref mixture for each test mixture
 		mins = np.min(arr, axis=1) # get min divergence values
@@ -2730,6 +2731,7 @@ def scatter(pop, method='umap', color=None, size=.1):
 			pop[method] = X
 		else:
 			X = pop[method]
+	'''
 	elif method == 'tsne':
 		if 'tsne' not in pop:
 			X = cat_data(pop, 'C')
@@ -2738,6 +2740,7 @@ def scatter(pop, method='umap', color=None, size=.1):
 			pop[method] = X
 		else:
 			X = pop[method]
+	'''
 	else:
 		raise Exception('method value not supported. Must be one of umap, tsne.')
 
@@ -2779,7 +2782,7 @@ def scatter(pop, method='umap', color=None, size=.1):
 '''
 Differential expression functions
 '''
-def l1norm(ig, sub1, sub2, nbins):
+def l1norm(ig, arr1, arr2, nbins):
 	'''
 	Compute the l1-norm between two histograms
 	
@@ -2794,20 +2797,19 @@ def l1norm(ig, sub1, sub2, nbins):
 	nbins : int
 		Number of histogram bins to use
 	'''
-	arr1 = sub1[ig,:].toarray().flatten() # get gene ig values by idx
-	arr2 = sub2[ig,:].toarray().flatten() # get gene ig values by idx
 	max1, max2 = np.max(arr1), np.max(arr2) # get max values from the two subpopulations
 	max_ = max(max1,max2) # get max value to define histogram range
-	
-	b1, be1 = np.histogram(arr1, bins=nbins, range=(0,max_))
-	b2, be2 = np.histogram(arr2, bins=nbins, range=(0,max_))
-	b1 = b1/len(arr1) # scale bin values
-	b2 = b2/len(arr2) # scale bin values
-	
-	if arr1.mean()>=arr2.mean():
-		return -np.linalg.norm(b1-b2, ord=1)
+	if max_ == 0:
+		return 0
 	else:
-		return np.linalg.norm(b1-b2, ord=1)
+		b1, be1 = np.histogram(arr1, bins=nbins, range=(0,max_))
+		b2, be2 = np.histogram(arr2, bins=nbins, range=(0,max_))
+		b1 = b1/len(arr1) # scale bin values
+		b2 = b2/len(arr2) # scale bin values
+		if arr1.mean()>=arr2.mean():
+			return -np.linalg.norm(b1-b2, ord=1)
+		else:
+			return np.linalg.norm(b1-b2, ord=1)
 
 def diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True, usefiltered=True):
 	'''
@@ -2865,16 +2867,19 @@ def diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True, us
 
 	subref = Mref[:,idxref] # subset cells that match subpopulation refcomp
 	subtest = Mtest[:,idxtest] # subset cells that match subpopulation itest
-
-	start = time.time()
+	subref = subref.toarray()
+	subtest = subtest.toarray()
+	
 	with Pool(pop['ncores']) as p:
-		q = p.starmap(l1norm, [(ig, subref, subtest, nbins) for ig in range(subref.shape[0])]) # for each gene idx ig, call the l1norm function
+		q = p.starmap(l1norm, [(ig, subref[ig,:], subtest[ig,:], nbins) for ig in range(subref.shape[0])]) # for each gene idx ig, call the l1norm function
 	end = time.time()
-	print(end-start)
-	print(len(q))
-	#idx = np.argsort(q)
-	#lidx = np.concatenate([idx[:nleft],idx[-nright:]])
-	lidx = np.concatenate([np.where(np.array(q)<-cutoff)[0],np.where(np.array(q)>cutoff)[0]])
+	
+	downregulated = np.where(np.array(q)<-cutoff)[0]
+	upregulated = np.where(np.array(q)>cutoff)[0]
+	#[genes[i] for i in lidx]
+
+	lidx = np.concatenate([downregulated,upregulated])
+	labels = ['downregulated']*len(downregulated)+['upregulated']*len(upregulated)
 
 	# render l1norm values
 	x = np.arange(len(q))
@@ -2888,21 +2893,23 @@ def diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True, us
 	plt.xlabel('Genes')
 	plt.legend()
 	samplename = sample.replace('/','')
-	dname = 'diffexp/%d_%s' % (refcomp, samplename) # define directory name
+	dname = 'diffexp/%d_%s/' % (refcomp, samplename) # define directory name
 	mkdir(os.path.join(pop['output'], dname)) # create directory if needed
 	filename = 'l1norm_values'
 	plt.savefig(os.path.join(pop['output'], dname, '%s.png' % filename), dpi=200, bbox_inches='tight')
 	plt.close()
 	
 	if renderhists == True: # if variable is True, then start histogram rendering
-		for i in lidx: # for each gene index in final list
+		dname = 'diffexp/%d_%s/hists/' % (refcomp, samplename) # define directory name
+		mkdir(os.path.join(pop['output'], dname)) # create directory if needed
+		for lbl,i in zip(labels, lidx): # for each gene index in final list
 			if usefiltered==False:
 				gname = pop['genes'][i] 
 			elif usefiltered==True:
 				gname = pop['filtered_genes'][i] 
 
-			arrref = subref[i,:].toarray().flatten() 
-			arrtest = subtest[i,:].toarray().flatten()
+			arrref = subref[i,:]
+			arrtest = subtest[i,:]
 			maxref, maxtest = np.max(arrref), np.max(arrtest)
 			max_ = max(maxref,maxtest)
 
@@ -2920,7 +2927,7 @@ def diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True, us
 			plt.ylabel('Percentage of cells in subpopulation')
 			plt.title('Gene %s\nSubpopulation #%d of %s' % (gname, refcomp, xref))
 
-			filename = '%s' % gname
+			filename = '%s_%s' % (lbl, gname)
 			plt.savefig(os.path.join(pop['output'], dname, '%s.png' % filename), dpi=200, bbox_inches='tight')
 			plt.close()
 
