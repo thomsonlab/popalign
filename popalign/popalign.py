@@ -2740,9 +2740,9 @@ def scatter(pop, method='umap', color=None, size=.1):
 			pop[method] = X
 		else:
 			X = pop[method]
-	'''
 	else:
 		raise Exception('method value not supported. Must be one of umap, tsne.')
+	'''
 
 	#c = [pop['samples'][x]['C'].shape[0] for x in pop['order']]
 	#c = np.concatenate([[i]*x for i,x in enumerate(c)]) # color vector
