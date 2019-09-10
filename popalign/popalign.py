@@ -20,6 +20,7 @@ from sklearn.decomposition import PCA
 from sklearn import preprocessing as sp
 from sklearn.metrics.pairwise import pairwise_distances
 from sklearn import mixture as smix
+from sklearn.manifold import TSNE
 import fastcluster as fc
 from sklearn import cluster as sc
 import matplotlib
@@ -682,7 +683,7 @@ def sf(k, size_total, n, N):
 	'''
 	return stats.hypergeom.sf(k,size_total,n,N)
 
-def enrichment_analysis(pop,d,genelist,size_total):
+def enrichment_analysis(pop,d,genelist,size_total,ngenesets):
 	'''
 	Find the top gene sets for a given list of genes `genelist`
 
@@ -699,9 +700,9 @@ def enrichment_analysis(pop,d,genelist,size_total):
 	keys = np.array(list(d.keys())) # get a list of gene set names
 	with Pool(pop['ncores']) as p:
 		q = np.array(p.starmap(sf, [(len(set(d[key]) & set(genelist)), size_total, len(d[key]), N) for key in keys])) # For each gene set, compute the p-value of the overlap with the gene list
-	return keys[np.argsort(q)[:20]] # return the most significant gene set names
+	return keys[np.argsort(q)[:ngenesets]] # return top 
 
-def gsea(pop, geneset='c5bp'):
+def gsea(pop, geneset='c5bp', ngenesets=20):
 	'''
 	Perform GSEA on the feature vectors of the feature space
 
@@ -711,7 +712,8 @@ def gsea(pop, geneset='c5bp'):
 		Popalign object
 	genes : str
 		Name of the gene set dictionary to use. File should be present in `../rsc/gsea/`
-
+	ngenesets : int
+		Number of top genesets to return
 	'''
 	print('Starting gene set enrichment analysis')
 	size_total = len(pop['genes']) # get total number of genes
@@ -730,8 +732,7 @@ def gsea(pop, geneset='c5bp'):
 		print('GSEA progress: %d of %d' % ((i+1), pop['nfeats']), end='\r')
 		idx = np.where(np.array(W[:,i]).flatten() > stdfactor*stds[i])[0] # get indices of genes that are above stdfactor times the standard deviation of feature i
 		genelist = [genes[j] for j in idx] # gene matching gene names
-		pop['feat_labels'][i] = enrichment_analysis(pop, d, genelist, size_total) # for that list of genes, run GSEA
-
+		pop['feat_labels'][i] = enrichment_analysis(pop, d, genelist, size_total, ngenesets) # for that list of genes, run GSEA
 	pop['top_feat_labels'] = [pop['feat_labels'][i][0] for i in range(pop['nfeats'])] # store the top gene set of each feature
 
 '''
@@ -1966,7 +1967,7 @@ def JeffreyDiv(mu1, cov1, mu2, cov2):
 	'''
 	return np.log10(0.5*KL(mu1, cov1, mu2, cov2)+0.5*KL(mu2, cov2, mu1, cov1))
 
-def plot_deltas(pop, figsize): # generate plot mu and delta w plots
+def plot_deltas_backup(pop, figsize): # generate plot mu and delta w plots
 	'''
 	Genere delta mu and delta w plots for the computed alignments
 
@@ -2086,6 +2087,146 @@ def plot_deltas(pop, figsize): # generate plot mu and delta w plots
 		plt.savefig(os.path.join(pop['output'], dname, 'deltas_comp%d_%s.png' % (i,lbl)), dpi=200, bbox_inches='tight')
 		plt.close()
 
+def plot_deltas(pop, figsize): # generate plot mu and delta w plots
+	'''
+	Genere delta mu and delta w plots for the computed alignments
+
+	Parameters
+	----------
+	pop : dict
+		Popalign object
+	figsize : tuple, optional
+		Size of the figure. Default is (10,10)
+	'''
+	dname = 'deltas'
+	mkdir(os.path.join(pop['output'], dname))
+
+	ref = pop['ref'] # get reference sample name
+	
+	list_ = pop['samples'][ref]['gmm_types']
+	if list_ == None:
+		list_ = [str(i) for i in range(pop['samples'][ref]['gmm'].n_components)]
+
+	for i, lbl in enumerate(list_): # for each reference subpopulation
+		samplelbls = []
+		xcoords = []
+		delta_mus = []
+		delta_ws = []
+		mean_mus = []
+		mean_ws = []
+		stds_mus = []
+		stds_ws = []
+		mu_ref = pop['samples'][ref]['means_genes'][i] # get the mean i value
+		w_ref = pop['samples'][ref]['gmm'].weights_[i] # get the weight i value
+
+		k = 0
+		for x in pop['order']: # for each sample x
+			added = False
+			tmp_delta_mus = []
+			tmp_delta_ws = []
+
+			# parse the potential replicates of the reference sample
+			if x == ref:
+				if pop['nreplicates'] >= 1: # if gmm replicates exist
+					for j in range(pop['nreplicates']):
+						arr = pop['samples'][x]['replicates'][j]['alignments']
+						try:
+							irow = np.where(arr[:,1] == i) # try to get the row where the ref comp number matches i
+							itest = int(arr[irow, 0]) # get test comp number from row
+							mu_test = pop['samples'][x]['replicates'][j]['means_genes'][itest] # get the test comp mean value
+							w_test = pop['samples'][x]['replicates'][j]['gmm'].weights_[itest] # get the test comp weight value
+							samplelbls.append(x)
+							tmp_delta_mus.append(np.linalg.norm([np.array(mu_test).flatten() - np.array(mu_ref).flatten()], ord='fro')) # store delta mu
+							tmp_delta_ws.append((w_test - w_ref)*100) # store delta w
+							xcoords.append(k)
+							added = True
+						except:
+							pass
+			else:
+				arr = pop['samples'][x]['alignments'] # get the alignments between x and the reference
+				try:
+					# parse the alignments for the sample's main GMM
+					irow = np.where(arr[:,1] == i) # try to get the row where the ref comp number matches i
+					itest = int(arr[irow, 0]) # get test comp number from row
+					mu_test = pop['samples'][x]['means_genes'][itest] # get the test comp mean value
+					w_test = pop['samples'][x]['gmm'].weights_[itest] # get the test comp weight value
+					samplelbls.append(x) # store test sample label x
+					tmp_delta_mus.append(np.linalg.norm([np.array(mu_test).flatten() - np.array(mu_ref).flatten()], ord='fro')) # store delta mu
+					tmp_delta_ws.append((w_test - w_ref)*100) # store delta w
+					xcoords.append(k)
+					added = True
+
+					# if the sample's main GMM has an alignment for that reference component, try adding replicates
+					if pop['nreplicates'] >= 1: # if gmm replicates exist
+						for j in range(pop['nreplicates']):
+							arr = pop['samples'][x]['replicates'][j]['alignments']
+							try:
+								irow = np.where(arr[:,1] == i) # try to get the row where the ref comp number matches i
+								itest = int(arr[irow, 0]) # get test comp number from row
+								mu_test = pop['samples'][x]['replicates'][j]['means_genes'][itest] # get the test comp mean value
+								w_test = pop['samples'][x]['replicates'][j]['gmm'].weights_[itest] # get the test comp weight value
+								samplelbls.append(x)
+								tmp_delta_mus.append(np.linalg.norm([np.array(mu_test).flatten() - np.array(mu_ref).flatten()], ord='fro')) # store delta mu
+								tmp_delta_ws.append((w_test - w_ref)*100) # store delta w
+								xcoords.append(k)
+								added = True
+							except:
+								pass
+				except:
+					pass
+
+			if added == True:
+				k += 1
+				delta_mus += tmp_delta_mus
+				delta_ws += tmp_delta_ws
+				mean_mus.append(np.mean(tmp_delta_mus))
+				mean_ws.append(np.mean(tmp_delta_ws))
+				stds_mus.append(np.std(tmp_delta_mus))
+				stds_ws.append(np.std(tmp_delta_ws))
+				
+		seen = set()
+		seen_add = seen.add
+		xlbls = [x for x in samplelbls if not (x in seen or seen_add(x))]
+		x = [x for x in xcoords if not (x in seen or seen_add(x))]
+
+		# reorder by delta mu mean
+		idx = np.argsort(mean_mus)
+		mean_mus = [mean_mus[i] for i in idx]
+		mean_ws = [mean_ws[i] for i in idx]
+		stds_mus = [stds_mus[i] for i in idx]
+		stds_ws = [stds_ws[i] for i in idx]
+		xlbls = [xlbls[i] for i in idx]
+
+		'''
+		newxcoords = []
+		for value in xcoords:
+			newxcoords.append(np.where(idx==value)[0][0])
+		xcoords = newxcoords
+		'''
+		xcoords = [np.where(idx==value)[0][0] for value in xcoords]
+
+		plt.figure(figsize=figsize)
+
+		ax1 = plt.subplot(2,1,1)
+		plt.title('Reference sample %s\nComponent %d: %s' %(ref, i, lbl))
+		plt.scatter(xcoords, delta_ws, s=2, c='k')
+		plt.errorbar(x, mean_ws, stds_ws, color='k', elinewidth=.5, capsize=1, fmt=' ', label='Standard deviation')
+		plt.xticks([])
+		plt.ylabel('Δ\u03C9 (%)')
+
+		plt.subplot(2,1,2)
+		plt.scatter(xcoords, delta_mus, s=2,c='k')
+		plt.errorbar(x, mean_mus, stds_mus, color='k', elinewidth=.5, capsize=1, fmt=' ', label='Standard deviation')
+		plt.xticks(x, xlbls, rotation=90)
+		
+		plt.ylabel('Δ\u03BC')
+
+		plt.tight_layout()
+		
+		lbl = lbl.replace('/','')
+		plt.savefig(os.path.join(pop['output'], dname, 'deltas_comp%d_%s.png' % (i,lbl)), dpi=200, bbox_inches='tight')
+		plt.close()
+
 def aligner(refgmm, testgmm, method):
 	'''
 	Align the components of two models
@@ -2097,7 +2238,7 @@ def aligner(refgmm, testgmm, method):
 	testgmm	: sklearn.mixture.GaussianMixture
 		Test model
 	method : str
-		Alignment method
+		Alignment method. Must be one of: aligntest, alignref, conservative
 	'''
 	ltest = testgmm.n_components # get test number of components
 	lref = refgmm.n_components # get ref number of components
@@ -2465,7 +2606,7 @@ def plot_query_heatmap(pop, figsize=(10,10)):
 '''
 Visualization functions
 '''
-def plot_heatmap(pop, refcomp, genelist, cluster=True, savename=None, figsize=(15,15), cmap='Purples', samplelimits=False, scalegenes=False, only=None):
+def plot_heatmap(pop, refcomp, genelist, cluster=True, savename=None, figsize=(15,15), cmap='Purples', samplelimits=False, scalegenes=False, only=None, equalncells=False):
 	'''
 	Plot specific genes for cells of a reference subpopulation S and subpopulations that aligned to S
 	
@@ -2552,6 +2693,13 @@ def plot_heatmap(pop, refcomp, genelist, cluster=True, savename=None, figsize=(1
 		except:
 			pass
 
+	if equalncells == True:
+		n = np.min(ncols)
+		for iii,m_ in enumerate(MS):
+			idx = np.random.choice(m_.shape[1], n, replace=False) 
+			MS[iii] = m_[:,idx]
+			ncols[iii] = n
+
 	if cluster == True: # if cluster == True
 		means = np.hstack(means) # stack means together horizontally
 		l = cluster_rows(means.T) # cluster mean vectors
@@ -2595,7 +2743,10 @@ def plot_heatmap(pop, refcomp, genelist, cluster=True, savename=None, figsize=(1
 	plt.yticks([]) # remove y ticks
 	plt.xticks(xtickscoords, MSlabels, rotation=90) # display sample names
 	
-	dname = 'heatmaps' # define directory name
+	if only != None:
+		dname = 'diffexp/%d_%s/' % (refcomp, only) # define directory name
+	else:
+		dname = 'heatmaps' # define directory name
 	mkdir(os.path.join(pop['output'], dname)) # create directory if needed
 	if savename != None:
 		filename = savename
@@ -2731,18 +2882,16 @@ def scatter(pop, method='umap', color=None, size=.1):
 			pop[method] = X
 		else:
 			X = pop[method]
-	'''
+	
 	elif method == 'tsne':
 		if 'tsne' not in pop:
 			X = cat_data(pop, 'C')
-			tsne = TSNE.tsne = TSNE(n_jobs=-1)
-			X = tsne.fit_transform(X)
+			X = TSNE(n_components=2).fit_transform(X)
 			pop[method] = X
 		else:
 			X = pop[method]
 	else:
 		raise Exception('method value not supported. Must be one of umap, tsne.')
-	'''
 
 	#c = [pop['samples'][x]['C'].shape[0] for x in pop['order']]
 	#c = np.concatenate([[i]*x for i,x in enumerate(c)]) # color vector
@@ -2802,11 +2951,11 @@ def l1norm(ig, arr1, arr2, nbins):
 	if max_ == 0:
 		return 0
 	else:
-		b1, be1 = np.histogram(arr1, bins=nbins, range=(0,max_))
-		b2, be2 = np.histogram(arr2, bins=nbins, range=(0,max_))
+		b1, be1 = np.histogram(arr1, bins=nbins, range=(0,max_)) # compute histogram bars
+		b2, be2 = np.histogram(arr2, bins=nbins, range=(0,max_)) # compute histogram bars
 		b1 = b1/len(arr1) # scale bin values
 		b2 = b2/len(arr2) # scale bin values
-		if arr1.mean()>=arr2.mean():
+		if arr1.mean()>=arr2.mean(): # sign l1-norm value based on mean difference
 			return -np.linalg.norm(b1-b2, ord=1)
 		else:
 			return np.linalg.norm(b1-b2, ord=1)
@@ -2864,22 +3013,48 @@ def diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True, us
 
 	idxref = np.where(predictionref==refcomp)[0] # get matching indices
 	idxtest = np.where(predictiontest==itest)[0] # get matching indices
-
 	subref = Mref[:,idxref] # subset cells that match subpopulation refcomp
 	subtest = Mtest[:,idxtest] # subset cells that match subpopulation itest
-	subref = subref.toarray()
-	subtest = subtest.toarray()
+	subref = subref.toarray() # from sparse matrix to numpy array for slicing efficiency
+	subtest = subtest.toarray() # from sparse matrix to numpy array for slicing efficiency
 	
 	with Pool(pop['ncores']) as p:
 		q = p.starmap(l1norm, [(ig, subref[ig,:], subtest[ig,:], nbins) for ig in range(subref.shape[0])]) # for each gene idx ig, call the l1norm function
-	end = time.time()
-	
-	downregulated = np.where(np.array(q)<-cutoff)[0]
-	upregulated = np.where(np.array(q)>cutoff)[0]
-	#[genes[i] for i in lidx]
+	end=time.time()
 
-	lidx = np.concatenate([downregulated,upregulated])
-	labels = ['downregulated']*len(downregulated)+['upregulated']*len(upregulated)
+	downregulated_idx = np.where(np.array(q)<-cutoff)[0] # get indices of genes with low l1-norm values
+	upregulated_idx = np.where(np.array(q)>cutoff)[0] # get indices of genes with high l1-norm values
+	downregulated = [genes[i] for i in downregulated_idx] # get gene labels
+	upregulated = [genes[i] for i in upregulated_idx] # get gene labels
+	
+	if len(downregulated+upregulated) == 0:
+		raise Exception('Cutoff value did not retrieve any gene. Please modify cutoff')
+
+	# gsea
+	currpath = os.path.abspath(os.path.dirname(__file__)) # get current path of this file to find the genesets
+	geneset = 'c5bp' # name of the geneset file
+	d = load_dict(os.path.join(currpath, "gsea/%s.npy" % geneset)) # load geneset dictionar
+	ngenesets = 20
+
+	dr_genesets = enrichment_analysis(pop, d, downregulated, len(pop['genes']), ngenesets) # find genesets pvalues for the list of downregulated genes
+	ur_genesets = enrichment_analysis(pop, d, upregulated, len(pop['genes']), ngenesets) # find genesets pvalues for the list of upregulated genes
+
+	lidx = np.concatenate([downregulated_idx,upregulated_idx])
+	labels = ['downregulated']*len(downregulated_idx)+['upregulated']*len(upregulated_idx)
+
+	samplename = sample.replace('/','') # remove slash char to not mess up the folder path
+	dname = 'diffexp/%d_%s/' % (refcomp, samplename) # define directory name
+	mkdir(os.path.join(pop['output'], dname)) # create directory if needed
+	with open(os.path.join(pop['output'], dname, 'downregulated_genes.txt'),'w') as fout:
+		fout.write('Downregulated genes for sample: %s\n\n' % sample)
+		fout.write('\n'.join(downregulated)) # save list of downregulated gene names
+		fout.write('\n\nMatching genesets:\n\n')
+		fout.write('\n'.join(dr_genesets))
+	with open(os.path.join(pop['output'], dname, 'upregulated_genes.txt'),'w') as fout:
+		fout.write('Upregulated genes for sample: %s\n\n' % sample)
+		fout.write('\n'.join(upregulated)) # save list of upregulated gene names
+		fout.write('\n\nMatching genesets:\n\n')
+		fout.write('\n'.join(ur_genesets))
 
 	# render l1norm values
 	x = np.arange(len(q))
@@ -2892,9 +3067,6 @@ def diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True, us
 	plt.ylabel('l1-norm')
 	plt.xlabel('Genes')
 	plt.legend()
-	samplename = sample.replace('/','')
-	dname = 'diffexp/%d_%s/' % (refcomp, samplename) # define directory name
-	mkdir(os.path.join(pop['output'], dname)) # create directory if needed
 	filename = 'l1norm_values'
 	plt.savefig(os.path.join(pop['output'], dname, '%s.png' % filename), dpi=200, bbox_inches='tight')
 	plt.close()
@@ -2932,7 +3104,7 @@ def diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True, us
 			plt.close()
 
 	lidx = [genes[i] for i in lidx]
-	plot_heatmap(pop, refcomp, lidx, cluster=False, savename='%d_%s_only' % (refcomp, sample), figsize=(15,15), cmap='Purples', samplelimits=False, scalegenes=True, only=sample)
+	plot_heatmap(pop, refcomp, lidx, cluster=True, savename='%d_%s_only' % (refcomp, sample), figsize=(15,15), cmap='Purples', samplelimits=False, scalegenes=True, only=sample, equalncells=True)
 	return lidx
 
 import sys
