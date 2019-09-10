@@ -2238,7 +2238,7 @@ def aligner(refgmm, testgmm, method):
 	testgmm	: sklearn.mixture.GaussianMixture
 		Test model
 	method : str
-		Alignment method. Must be one of: aligntest, alignref, conservative
+		Alignment method. Must be one of: test2ref, ref2test, conservative
 	'''
 	ltest = testgmm.n_components # get test number of components
 	lref = refgmm.n_components # get ref number of components
@@ -2252,16 +2252,16 @@ def aligner(refgmm, testgmm, method):
 			covref = refgmm.covariances_[j]
 			arr[i, j] = JeffreyDiv(mutest, covtest, muref, covref) # compute all pairwise JD values
 
-	if method not in ['aligntest', 'alignref', 'conservative']:
-		raise Exception('method must be one of: aligntest, alignref, conservative')
-	if method == 'aligntest':
+	if method not in ['test2ref', 'ref2test', 'conservative']:
+		raise Exception('method must be one of: test2ref, ref2test, conservative')
+	if method == 'test2ref':
 		minsidx = np.argmin(arr, axis=1) # get idx of closest ref mixture for each test mixture
 		mins = np.min(arr, axis=1) # get min divergence values
 		res = np.zeros((ltest, 3))
 		for i in range(ltest):
 			res[i,:] = np.array([i, minsidx[i], mins[i]])
 
-	elif method == 'alignref':
+	elif method == 'ref2test':
 		minsidx = np.argmin(arr, axis=0) # get idx of closest ref mixture for each test mixture
 		mins = np.min(arr, axis=0) # get min divergence values
 		res = np.zeros((lref, 3))
@@ -2295,8 +2295,8 @@ def align(pop, ref=None, method='conservative', figsizedeltas=(10,10), figsizeen
 	method : str
 		Method to perform the alignment
 		If conservative, the reference component and the test component have to be each other's best match to align
-		If aligntest, the closest reference component is found for each test component
-		If alignref, the closest test component is found for each test component
+		If test2ref, the closest reference component is found for each test component
+		If ref2test, the closest test component is found for each test component
 	figsizedeltas : tuple, optional
 		Size of the figure for the delta plot. Default is (10,5)
 	figsizeentropy : tuple, optional
