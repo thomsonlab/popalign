@@ -40,6 +40,7 @@ import plotly.graph_objs as go
 from plotly.offline import iplot
 import umap.umap_ as umap
 import time
+import shutil
 
 '''
 Misc functions
@@ -2606,7 +2607,7 @@ def plot_query_heatmap(pop, figsize=(10,10)):
 '''
 Visualization functions
 '''
-def plot_heatmap(pop, refcomp, genelist, cluster=True, savename=None, figsize=(15,15), cmap='Purples', samplelimits=False, scalegenes=False, only=None, equalncells=False):
+def plot_heatmap(pop, refcomp, genelist, clustersamples=True, clustercells=True, savename=None, figsize=(15,15), cmap='Purples', samplelimits=False, scalegenes=False, only=None, equalncells=False):
 	'''
 	Plot specific genes for cells of a reference subpopulation S and subpopulations that aligned to S
 	
@@ -2618,6 +2619,10 @@ def plot_heatmap(pop, refcomp, genelist, cluster=True, savename=None, figsize=(1
 		Reference subpopulation number
 	genelist : list
 		List of genes to plot
+	clustersamples : bool
+		Cluster the samples
+	clustercells : bool
+		Cluster the cells within each sample subpopulation
 	savename : str, optional
 		The user can specify a name for the file to be written. When savename is None, a filename is computed with the reference component number. Default is None
 	figsize : tuple, optional
@@ -2641,8 +2646,9 @@ def plot_heatmap(pop, refcomp, genelist, cluster=True, savename=None, figsize=(1
 
 	cmetric='correlation' # cluster metric
 	cmethod='single' # cluster method
-	cidx = cluster_rows(M.toarray().T, metric=cmetric, method=cmethod) # cluster cells of subpopulation
-	M = M[:,cidx] # reorder matrix
+	if clustercells == True:
+		cidx = cluster_rows(M.toarray().T, metric=cmetric, method=cmethod) # cluster cells of subpopulation
+		M = M[:,cidx] # reorder matrix
 
 	MS = [M] # create list of matrices, with the reference matrix as the first element
 	MSlabels = ['%s (%d)' % (ref,refcomp)] # create list of sample labels, with the reference label as the first element
@@ -2663,8 +2669,9 @@ def plot_heatmap(pop, refcomp, genelist, cluster=True, savename=None, figsize=(1
 
 					M = pop['samples'][x]['M'][gidx,:] # get test sample gene space data, subsample
 					M = M[:,idx] # select test subpopulation cells
-					cidx = cluster_rows(M.toarray().T, metric=cmetric, method=cmethod) # cluster cells of subpopulation
-					M = M[:,cidx] # reorder matrix
+					if clustercells == True:
+						cidx = cluster_rows(M.toarray().T, metric=cmetric, method=cmethod) # cluster cells of subpopulation
+						M = M[:,cidx] # reorder matrix
 					ncols.append(M.shape[1])
 					MS.append(M) # append to list
 					means.append(M.mean(axis=1))
@@ -2684,8 +2691,9 @@ def plot_heatmap(pop, refcomp, genelist, cluster=True, savename=None, figsize=(1
 
 			M = pop['samples'][x]['M'][gidx,:] # get test sample gene space data, subsample
 			M = M[:,idx] # select test subpopulation cells
-			cidx = cluster_rows(M.toarray().T, metric=cmetric, method=cmethod) # cluster cells of subpopulation
-			M = M[:,cidx] # reorder matrix
+			if clustercells == True:
+				cidx = cluster_rows(M.toarray().T, metric=cmetric, method=cmethod) # cluster cells of subpopulation
+				M = M[:,cidx] # reorder matrix
 			ncols.append(M.shape[1])
 			MS.append(M) # append to list
 			means.append(M.mean(axis=1))
@@ -2700,7 +2708,7 @@ def plot_heatmap(pop, refcomp, genelist, cluster=True, savename=None, figsize=(1
 			MS[iii] = m_[:,idx]
 			ncols[iii] = n
 
-	if cluster == True: # if cluster == True
+	if clustersamples == True: # if cluster == True
 		means = np.hstack(means) # stack means together horizontally
 		l = cluster_rows(means.T) # cluster mean vectors
 		MSlabels = [MSlabels[ii] for ii in l] # reorder labels
@@ -2928,6 +2936,66 @@ def scatter(pop, method='umap', color=None, size=.1):
 	plt.savefig(os.path.join(pop['output'], dname, '%s.png' % filename), dpi=200, bbox_inches='tight')
 	plt.close()
 
+def embedding_grid(pop, method='tsne', figsize=(20,20)):
+	'''
+	Generate a grid plot of sample plots in an embedding space
+
+	Parameters
+	----------
+	pop : dict
+		Popalign object
+	method : str
+		Embedding method. One of tsne, umap
+	figsize : tuple
+		Figure size
+	'''
+	if method not in pop:
+			X = cat_data(pop, 'C')
+			if method == 'tsne':
+				X = TSNE(n_components=2).fit_transform(X)
+			elif method == 'umap':
+				X = umap.UMAP().fit_transform(X)
+			pop[method] = X
+	else:
+		X = pop[method]
+
+	x = X[:,0]
+	y = X[:,1]
+
+	nr, nc = nr_nc(len(pop['order']))
+	fig, axes = plt.subplots(nr,nc,figsize=figsize)
+	axes=axes.flatten()
+	start = 0
+	end = 0
+	for i, name in enumerate(pop['order']):
+		ax = axes[i]
+		end = start+pop['samples'][name]['C'].shape[0]
+		xsub = x[start:end]
+		ysub = y[start:end]
+		start = end
+		ax.scatter(x, y, c='lightgrey', s=.1)
+		ax.scatter(xsub, ysub, c='purple', s=.1)
+		ax.set(xticks=[])
+		ax.set(yticks=[])
+		ax.set(title=name)
+
+		if i % nc == 0:
+			ax.set(ylabel='t-SNE 2')
+		if i >= len(pop['order'])-nc:
+			ax.set(xlabel='t-SNE 1')
+
+	rr = len(axes)-len(pop['order']) # count how many empty plots in grid
+	for i in range(1,rr+1):
+		ax = axes[-i]
+		ax.axis('off') # clear empty axis from plot
+
+	plt.suptitle('Samples in t-SNE space')
+	dname = 'embedding'
+	mkdir(os.path.join(pop['output'], dname))
+	plt.savefig(os.path.join(pop['output'], dname, 'embedding_grid_%s.png' % method), dpi=200)
+	plt.close()
+
+
 '''
 Differential expression functions
 '''
@@ -3046,12 +3114,12 @@ def diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True, us
 	dname = 'diffexp/%d_%s/' % (refcomp, samplename) # define directory name
 	mkdir(os.path.join(pop['output'], dname)) # create directory if needed
 	with open(os.path.join(pop['output'], dname, 'downregulated_genes.txt'),'w') as fout:
-		fout.write('Downregulated genes for sample: %s\n\n' % sample)
+		fout.write('Downregulated genes for sample %s relative to the reference sample\n\n' % sample)
 		fout.write('\n'.join(downregulated)) # save list of downregulated gene names
 		fout.write('\n\nMatching genesets:\n\n')
 		fout.write('\n'.join(dr_genesets))
 	with open(os.path.join(pop['output'], dname, 'upregulated_genes.txt'),'w') as fout:
-		fout.write('Upregulated genes for sample: %s\n\n' % sample)
+		fout.write('Upregulated genes for sample: %s relative to the reference sample\n\n' % sample)
 		fout.write('\n'.join(upregulated)) # save list of upregulated gene names
 		fout.write('\n\nMatching genesets:\n\n')
 		fout.write('\n'.join(ur_genesets))
@@ -3073,6 +3141,7 @@ def diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True, us
 	
 	if renderhists == True: # if variable is True, then start histogram rendering
 		dname = 'diffexp/%d_%s/hists/' % (refcomp, samplename) # define directory name
+		shutil.rmtree(os.path.join(pop['output'], dname))
 		mkdir(os.path.join(pop['output'], dname)) # create directory if needed
 		for lbl,i in zip(labels, lidx): # for each gene index in final list
 			if usefiltered==False:
@@ -3104,7 +3173,7 @@ def diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True, us
 			plt.close()
 
 	lidx = [genes[i] for i in lidx]
-	plot_heatmap(pop, refcomp, lidx, cluster=True, savename='%d_%s_only' % (refcomp, sample), figsize=(15,15), cmap='Purples', samplelimits=False, scalegenes=True, only=sample, equalncells=True)
+	plot_heatmap(pop, refcomp, lidx, clustersamples=False, clustercells=True, savename='%d_%s_only' % (refcomp, sample), figsize=(15,15), cmap='Purples', samplelimits=False, scalegenes=True, only=sample, equalncells=True)
 	return lidx
 
 import sys
