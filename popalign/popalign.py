@@ -2327,6 +2327,56 @@ def align(pop, ref=None, method='conservative', figsizedeltas=(10,10), figsizeen
 '''
 Rank functions
 '''
+def LL(x, mu, sigma, k):
+	tmp = x-mu
+	ll = -.5*(np.log(np.linalg.det(sigma)) + tmp.T.dot(np.linalg.inv(sigma).dot(tmp)) + k*np.log(2*np.pi))
+	return ll
+
+def score_subpopulations(pop, ref=None, figsize=(10,5)):
+	order = np.array(pop['order']) # get order of samples
+	if ref not in order: # check that ref is in the order list
+		raise Exception('ref value not a valid sample name')
+	order = order[order != ref] # remove ref label from order list
+	gmm = pop['samples'][ref]['gmm'] # retrive reference gmm
+	k = pop['nfeats'] # retrieve dimensionality
+
+	for i,subpop in enumerate(pop['samples'][ref]['gmm_types']): # for each subpopulation in the ref gmm
+		mu = gmm.means_[i] # get matching mean vector
+		sigma = gmm.covariances_[0] # get matching covariance matrix
+		data = [] # empty list to store the samples cells log-likelihoods
+		means = [] # empty list to store the samples log-likelihood means 
+		for x in order: # for each test sample
+			C = pop['samples'][x]['C'] # retrive the feature space data (dimensionality k)
+			LLS = np.array([LL(v,mu,sigma,k) for v in C]) # compute the LL for each cell for a given gaussian density
+			data.append(LLS) # store the LL values
+			means.append(LLS.mean()) # store the matching mean
+
+		idx = np.argsort(means) # sort means
+		lblorder = order[idx] # sample labels in sort means order
+
+		lbls = np.concatenate([[lbl]*len(data[i]) for i,lbl in enumerate(order)])
+		scores = np.concatenate(data)
+		df = pd.DataFrame({'scores': scores, 'labels': lbls})
+
+		# create stripplot using the computed order based on score means
+		plt.figure(figsize=figsize)
+		ax = sns.stripplot(x="labels", y="scores", data=df, order=lblorder, palette='tab20', size=.5)
+		
+		#x = plt.xlim()
+		#plt.fill_between(x, min_, max_, alpha=0.1, color='black')
+		# adjusting plot labels
+		x = range(len(lblorder))
+		plt.xticks(x, lblorder, rotation=90)
+		plt.xlabel('Samples')
+		plt.ylabel('Log-likelihood scores')
+		plt.title('Likelihood scores against reference\nSubpopulation #%d %s' % (i,subpop))
+		plt.tight_layout()
+		dname = 'ranking_test'
+		mkdir(os.path.join(pop['output'], dname))
+		plt.savefig(os.path.join(pop['output'], dname, 'rankings_%d_%s.png' % (i,subpop)), dpi=200)
+		plt.close()
+
+
 def rank(pop, ref=None, k=100, niter=200, method='LLR', mincells=50, figsize=(10,5)):
 	'''
 	Generate a ranking plot of the samples against a reference model
@@ -2883,60 +2933,52 @@ def scatter(pop, method='umap', color=None, size=.1):
 	size : float or int
 		Point size. Defaults to .1
 	'''
-	if method == 'umap':
-		if 'umap' not in pop:
-			X = cat_data(pop, 'C')
-			X = umap.UMAP().fit_transform(X)
-			pop[method] = X
-		else:
-			X = pop[method]
-	
-	elif method == 'tsne':
-		if 'tsne' not in pop:
-			X = cat_data(pop, 'C')
-			X = TSNE(n_components=2).fit_transform(X)
-			pop[method] = X
-		else:
-			X = pop[method]
-	else:
-		raise Exception('method value not supported. Must be one of umap, tsne.')
 
-	#c = [pop['samples'][x]['C'].shape[0] for x in pop['order']]
-	#c = np.concatenate([[i]*x for i,x in enumerate(c)]) # color vector
+	if method not in pop: # if method not run before
+		X = cat_data(pop, 'C') # retrieve feature space data
+		if method == 'umap': # if method is umap
+			X = umap.UMAP().fit_transform(X) # run umap
+		elif method == 'tsne': # if method is tsne
+			X = TSNE(n_components=2).fit_transform(X) # run tsne
+		else: # if method not valid
+			raise Exception('Method value not supported. Must be one of tsne, umap.') # raise exception
+		pop[method] = X # store embedded coordinates
+	else: # if method has been run before
+		X = pop[method] # retrieve embedded coordinates
 
-	if color == 'samples':
-		c = [pop['samples'][x]['C'].shape[0] for x in pop['order']]
+	if color == 'samples': # color scatter plot by samples
+		c = [pop['samples'][x]['C'].shape[0] for x in pop['order']] # get number of cells per sample
 		c = np.concatenate([[i]*x for i,x in enumerate(c)]) # color vector
 		cmap = 'tab20'
-	elif color:
+	elif color: # if color value is a gene name
 		try:
-			ig = np.where(pop['genes']==color)[0][0]
-			c = cat_data(pop,'M')[ig,:].toarray().flatten()
+			ig = np.where(pop['genes']==color)[0][0] # get gene index if valid gene name
+			c = cat_data(pop,'M')[ig,:].toarray().flatten() # get expression values of gene
 			cmap = 'magma'
 		except:
-			raise Exception('Gene name not valid')
+			raise Exception('Gene name not valid') # raise exception if gene name not valid
 	else: # if None
 		c = 'red'
 		cmap = None
 
-	plt.scatter(X[:,0], X[:,1], s=size, c=c, cmap=cmap)
-	plt.xticks([])
-	plt.yticks([])
-	plt.xlabel('%s 1' % method)
-	plt.ylabel('%s 2' % method)
+	plt.scatter(X[:,0], X[:,1], s=size, c=c, cmap=cmap) # plot points in embedded space
+	plt.xticks([]) # remove x ticks
+	plt.yticks([]) # remove y ticks
+	plt.xlabel('%s 1' % method) # x label
+	plt.ylabel('%s 2' % method) # y label
 	try:
-		plt.title('%s plot\nColor:%s' % (method, color))
-		plt.colorbar()
-		filename = '%s_%s' % (method, color)
+		plt.title('%s plot\nColor:%s' % (method, color)) # title
+		plt.colorbar() # display colorbar
+		filename = '%s_%s' % (method, color) # define file name
 	except:
-		plt.title('%s plot' % method)
-		filename = '%s' % method
-	dname = 'embedding'
+		plt.title('%s plot' % method) # title
+		filename = '%s' % method # define file name
+	dname = 'embedding/markers/' # directory name
 	mkdir(os.path.join(pop['output'], dname)) # create directory if needed
-	plt.savefig(os.path.join(pop['output'], dname, '%s.png' % filename), dpi=200, bbox_inches='tight')
+	plt.savefig(os.path.join(pop['output'], dname, '%s.png' % filename), dpi=200, bbox_inches='tight') # save figure
 	plt.close()
 
-def embedding_grid(pop, method='tsne', figsize=(20,20)):
+def samples_grid(pop, method='tsne', figsize=(20,20), size_background=.1, size_samples=.1):
 	'''
 	Generate a grid plot of sample plots in an embedding space
 
@@ -2948,53 +2990,133 @@ def embedding_grid(pop, method='tsne', figsize=(20,20)):
 		Embedding method. One of tsne, umap
 	figsize : tuple
 		Figure size
+	size_background : float, int
+		Point size for the embedding scatter in the background
+	size_samples : float, int
+		Point size for the highlighted samples
 	'''
-	if method not in pop:
-			X = cat_data(pop, 'C')
-			if method == 'tsne':
-				X = TSNE(n_components=2).fit_transform(X)
-			elif method == 'umap':
-				X = umap.UMAP().fit_transform(X)
-			pop[method] = X
-	else:
-		X = pop[method]
 
-	x = X[:,0]
-	y = X[:,1]
+	if method not in pop: # if method not run before
+		X = cat_data(pop, 'C') # retrieve feature space data
+		if method == 'umap': # if method is umap
+			X = umap.UMAP().fit_transform(X) # run umap
+		elif method == 'tsne': # if method is tsne
+			X = TSNE(n_components=2).fit_transform(X) # run tsne
+		else: # if method not valid
+			raise Exception('Method value not supported. Must be one of tsne, umap.') # raise exception
+		pop[method] = X # store embedded coordinates
+	else: # if method has been run before
+		X = pop[method] # retrieve embedded coordinates
 
-	nr, nc = nr_nc(len(pop['order']))
-	fig, axes = plt.subplots(nr,nc,figsize=figsize)
-	axes=axes.flatten()
-	start = 0
-	end = 0
-	for i, name in enumerate(pop['order']):
-		ax = axes[i]
-		end = start+pop['samples'][name]['C'].shape[0]
-		xsub = x[start:end]
-		ysub = y[start:end]
-		start = end
-		ax.scatter(x, y, c='lightgrey', s=.1)
-		ax.scatter(xsub, ysub, c='purple', s=.1)
-		ax.set(xticks=[])
-		ax.set(yticks=[])
-		ax.set(title=name)
+	x = X[:,0] # get x coordinates
+	y = X[:,1] # get y coordinates
+
+	nr, nc = nr_nc(len(pop['order'])) # based on number of samples, get number of rows and columns for grid plot
+	fig, axes = plt.subplots(nr,nc,figsize=figsize) # create figure and sub axes
+	axes = axes.flatten()
+	start = 0 # start index to retrive cells for a given sample
+	end = 0 # end index to retrive cells for a given sample
+	for i, name in enumerate(pop['order']): # for each sample
+		ax = axes[i] # assign sub axis
+		end = start+pop['samples'][name]['C'].shape[0] # adjust end index with number of cells
+		xsub = x[start:end] # splice x coordinates
+		ysub = y[start:end] # splice y coordinates
+		start = end # update start index
+		ax.scatter(x, y, c='lightgrey', s=.size_background) # plot all cells as background
+		ax.scatter(xsub, ysub, c='purple', s=size_samples) # plot sample cells on top
+		ax.set(xticks=[]) # remove x ticks
+		ax.set(yticks=[]) # remove y ticks
+		ax.set(title=name) # sample name as title
 
 		if i % nc == 0:
-			ax.set(ylabel='t-SNE 2')
+			ax.set(ylabel='%s2' % method) # set y label
 		if i >= len(pop['order'])-nc:
-			ax.set(xlabel='t-SNE 1')
+			ax.set(xlabel='%s1' % method) # set x label
 
 	rr = len(axes)-len(pop['order']) # count how many empty plots in grid
-	for i in range(1,rr+1):
-		ax = axes[-i]
+	for i in range(1,rr+1): # 
+		ax = axes[-i] # backtrack extra sub axes
 		ax.axis('off') # clear empty axis from plot
 
-	plt.suptitle('Samples in t-SNE space')
-	dname = 'embedding'
-	mkdir(os.path.join(pop['output'], dname))
-	plt.savefig(os.path.join(pop['output'], dname, 'embedding_grid_%s.png' % method), dpi=200)
-	plt.close()
+	plt.suptitle('Samples in t-SNE space') # set main title
+	dname = 'embedding/samples/' # folder name
+	mkdir(os.path.join(pop['output'], dname)) # create folder if doesn't exist
+	plt.savefig(os.path.join(pop['output'], dname, 'embedding_grid_%s.png' % method), dpi=200) # save plot
+	plt.close() # close plot
 
+def subpopulations_grid(pop, method='tsne', figsize=(20,20), size_background=.1, size_subpops=1):
+	'''
+	Generate grid plots of sample subpopulations in an embedding space
+
+	pop : dict
+		Popalign object
+	method : str
+		Embedding method. One of tsne, umap
+	figsize : tuple
+		Size of the figures to be generated
+	size_background : float, int
+		Point size for the embedding scatter in the background
+	size_subpops : float, int
+		Point size for the highlighted subpopulations
+	'''
+	if method not in pop: # if method not run before
+		X = cat_data(pop, 'C') # retrieve feature space data
+		if method == 'umap': # if method is umap
+			X = umap.UMAP().fit_transform(X) # run umap
+		elif method == 'tsne': # if method is tsne
+			X = TSNE(n_components=2).fit_transform(X) # run tsne
+		else: # if method not valid
+			raise Exception('Method value not supported. Must be one of tsne, umap.') # raise exception
+		pop[method] = X # store embedded coordinates
+	else: # if method has been run before
+		X = pop[method] # retrieve embedded coordinates
+
+	x = X[:,0] # get x coordinates
+	y = X[:,1] # get y coordinates
+
+	start = 0 # start index to subset sample cells
+	end = 0 # end index to subset sample cells
+
+	for sample in pop['order']: # for each sample in pop
+		C = pop['samples'][sample]['C'] # get sample feature data
+		gmm = pop['samples'][sample]['gmm'] # get sample gmm
+		poplabels = pop['samples'][sample]['gmm_types'] # get subpopulations labels
+		prediction = gmm.predict(C) # get subpopulation assignments for the cells
+
+		n = C.shape[0] # get number of cells for that sample
+		end = start+n # update end index
+		xsub = x[start:end] # subset x coordinates
+		ysub = y[start:end] # subset y coordinates
+
+		nr, nc = nr_nc(gmm.n_components) # get number of rows and columns for the grid plot
+		fig, axes = plt.subplots(nr,nc,figsize=figsize) # create figure and subaxes
+		axes = axes.flatten()
+		
+		for i in range(gmm.n_components): # for each subpopulation of sample
+			ax = axes[i] # assign sub axis
+			idx = np.where(prediction==i)[0] # get cell indices for that subpopulations
+			xtmp = xsub[idx] # subset sample's cells
+			ytmp = ysub[idx] # subset sample's cells
+			ax.scatter(x, y, c='lightgrey', s=size_background) # plot all cells as background
+			ax.scatter(xtmp, ytmp, c='purple', s=size_subpops) # plot subpopulation cells on top
+			ax.set(xticks=[]) # remove x ticks
+			ax.set(yticks=[]) # remove y ticks
+			ax.set(title='Subpopulation #%d\n%s' % (i, poplabels[i])) # set title
+			if i % nc == 0:
+				ax.set(ylabel='%s2' % method) # set y label
+			if i >= len(pop['order'])-nc:
+				ax.set(xlabel='%s1' % method) # set x label
+
+		rr = len(axes)-gmm.n_components # count how many empty plots in grid
+		for i in range(1,rr+1):
+			ax = axes[-i] # backtrack extra sub axes
+			ax.axis('off') # clear empty axis from plot
+
+		dname = 'embedding/subpopulations/' # folder name
+		mkdir(os.path.join(pop['output'], dname)) # create folder if does not exist
+		plt.savefig(os.path.join(pop['output'], dname, '%s_subpopulations.png' % sample), dpi=200) # save plot
+		plt.close() # close plot
+		start = end # update start index
 
 '''
 Differential expression functions
@@ -3070,11 +3192,11 @@ def diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True, us
 	if usefiltered == True:
 		Mref = pop['samples'][xref]['M_norm'] # get filtered reference sample matrix
 		Mtest = pop['samples'][xtest]['M_norm'] # get filtered test sample matrix
-		genes = pop['filtered_genes'] # get filtered gene labels
+		genes = np.array(pop['filtered_genes']) # get filtered gene labels
 	elif usefiltered == False:
 		Mref = pop['samples'][xref]['M'] # get reference sample matrix
 		Mtest = pop['samples'][xtest]['M'] # get test sample matrix
-		genes = pop['genes'] # get gene labels
+		genes = np.array(pop['genes']) # get gene labels
 
 	predictionref = pop['samples'][xref]['gmm'].predict(pop['samples'][xref]['C']) # get ref cell assignments
 	predictiontest = pop['samples'][xtest]['gmm'].predict(pop['samples'][xtest]['C']) # get test cell assignments
@@ -3087,8 +3209,11 @@ def diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True, us
 	subtest = subtest.toarray() # from sparse matrix to numpy array for slicing efficiency
 	
 	with Pool(pop['ncores']) as p:
-		q = p.starmap(l1norm, [(ig, subref[ig,:], subtest[ig,:], nbins) for ig in range(subref.shape[0])]) # for each gene idx ig, call the l1norm function
-	end=time.time()
+		q = np.array(p.starmap(l1norm, [(ig, subref[ig,:], subtest[ig,:], nbins) for ig in range(subref.shape[0])])) # for each gene idx ig, call the l1norm function
+
+	idx = np.argsort(q)
+	q = q[idx]
+	genes = genes[idx]
 
 	downregulated_idx = np.where(np.array(q)<-cutoff)[0] # get indices of genes with low l1-norm values
 	upregulated_idx = np.where(np.array(q)>cutoff)[0] # get indices of genes with high l1-norm values
@@ -3126,8 +3251,7 @@ def diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True, us
 
 	# render l1norm values
 	x = np.arange(len(q))
-	idx = np.argsort(q)
-	y = [q[i] for i in idx]
+	y = q
 	plt.scatter(x, y, s=.1, alpha=1)
 	plt.axhline(y=cutoff, color='red', linewidth=.5, label='Cutoff')
 	plt.axhline(y=-cutoff, color='red', linewidth=.5)
@@ -3141,7 +3265,163 @@ def diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True, us
 	
 	if renderhists == True: # if variable is True, then start histogram rendering
 		dname = 'diffexp/%d_%s/hists/' % (refcomp, samplename) # define directory name
-		shutil.rmtree(os.path.join(pop['output'], dname))
+		try:
+			shutil.rmtree(os.path.join(pop['output'], dname))
+		except:
+			pass
+		mkdir(os.path.join(pop['output'], dname)) # create directory if needed
+		for lbl,i in zip(labels, lidx): # for each gene index in final list
+			if usefiltered==False:
+				gname = pop['genes'][i] 
+			elif usefiltered==True:
+				gname = pop['filtered_genes'][i] 
+
+			arrref = subref[i,:]
+			arrtest = subtest[i,:]
+			maxref, maxtest = np.max(arrref), np.max(arrtest)
+			max_ = max(maxref,maxtest)
+
+			nbins = 20
+			bref, beref = np.histogram(arrref, bins=nbins, range=(0,max_))
+			btest, betest = np.histogram(arrtest, bins=nbins, range=(0,max_))
+			bref = bref/len(arrref)
+			btest = btest/len(arrtest)
+
+			width = beref[-1]/nbins
+			plt.bar(beref[:-1], bref, label=xref, alpha=.3, width=width)
+			plt.bar(beref[:-1], btest, label=xtest, alpha=0.3, width=width)
+			plt.legend()
+			plt.xlabel('Normalized counts')
+			plt.ylabel('Percentage of cells in subpopulation')
+			plt.title('Gene %s\nSubpopulation #%d of %s' % (gname, refcomp, xref))
+
+			filename = '%s_%s' % (lbl, gname)
+			plt.savefig(os.path.join(pop['output'], dname, '%s.png' % filename), dpi=200, bbox_inches='tight')
+			plt.close()
+
+	lidx = [genes[i] for i in lidx]
+	plot_heatmap(pop, refcomp, lidx, clustersamples=False, clustercells=True, savename='%d_%s_only' % (refcomp, sample), figsize=(15,15), cmap='Purples', samplelimits=False, scalegenes=True, only=sample, equalncells=True)
+	return lidx
+
+def all_diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True, usefiltered=True):
+	'''
+	Find  differentially expressed genes between a refernce subpopulation
+	and the subpopulation of a sample that aligned to it
+
+	Parameters
+	----------
+	refcomp : int
+		Subpopulation number of the reference sample's GMM
+	sample : str
+		Name of the sample to compare
+	nbins : int, optional
+		Number of histogram bins to use
+	nleft : int
+		Number of underexpressed genes to retrieve
+	nright : int
+		Number of overexpressed genes to retrieve
+	renderhists : bool
+		Render histograms or not for the top differentially expressed genes
+	usefiltered : bool
+		Wether to use filtered genes or not. If False, all genes will be used to run the differential expression
+	'''
+	xref = pop['ref'] # get reference sample label
+	ncomps = pop['samples'][xref]['gmm'].n_components-1
+
+	if sample not in pop['order']:
+		raise Exception('Sample name not valid. Use show_samples(pop) to display valid sample names.')
+	if refcomp > ncomps:
+		raise Exception('Component number too high. Must be between 0 and %d' % ncomps)
+
+	xtest = sample # test sample label
+
+	try:
+		arr = pop['samples'][xtest]['alignments'] # get alignments between reference and test
+		irow = np.where(arr[:,1] == refcomp) # get alignment that match reference subpopulation
+		itest = int(arr[irow, 0]) # get test subpopulation number
+	except:
+		raise Exception('Could not retrieve a matching alignment between sample %s and reference component %d' % (sample, refcomp))
+
+	if usefiltered == True:
+		Mref = pop['samples'][xref]['M_norm'] # get filtered reference sample matrix
+		Mtest = pop['samples'][xtest]['M_norm'] # get filtered test sample matrix
+		genes = np.array(pop['filtered_genes']) # get filtered gene labels
+	elif usefiltered == False:
+		Mref = pop['samples'][xref]['M'] # get reference sample matrix
+		Mtest = pop['samples'][xtest]['M'] # get test sample matrix
+		genes = np.array(pop['genes']) # get gene labels
+
+	predictionref = pop['samples'][xref]['gmm'].predict(pop['samples'][xref]['C']) # get ref cell assignments
+	predictiontest = pop['samples'][xtest]['gmm'].predict(pop['samples'][xtest]['C']) # get test cell assignments
+
+	idxref = np.where(predictionref==refcomp)[0] # get matching indices
+	idxtest = np.where(predictiontest==itest)[0] # get matching indices
+	subref = Mref[:,idxref] # subset cells that match subpopulation refcomp
+	subtest = Mtest[:,idxtest] # subset cells that match subpopulation itest
+	subref = subref.toarray() # from sparse matrix to numpy array for slicing efficiency
+	subtest = subtest.toarray() # from sparse matrix to numpy array for slicing efficiency
+	
+	with Pool(pop['ncores']) as p:
+		q = np.array(p.starmap(l1norm, [(ig, subref[ig,:], subtest[ig,:], nbins) for ig in range(subref.shape[0])])) # for each gene idx ig, call the l1norm function
+
+	idx = np.argsort(q)
+	q = q[idx]
+	genes = genes[idx]
+
+	downregulated_idx = np.where(np.array(q)<-cutoff)[0] # get indices of genes with low l1-norm values
+	upregulated_idx = np.where(np.array(q)>cutoff)[0] # get indices of genes with high l1-norm values
+	downregulated = [genes[i] for i in downregulated_idx] # get gene labels
+	upregulated = [genes[i] for i in upregulated_idx] # get gene labels
+	
+	if len(downregulated+upregulated) == 0:
+		raise Exception('Cutoff value did not retrieve any gene. Please modify cutoff')
+
+	# gsea
+	currpath = os.path.abspath(os.path.dirname(__file__)) # get current path of this file to find the genesets
+	geneset = 'c5bp' # name of the geneset file
+	d = load_dict(os.path.join(currpath, "gsea/%s.npy" % geneset)) # load geneset dictionar
+	ngenesets = 20
+
+	dr_genesets = enrichment_analysis(pop, d, downregulated, len(pop['genes']), ngenesets) # find genesets pvalues for the list of downregulated genes
+	ur_genesets = enrichment_analysis(pop, d, upregulated, len(pop['genes']), ngenesets) # find genesets pvalues for the list of upregulated genes
+
+	lidx = np.concatenate([downregulated_idx,upregulated_idx])
+	labels = ['downregulated']*len(downregulated_idx)+['upregulated']*len(upregulated_idx)
+
+	samplename = sample.replace('/','') # remove slash char to not mess up the folder path
+	dname = 'diffexp/%d_%s/' % (refcomp, samplename) # define directory name
+	mkdir(os.path.join(pop['output'], dname)) # create directory if needed
+	with open(os.path.join(pop['output'], dname, 'downregulated_genes.txt'),'w') as fout:
+		fout.write('Downregulated genes for sample %s relative to the reference sample\n\n' % sample)
+		fout.write('\n'.join(downregulated)) # save list of downregulated gene names
+		fout.write('\n\nMatching genesets:\n\n')
+		fout.write('\n'.join(dr_genesets))
+	with open(os.path.join(pop['output'], dname, 'upregulated_genes.txt'),'w') as fout:
+		fout.write('Upregulated genes for sample: %s relative to the reference sample\n\n' % sample)
+		fout.write('\n'.join(upregulated)) # save list of upregulated gene names
+		fout.write('\n\nMatching genesets:\n\n')
+		fout.write('\n'.join(ur_genesets))
+
+	# render l1norm values
+	x = np.arange(len(q))
+	y = q
+	plt.scatter(x, y, s=.1, alpha=1)
+	plt.axhline(y=cutoff, color='red', linewidth=.5, label='Cutoff')
+	plt.axhline(y=-cutoff, color='red', linewidth=.5)
+	plt.xticks([])	
+	plt.ylabel('l1-norm')
+	plt.xlabel('Genes')
+	plt.legend()
+	filename = 'l1norm_values'
+	plt.savefig(os.path.join(pop['output'], dname, '%s.png' % filename), dpi=200, bbox_inches='tight')
+	plt.close()
+	
+	if renderhists == True: # if variable is True, then start histogram rendering
+		dname = 'diffexp/%d_%s/hists/' % (refcomp, samplename) # define directory name
+		try:
+			shutil.rmtree(os.path.join(pop['output'], dname))
+		except:
+			pass
 		mkdir(os.path.join(pop['output'], dname)) # create directory if needed
 		for lbl,i in zip(labels, lidx): # for each gene index in final list
 			if usefiltered==False:
