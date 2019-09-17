@@ -3211,17 +3211,37 @@ def diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True, us
 	with Pool(pop['ncores']) as p:
 		q = np.array(p.starmap(l1norm, [(ig, subref[ig,:], subtest[ig,:], nbins) for ig in range(subref.shape[0])])) # for each gene idx ig, call the l1norm function
 
+	# reorder variables based on l1norm values order
 	idx = np.argsort(q)
 	q = q[idx]
 	genes = genes[idx]
+	subref = subref[idx,:]
+	subtest = subtest[idx,:]
+
+	# render l1norm values
+	samplename = sample.replace('/','') # remove slash char to not mess up the folder path
+	dname = 'diffexp/%d_%s/' % (refcomp, samplename) # define directory name
+	mkdir(os.path.join(pop['output'], dname)) # create directory if needed
+	x = np.arange(len(q))
+	y = q
+	plt.scatter(x, y, s=.1, alpha=1)
+	plt.axhline(y=cutoff, color='red', linewidth=.5, label='Cutoff')
+	plt.axhline(y=-cutoff, color='red', linewidth=.5)
+	plt.xticks([])	
+	plt.ylabel('l1-norm')
+	plt.xlabel('Genes')
+	plt.legend()
+	filename = 'l1norm_values'
+	filename = os.path.join(pop['output'], dname, '%s.png' % filename)
+	plt.savefig(filename, dpi=200, bbox_inches='tight')
+	plt.close()
 
 	downregulated_idx = np.where(np.array(q)<-cutoff)[0] # get indices of genes with low l1-norm values
 	upregulated_idx = np.where(np.array(q)>cutoff)[0] # get indices of genes with high l1-norm values
 	downregulated = [genes[i] for i in downregulated_idx] # get gene labels
 	upregulated = [genes[i] for i in upregulated_idx] # get gene labels
-	
 	if len(downregulated+upregulated) == 0:
-		raise Exception('Cutoff value did not retrieve any gene. Please modify cutoff')
+		raise Exception('Cutoff value did not retrieve any gene. Please modify cutoff based on %s' % filename)
 
 	# gsea
 	currpath = os.path.abspath(os.path.dirname(__file__)) # get current path of this file to find the genesets
@@ -3235,9 +3255,6 @@ def diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True, us
 	lidx = np.concatenate([downregulated_idx,upregulated_idx])
 	labels = ['downregulated']*len(downregulated_idx)+['upregulated']*len(upregulated_idx)
 
-	samplename = sample.replace('/','') # remove slash char to not mess up the folder path
-	dname = 'diffexp/%d_%s/' % (refcomp, samplename) # define directory name
-	mkdir(os.path.join(pop['output'], dname)) # create directory if needed
 	with open(os.path.join(pop['output'], dname, 'downregulated_genes.txt'),'w') as fout:
 		fout.write('Downregulated genes for sample %s relative to the reference sample\n\n' % sample)
 		fout.write('\n'.join(downregulated)) # save list of downregulated gene names
@@ -3248,20 +3265,6 @@ def diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True, us
 		fout.write('\n'.join(upregulated)) # save list of upregulated gene names
 		fout.write('\n\nMatching genesets:\n\n')
 		fout.write('\n'.join(ur_genesets))
-
-	# render l1norm values
-	x = np.arange(len(q))
-	y = q
-	plt.scatter(x, y, s=.1, alpha=1)
-	plt.axhline(y=cutoff, color='red', linewidth=.5, label='Cutoff')
-	plt.axhline(y=-cutoff, color='red', linewidth=.5)
-	plt.xticks([])	
-	plt.ylabel('l1-norm')
-	plt.xlabel('Genes')
-	plt.legend()
-	filename = 'l1norm_values'
-	plt.savefig(os.path.join(pop['output'], dname, '%s.png' % filename), dpi=200, bbox_inches='tight')
-	plt.close()
 	
 	if renderhists == True: # if variable is True, then start histogram rendering
 		dname = 'diffexp/%d_%s/hists/' % (refcomp, samplename) # define directory name
@@ -3271,10 +3274,7 @@ def diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True, us
 			pass
 		mkdir(os.path.join(pop['output'], dname)) # create directory if needed
 		for lbl,i in zip(labels, lidx): # for each gene index in final list
-			if usefiltered==False:
-				gname = pop['genes'][i] 
-			elif usefiltered==True:
-				gname = pop['filtered_genes'][i] 
+			gname = genes[i]
 
 			arrref = subref[i,:]
 			arrtest = subtest[i,:]
