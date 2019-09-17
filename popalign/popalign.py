@@ -3022,7 +3022,7 @@ def samples_grid(pop, method='tsne', figsize=(20,20), size_background=.1, size_s
 		xsub = x[start:end] # splice x coordinates
 		ysub = y[start:end] # splice y coordinates
 		start = end # update start index
-		ax.scatter(x, y, c='lightgrey', s=.size_background) # plot all cells as background
+		ax.scatter(x, y, c='lightgrey', s=size_background) # plot all cells as background
 		ax.scatter(xsub, ysub, c='purple', s=size_samples) # plot sample cells on top
 		ax.set(xticks=[]) # remove x ticks
 		ax.set(yticks=[]) # remove y ticks
