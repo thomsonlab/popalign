@@ -222,6 +222,15 @@ def load_samples(samples, genes=None, outputfolder='output', existing_obj=None):
 		obj['samples'][x]['M'] = sio.mmread(samples[x]).tocsc()
 		obj['order'].append(x) # add sample name to list to always call them in the same order for consistency	
 	
+	# save start and end of cell indices of sample relative to other samples
+	start = 0
+	end = 0
+	for x in obj['order']:
+		n = obj['samples'][x]['M'].shape[1]
+		end = start+n
+		obj['samples'][x]['indices'] = (start,end)
+		start = end
+
 	obj['nsamples'] = len(obj['order']) # save number of samples
 	obj['output'] = outputfolder # define name of output folder to save results
 	return obj
@@ -313,6 +322,15 @@ def load_multiplexed(matrix, barcodes, metafile, genes=None, outputfolder='outpu
 			idx = [bc_idx[bc] for bc in sample_bcs] # retrieve list of matching indices
 			obj['samples'][x]['M'] = M[:,idx] # extract matching data from M
 			obj['order'].append(x) # save list of sample names to always call them in the same order for consistency
+
+	# save start and end of cell indices of sample relative to other samples
+	start = 0
+	end = 0
+	for x in obj['order']:
+		n = obj['samples'][x]['M'].shape[1]
+		end = start+n
+		obj['samples'][x]['indices'] = (start,end)
+		start = end
 
 	obj['nsamples'] = len(obj['order']) 
 	obj['output'] = outputfolder
@@ -646,10 +664,15 @@ def removeRBC(pop, species):
 
 	T = otsu(pop, np.concatenate(cellssums)) # find optimal threshold to seperate the low sums from the high sums
 
+	start = 0
+	end = 0
 	for i,x in enumerate(pop['order']): # for each sample
 		idx = np.where(cellssums[i]<=T)[0] # get indices of cells with sums inferior to T
 		pop['samples'][x]['M'] = pop['samples'][x]['M'][:,idx] # select cells
 		pop['samples'][x]['M_norm'] = pop['samples'][x]['M_norm'][:,idx] # select cells
+		end = start+len(idx) # update start and end cell indices
+		pop['samples'][x]['indices'] = (start,end) # update start and end cell indices
+		start = end # update start and end cell indices
 		#print(x, '%d cells kept out of %d' % (len(idx), len(cellssums[i])))
 
 '''
@@ -2147,7 +2170,7 @@ def plot_deltas(pop, figsize): # generate plot mu and delta w plots
 				arr = pop['samples'][x]['alignments'] # get the alignments between x and the reference
 				try:
 					# parse the alignments for the sample's main GMM
-					irow = np.where(arr[:,1] == i) # try to get the row where the ref comp number matches i
+					irow = np.where(arr[:,1] == i)[0] # try to get the row where the ref comp number matches i
 					itest = int(arr[irow, 0]) # get test comp number from row
 					mu_test = pop['samples'][x]['means_genes'][itest] # get the test comp mean value
 					w_test = pop['samples'][x]['gmm'].weights_[itest] # get the test comp weight value
@@ -2227,6 +2250,151 @@ def plot_deltas(pop, figsize): # generate plot mu and delta w plots
 		lbl = lbl.replace('/','')
 		plt.savefig(os.path.join(pop['output'], dname, 'deltas_comp%d_%s.png' % (i,lbl)), dpi=200, bbox_inches='tight')
 		plt.close()
+"""
+def plot_deltas_test(pop, figsize):
+	'''
+	Genere delta mu and delta w plots for the computed alignments
+
+	Parameters
+	----------
+	pop : dict
+		Popalign object
+	figsize : tuple, optional
+		Size of the figure. Default is (10,10)
+	'''
+	dname = 'deltas'
+	mkdir(os.path.join(pop['output'], dname))
+
+	ref = pop['ref'] # get reference sample name
+	
+	list_ = pop['samples'][ref]['gmm_types']
+	if list_ == None:
+		list_ = [str(i) for i in range(pop['samples'][ref]['gmm'].n_components)]
+
+	for i, lbl in enumerate(list_): # for each reference subpopulation
+		samplelbls = []
+		xcoords = []
+		delta_mus = []
+		delta_ws = []
+		mean_mus = []
+		mean_ws = []
+		stds_mus = []
+		stds_ws = []
+		mu_ref = pop['samples'][ref]['means_genes'][i] # get the mean i value
+		w_ref = pop['samples'][ref]['gmm'].weights_[i] # get the weight i value
+
+		k = 0
+		for x in pop['order']: # for each sample x
+			added = False
+			tmp_delta_mus = []
+			tmp_delta_ws = []
+
+			# parse the potential replicates of the reference sample
+			if x == ref:
+				if pop['nreplicates'] >= 1: # if gmm replicates exist
+					for j in range(pop['nreplicates']):
+						arr = pop['samples'][x]['replicates'][j]['alignments']
+						try:
+							irow = np.where(arr[:,1] == i)[0] # try to get the row where the ref comp number matches i
+							itest = int(arr[irow, 0]) # get test comp number from row
+							mu_test = pop['samples'][x]['replicates'][j]['means_genes'][itest] # get the test comp mean value
+							w_test = pop['samples'][x]['replicates'][j]['gmm'].weights_[itest] # get the test comp weight value
+							samplelbls.append(x)
+							tmp_delta_mus.append(np.linalg.norm([np.array(mu_test).flatten() - np.array(mu_ref).flatten()], ord='fro')) # store delta mu
+							tmp_delta_ws.append((w_test - w_ref)*100) # store delta w
+							xcoords.append(k)
+							added = True
+						except:
+							pass
+			else:
+				arr = pop['samples'][x]['alignments'] # get the alignments between x and the reference
+				try:
+					# parse the alignments for the sample's main GMM
+					irow = np.where(arr[:,1] == i)[0] # try to get the row where the ref comp number matches i
+					if len(irow) <=1:
+						itest = int(arr[irow, 0]) # get test comp number from row
+						mu_test = pop['samples'][x]['means_genes'][itest] # get the test comp mean value
+						w_test = pop['samples'][x]['gmm'].weights_[itest] # get the test comp weight value
+						samplelbls.append(x) # store test sample label x
+						tmp_delta_mus.append(np.linalg.norm([np.array(mu_test).flatten() - np.array(mu_ref).flatten()], ord='fro')) # store delta mu
+						tmp_delta_ws.append((w_test - w_ref)*100) # store delta w
+						xcoords.append(k)
+						added = True
+					elif len(irow)>1:
+						for subirow in irow:
+
+
+					# if the sample's main GMM has an alignment for that reference component, try adding replicates
+					if pop['nreplicates'] >= 1: # if gmm replicates exist
+						for j in range(pop['nreplicates']):
+							arr = pop['samples'][x]['replicates'][j]['alignments']
+							try:
+								irow = np.where(arr[:,1] == i) # try to get the row where the ref comp number matches i
+								itest = int(arr[irow, 0]) # get test comp number from row
+								mu_test = pop['samples'][x]['replicates'][j]['means_genes'][itest] # get the test comp mean value
+								w_test = pop['samples'][x]['replicates'][j]['gmm'].weights_[itest] # get the test comp weight value
+								samplelbls.append(x)
+								tmp_delta_mus.append(np.linalg.norm([np.array(mu_test).flatten() - np.array(mu_ref).flatten()], ord='fro')) # store delta mu
+								tmp_delta_ws.append((w_test - w_ref)*100) # store delta w
+								xcoords.append(k)
+								added = True
+							except:
+								pass
+				except:
+					pass
+
+			if added == True:
+				k += 1
+				delta_mus += tmp_delta_mus
+				delta_ws += tmp_delta_ws
+				mean_mus.append(np.mean(tmp_delta_mus))
+				mean_ws.append(np.mean(tmp_delta_ws))
+				stds_mus.append(np.std(tmp_delta_mus))
+				stds_ws.append(np.std(tmp_delta_ws))
+				
+		seen = set()
+		seen_add = seen.add
+		xlbls = [x for x in samplelbls if not (x in seen or seen_add(x))]
+		x = [x for x in xcoords if not (x in seen or seen_add(x))]
+
+		# reorder by delta mu mean
+		idx = np.argsort(mean_mus)
+		mean_mus = [mean_mus[i] for i in idx]
+		mean_ws = [mean_ws[i] for i in idx]
+		stds_mus = [stds_mus[i] for i in idx]
+		stds_ws = [stds_ws[i] for i in idx]
+		xlbls = [xlbls[i] for i in idx]
+
+		'''
+		newxcoords = []
+		for value in xcoords:
+			newxcoords.append(np.where(idx==value)[0][0])
+		xcoords = newxcoords
+		'''
+		xcoords = [np.where(idx==value)[0][0] for value in xcoords]
+
+		plt.figure(figsize=figsize)
+
+		ax1 = plt.subplot(2,1,1)
+		plt.title('Reference sample %s\nComponent %d: %s' %(ref, i, lbl))
+		plt.scatter(xcoords, delta_ws, s=2, c='k')
+		plt.errorbar(x, mean_ws, stds_ws, color='k', elinewidth=.5, capsize=1, fmt=' ', label='Standard deviation')
+		plt.xticks([])
+		plt.ylabel('Δ\u03C9 (%)')
+
+		plt.subplot(2,1,2)
+		plt.scatter(xcoords, delta_mus, s=2,c='k')
+		plt.errorbar(x, mean_mus, stds_mus, color='k', elinewidth=.5, capsize=1, fmt=' ', label='Standard deviation')
+		plt.xticks(x, xlbls, rotation=90)
+		
+		plt.ylabel('Δ\u03BC')
+
+		plt.tight_layout()
+		
+		lbl = lbl.replace('/','')
+		plt.savefig(os.path.join(pop['output'], dname, 'deltas_comp%d_%s.png' % (i,lbl)), dpi=200, bbox_inches='tight')
+		plt.close()
+"""
 
 def aligner(refgmm, testgmm, method):
 	'''
@@ -2920,7 +3088,7 @@ def plot_genes_gmm_cells(pop, sample='', genelist=[], savename='', metric='corre
 	plt.savefig(os.path.join(pop['output'], dname, '%s_cells.png' % savename), dpi=200, bbox_inches='tight')
 	plt.close()
 
-def scatter(pop, method='umap', color=None, size=.1):
+def scatter(pop, method='umap', sample=None, compnumber=None, color=None, size=.1):
 	'''
 	Run an embedding algorithm and plot the data in a scatter plot
 
@@ -2945,34 +3113,65 @@ def scatter(pop, method='umap', color=None, size=.1):
 		pop[method] = X # store embedded coordinates
 	else: # if method has been run before
 		X = pop[method] # retrieve embedded coordinates
-
-	if color == 'samples': # color scatter plot by samples
-		c = [pop['samples'][x]['C'].shape[0] for x in pop['order']] # get number of cells per sample
-		c = np.concatenate([[i]*x for i,x in enumerate(c)]) # color vector
-		cmap = 'tab20'
-	elif color: # if color value is a gene name
+		
+	if sample != None: # if a sample is provided
+		M = pop['samples'][sample]['M'] # get matrix
+		idx = pop['samples'][sample]['indices'] # get cells indices of that sample
+		start = idx[0] # get start index
+		end = idx[1] # get end index
+		xsample = X[start:end,0] # subset embedded coordinates
+		ysample = X[start:end,1] # subset embedded coordinates
+		
+		if compnumber != None:
+			gmm = pop['samples'][sample]['gmm']
+			C = pop['samples'][sample]['C']
+			prediction = gmm.predict(C)
+			idx = np.where(prediction==compnumber)[0]
+			M = M[:,idx] # only keep cells from component
+			xsample = xsample[idx]
+			ysample = ysample[idx]
+	else:
+		M = cat_data(pop,'M')
+		
+	if color:
 		try:
 			ig = np.where(pop['genes']==color)[0][0] # get gene index if valid gene name
-			c = cat_data(pop,'M')[ig,:].toarray().flatten() # get expression values of gene
+			c = M[ig,:].toarray().flatten() # get expression values of gene
 			cmap = 'magma'
 		except:
 			raise Exception('Gene name not valid') # raise exception if gene name not valid
-	else: # if None
+	else:
 		c = 'red'
 		cmap = None
-
-	plt.scatter(X[:,0], X[:,1], s=size, c=c, cmap=cmap) # plot points in embedded space
+	
+	if not sample:
+		plt.scatter(X[:,0], X[:,1], c=c, cmap=cmap, s=size)
+	else:
+		plt.scatter(X[:,0], X[:,1], c='lightgrey', cmap=cmap, s=size)
+		plt.scatter(xsample, ysample, c=c, cmap=cmap, s=size)
+	
 	plt.xticks([]) # remove x ticks
 	plt.yticks([]) # remove y ticks
 	plt.xlabel('%s 1' % method) # x label
+	
 	plt.ylabel('%s 2' % method) # y label
-	try:
-		plt.title('%s plot\nColor:%s' % (method, color)) # title
+	
+	# update filename and plot title
+	title = '%s plot' % method
+	filename = '%s' % method
+	if color:
+		title += ', marker: %s' % color
+		filename += '_%s' % color
 		plt.colorbar() # display colorbar
-		filename = '%s_%s' % (method, color) # define file name
-	except:
-		plt.title('%s plot' % method) # title
-		filename = '%s' % method # define file name
+	if sample:
+		title += '\n%s' % sample
+		filename += '_%s' % sample
+	if compnumber:
+		title += 'Component #%d' % compnumber
+		filename += '_comp%d' % compnumber
+	filename += '.png'
+	plt.title(title)
+	
 	dname = 'embedding/markers/' # directory name
 	mkdir(os.path.join(pop['output'], dname)) # create directory if needed
 	plt.savefig(os.path.join(pop['output'], dname, '%s.png' % filename), dpi=200, bbox_inches='tight') # save figure
