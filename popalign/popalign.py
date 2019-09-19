@@ -3163,13 +3163,12 @@ def scatter(pop, method='umap', sample=None, compnumber=None, color=None, size=.
 		title += ', marker: %s' % color
 		filename += '_%s' % color
 		plt.colorbar() # display colorbar
-	if sample:
+	if sample != None:
 		title += '\n%s' % sample
 		filename += '_%s' % sample
-	if compnumber:
-		title += 'Component #%d' % compnumber
+	if compnumber != None:
+		title += ' Component #%d' % compnumber
 		filename += '_comp%d' % compnumber
-	filename += '.png'
 	plt.title(title)
 	
 	dname = 'embedding/markers/' # directory name
