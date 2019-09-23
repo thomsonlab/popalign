@@ -3382,7 +3382,7 @@ def diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True, us
 
 	try:
 		arr = pop['samples'][xtest]['alignments'] # get alignments between reference and test
-		irow = np.where(arr[:,1] == refcomp) # get alignment that match reference subpopulation
+		irow = np.where(arr[:,1] == refcomp)[0] # get alignment that match reference subpopulation
 		itest = int(arr[irow, 0]) # get test subpopulation number
 	except:
 		raise Exception('Could not retrieve a matching alignment between sample %s and reference component %d' % (sample, refcomp))
@@ -3403,6 +3403,159 @@ def diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True, us
 	idxtest = np.where(predictiontest==itest)[0] # get matching indices
 	subref = Mref[:,idxref] # subset cells that match subpopulation refcomp
 	subtest = Mtest[:,idxtest] # subset cells that match subpopulation itest
+	subref = subref.toarray() # from sparse matrix to numpy array for slicing efficiency
+	subtest = subtest.toarray() # from sparse matrix to numpy array for slicing efficiency
+	
+	with Pool(pop['ncores']) as p:
+		q = np.array(p.starmap(l1norm, [(ig, subref[ig,:], subtest[ig,:], nbins) for ig in range(subref.shape[0])])) # for each gene idx ig, call the l1norm function
+
+	# reorder variables based on l1norm values order
+	idx = np.argsort(q)
+	q = q[idx]
+	genes = genes[idx]
+	subref = subref[idx,:]
+	subtest = subtest[idx,:]
+
+	# render l1norm values
+	samplename = sample.replace('/','') # remove slash char to not mess up the folder path
+	dname = 'diffexp/%d_%s/' % (refcomp, samplename) # define directory name
+	mkdir(os.path.join(pop['output'], dname)) # create directory if needed
+	x = np.arange(len(q))
+	y = q
+	plt.scatter(x, y, s=.1, alpha=1)
+	plt.axhline(y=cutoff, color='red', linewidth=.5, label='Cutoff')
+	plt.axhline(y=-cutoff, color='red', linewidth=.5)
+	plt.xticks([])	
+	plt.ylabel('l1-norm')
+	plt.xlabel('Genes')
+	plt.legend()
+	filename = 'l1norm_values'
+	filename = os.path.join(pop['output'], dname, '%s.png' % filename)
+	plt.savefig(filename, dpi=200, bbox_inches='tight')
+	plt.close()
+
+	downregulated_idx = np.where(np.array(q)<-cutoff)[0] # get indices of genes with low l1-norm values
+	upregulated_idx = np.where(np.array(q)>cutoff)[0] # get indices of genes with high l1-norm values
+	downregulated = [genes[i] for i in downregulated_idx] # get gene labels
+	upregulated = [genes[i] for i in upregulated_idx] # get gene labels
+	if len(downregulated+upregulated) == 0:
+		raise Exception('Cutoff value did not retrieve any gene. Please modify cutoff based on %s' % filename)
+
+	# gsea
+	currpath = os.path.abspath(os.path.dirname(__file__)) # get current path of this file to find the genesets
+	geneset = 'c5bp' # name of the geneset file
+	d = load_dict(os.path.join(currpath, "gsea/%s.npy" % geneset)) # load geneset dictionar
+	ngenesets = 20
+
+	dr_genesets = enrichment_analysis(pop, d, downregulated, len(pop['genes']), ngenesets) # find genesets pvalues for the list of downregulated genes
+	ur_genesets = enrichment_analysis(pop, d, upregulated, len(pop['genes']), ngenesets) # find genesets pvalues for the list of upregulated genes
+
+	lidx = np.concatenate([downregulated_idx,upregulated_idx])
+	labels = ['downregulated']*len(downregulated_idx)+['upregulated']*len(upregulated_idx)
+
+	with open(os.path.join(pop['output'], dname, 'downregulated_genes.txt'),'w') as fout:
+		fout.write('Downregulated genes for sample %s relative to the reference sample\n\n' % sample)
+		fout.write('\n'.join(downregulated)) # save list of downregulated gene names
+		fout.write('\n\nMatching genesets:\n\n')
+		fout.write('\n'.join(dr_genesets))
+	with open(os.path.join(pop['output'], dname, 'upregulated_genes.txt'),'w') as fout:
+		fout.write('Upregulated genes for sample: %s relative to the reference sample\n\n' % sample)
+		fout.write('\n'.join(upregulated)) # save list of upregulated gene names
+		fout.write('\n\nMatching genesets:\n\n')
+		fout.write('\n'.join(ur_genesets))
+	
+	if renderhists == True: # if variable is True, then start histogram rendering
+		dname = 'diffexp/%d_%s/hists/' % (refcomp, samplename) # define directory name
+		try:
+			shutil.rmtree(os.path.join(pop['output'], dname))
+		except:
+			pass
+		mkdir(os.path.join(pop['output'], dname)) # create directory if needed
+		for lbl,i in zip(labels, lidx): # for each gene index in final list
+			gname = genes[i]
+
+			arrref = subref[i,:]
+			arrtest = subtest[i,:]
+			maxref, maxtest = np.max(arrref), np.max(arrtest)
+			max_ = max(maxref,maxtest)
+
+			nbins = 20
+			bref, beref = np.histogram(arrref, bins=nbins, range=(0,max_))
+			btest, betest = np.histogram(arrtest, bins=nbins, range=(0,max_))
+			bref = bref/len(arrref)
+			btest = btest/len(arrtest)
+
+			width = beref[-1]/nbins
+			plt.bar(beref[:-1], bref, label=xref, alpha=.3, width=width)
+			plt.bar(beref[:-1], btest, label=xtest, alpha=0.3, width=width)
+			plt.legend()
+			plt.xlabel('Normalized counts')
+			plt.ylabel('Percentage of cells in subpopulation')
+			plt.title('Gene %s\nSubpopulation #%d of %s' % (gname, refcomp, xref))
+
+			filename = '%s_%s' % (lbl, gname)
+			plt.savefig(os.path.join(pop['output'], dname, '%s.png' % filename), dpi=200, bbox_inches='tight')
+			plt.close()
+
+	lidx = [genes[i] for i in lidx]
+	plot_heatmap(pop, refcomp, lidx, clustersamples=False, clustercells=True, savename='%d_%s_only' % (refcomp, sample), figsize=(15,15), cmap='Purples', samplelimits=False, scalegenes=True, only=sample, equalncells=True)
+	return lidx
+
+def diffexp_testcomp(pop, testcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True, usefiltered=True):
+	'''
+	Find  differentially expressed genes between a refernce subpopulation
+	and the subpopulation of a sample that aligned to it
+
+	Parameters
+	----------
+	refcomp : int
+		Subpopulation number of the reference sample's GMM
+	sample : str
+		Name of the sample to compare
+	nbins : int, optional
+		Number of histogram bins to use
+	nleft : int
+		Number of underexpressed genes to retrieve
+	nright : int
+		Number of overexpressed genes to retrieve
+	renderhists : bool
+		Render histograms or not for the top differentially expressed genes
+	usefiltered : bool
+		Wether to use filtered genes or not. If False, all genes will be used to run the differential expression
+	'''
+	xref = pop['ref'] # get reference sample label
+	ncomps = pop['samples'][xref]['gmm'].n_components-1
+
+	if sample not in pop['order']:
+		raise Exception('Sample name not valid. Use show_samples(pop) to display valid sample names.')
+	if refcomp > ncomps:
+		raise Exception('Component number too high. Must be between 0 and %d' % ncomps)
+
+	xtest = sample # test sample label
+
+	try:
+		arr = pop['samples'][xtest]['alignments'] # get alignments between reference and test
+		irow = np.where(arr[:,0] == testcomp)[0][0] # get alignment that matches test subpopulation
+		refcomp = int(arr[irow,1])# get ref subpopulation number
+	except:
+		raise Exception('Could not retrieve a matching alignment for sample %s, component %d' % (sample, refcomp))
+
+	if usefiltered == True:
+		Mref = pop['samples'][xref]['M_norm'] # get filtered reference sample matrix
+		Mtest = pop['samples'][xtest]['M_norm'] # get filtered test sample matrix
+		genes = np.array(pop['filtered_genes']) # get filtered gene labels
+	elif usefiltered == False:
+		Mref = pop['samples'][xref]['M'] # get reference sample matrix
+		Mtest = pop['samples'][xtest]['M'] # get test sample matrix
+		genes = np.array(pop['genes']) # get gene labels
+
+	predictionref = pop['samples'][xref]['gmm'].predict(pop['samples'][xref]['C']) # get ref cell assignments
+	predictiontest = pop['samples'][xtest]['gmm'].predict(pop['samples'][xtest]['C']) # get test cell assignments
+
+	idxref = np.where(predictionref==refcomp)[0] # get matching indices
+	idxtest = np.where(predictiontest==testcomp)[0] # get matching indices
+	subref = Mref[:,idxref] # subset cells that match subpopulation refcomp
+	subtest = Mtest[:,idxtest] # subset cells that match subpopulation testcomp
 	subref = subref.toarray() # from sparse matrix to numpy array for slicing efficiency
 	subtest = subtest.toarray() # from sparse matrix to numpy array for slicing efficiency
 	
