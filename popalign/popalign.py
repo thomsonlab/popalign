@@ -1554,7 +1554,7 @@ def render_model(pop, name, figsizesingle):
 	plt.close()
 	return sample_density
 
-def grid_rendering(pop, q, figsize):
+def grid_rendering(pop, q, figsize, samples):
 	'''
 	Generate a grid plot of gmm renderings
 
@@ -1588,10 +1588,10 @@ def grid_rendering(pop, q, figsize):
 	x1 = np.linspace(xlim[0], xlim[1], nbins)
 	x2 = np.linspace(ylim[0], ylim[1], nbins)
 
-	nr, nc = nr_nc(len(pop['order']))
+	nr, nc = nr_nc(len(samples))
 	fig, axes = plt.subplots(nr,nc,figsize=figsize)
 	axes = axes.flatten()
-	for i, name in enumerate(pop['order']):
+	for i, name in enumerate(samples):
 		ax = axes[i]
 		pp = ax.pcolor(x1, x2, q[i], cmap=cmap, vmin=cbarmin, vmax=cbarmax)
 		pp.set_edgecolor('face')
@@ -1604,7 +1604,7 @@ def grid_rendering(pop, q, figsize):
 		if i >= len(pop['order'])-nc:
 			ax.set(xlabel='PC%d' % (x+1))
 
-	rr = len(axes)-len(pop['order']) # count how many empty plots in grid
+	rr = len(axes)-len(samples) # count how many empty plots in grid
 	for i in range(1,rr+1):
 		ax = axes[-i]
 		ax.axis('off') # clear empty axis from plot
@@ -1639,7 +1639,7 @@ def grid_rendering(pop, q, figsize):
 	plt.close()
 	'''
 
-def render_models(pop, figsizegrouped, figsizesingle, mode='grouped'):
+def render_models(pop, figsizegrouped, figsizesingle, samples, mode='grouped'):
 	'''
 	Parameters
 	----------
@@ -1659,9 +1659,10 @@ def render_models(pop, figsizegrouped, figsizesingle, mode='grouped'):
 		sd = render_model(pop, 'unique_gmm', figsizesingle)
 	else:
 		with Pool(pop['ncores']) as p:
-			q = p.starmap(render_model, [(pop, x, figsizesingle) for x in pop['order']])
+			q = p.starmap(render_model, [(pop, x, figsizesingle) for x in samples])
 		if mode == 'grouped':
-			grid_rendering(pop, q, figsizegrouped)	
+			if len(samples)>1:
+				grid_rendering(pop, q, figsizegrouped, samples)	
 
 def build_single_GMM(k, C, reg_covar):
 	'''
@@ -1694,7 +1695,7 @@ def build_single_GMM(k, C, reg_covar):
 		verbose_interval=10) # create model
 	return gmm.fit(C) # Fit the data
 
-def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar='auto', rendering='grouped', types=None, figsizegrouped=(20,20), figsizesingle=(5,5)):
+def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar='auto', rendering='grouped', types=None, figsizegrouped=(20,20), figsizesingle=(5,5), only=None):
 	'''
 	Build a Gaussian Mixture Model on feature projected data for each sample
 
@@ -1732,8 +1733,16 @@ def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar=
 	if 'pca' not in pop:
 		pca(pop) # build pca space if necessary
 
-	for i,x in enumerate(pop['order']): # for each sample x
-		print('Building model for %s (%d of %d)' % (x, (i+1), len(pop['order'])))
+	if only != None:
+		if isinstance(only,list):
+			samples = only
+		else:
+			samples = [only]
+	else:
+		samples = pop['order']
+
+	for i,x in enumerate(samples): # for each sample x
+		print('Building model for %s (%d of %d)' % (x, (i+1), len(samples)))
 		C = pop['samples'][x]['C'] # get sample feature data
 		M = pop['samples'][x]['M'] # get sample gene data
 		m = C.shape[0] # number of cells
@@ -1801,7 +1810,7 @@ def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar=
 					pop['samples'][x]['replicates'][j]['gmm_types'] = None
 
 	print('Rendering models')
-	render_models(pop, figsizegrouped=figsizegrouped, figsizesingle=figsizesingle, mode=rendering) # render the models
+	render_models(pop, figsizegrouped=figsizegrouped, figsizesingle=figsizesingle, samples=samples, mode=rendering) # render the models
 
 def build_unique_gmm(pop, ks=(5,20), niters=3, training=0.2, reg_covar=True, types=None, figsize=(6,5)):
 	'''
