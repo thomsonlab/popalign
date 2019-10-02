@@ -1590,7 +1590,7 @@ def grid_rendering(pop, q, figsize):
 
 	nr, nc = nr_nc(len(pop['order']))
 	fig, axes = plt.subplots(nr,nc,figsize=figsize)
-	axes=axes.flatten()
+	axes = axes.flatten()
 	for i, name in enumerate(pop['order']):
 		ax = axes[i]
 		pp = ax.pcolor(x1, x2, q[i], cmap=cmap, vmin=cbarmin, vmax=cbarmax)
@@ -1765,7 +1765,7 @@ def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar=
 		BIC = [gmm.bic(Cvalid) for gmm in q] # compute the BIC for each model with the validation set
 		gmm = q[np.argmin(BIC)] # best gmm is the one that minimizes the BIC
 		pop['samples'][x]['gmm'] = gmm # store gmm
-		pop['samples'][x]['means_genes'] = gmm.means_.dot(pop['W'].T)
+		pop['samples'][x]['means_genes'] = np.array(gmm.means_.dot(pop['W'].T))
 
 		if types != None:
 			try:
@@ -1991,7 +1991,7 @@ def JeffreyDiv(mu1, cov1, mu2, cov2):
 	'''
 	return np.log10(0.5*KL(mu1, cov1, mu2, cov2)+0.5*KL(mu2, cov2, mu1, cov1))
 
-def plot_deltas_backup(pop, figsize): # generate plot mu and delta w plots
+def plot_deltas(pop, figsize): # generate plot mu and delta w plots
 	'''
 	Genere delta mu and delta w plots for the computed alignments
 
@@ -2111,7 +2111,7 @@ def plot_deltas_backup(pop, figsize): # generate plot mu and delta w plots
 		plt.savefig(os.path.join(pop['output'], dname, 'deltas_comp%d_%s.png' % (i,lbl)), dpi=200, bbox_inches='tight')
 		plt.close()
 
-def plot_deltas(pop, figsize): # generate plot mu and delta w plots
+def plot_deltas_test(pop, figsize): # generate plot mu and delta w plots
 	'''
 	Genere delta mu and delta w plots for the computed alignments
 
@@ -2488,6 +2488,11 @@ def align(pop, ref=None, method='conservative', figsizedeltas=(10,10), figsizeen
 		if x != ref: # if sample is not ref
 			testgmm = pop['samples'][x]['gmm'] # get test gmm
 			pop['samples'][x]['alignments'] = aligner(refgmm, testgmm, method) # align gmm to reference
+			try:
+				pop['samples'][x]['test2ref'] = np.zeros(testgmm.n_components, dtype=int)
+				pop['samples'][x]['ref2test'] = np.zeros(testgmm.n_components, dtype=int)
+			except:
+				pass
 
 	plot_deltas(pop, figsizedeltas) # generate plot mu and delta w plots
 	entropy(pop, figsizeentropy)
