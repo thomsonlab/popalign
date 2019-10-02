@@ -2497,6 +2497,84 @@ def align(pop, ref=None, method='conservative', figsizedeltas=(10,10), figsizeen
 	plot_deltas(pop, figsizedeltas) # generate plot mu and delta w plots
 	entropy(pop, figsizeentropy)
 
+
+# Assign sample cells to reference gmm components and compute deltas
+'''
+Parameters
+----------
+'''
+
+def plot_deltas_aa(pop, ref, deltamus, deltaws, figsize, pointsize): 
+    labels = pop['order'] # get sample labels
+    complbls = pop['samples'][ref]['gmm_types'] # get reference component labels
+    
+    dname = 'deltas_assign_align'
+    mkdir(os.path.join(pop['output'], dname))
+    
+    for i,lbl in enumerate(complbls): # for each component i
+        ydmus = deltamus[i,:] # get the delta mu values for component i
+        ydws = deltaws[i,:] # get the delta w values for component i
+        idx = np.where(ydmus==0)[0] # get indices of deltas mus with a value of 0
+        ydmus = np.delete(ydmus, idx) # remove values by index
+        ydws = np.delete(ydws, idx) # remove values by index
+        xlabels = [labels[ii] for ii in range(pop['nsamples']) if ii not in idx] # remove labels by index
+        x = np.arange(len(ydmus)) # create x coordinates vector
+        idx = np.argsort(ydmus) # get indices of sorted delta mu values
+        ydmus = ydmus[idx] # reorder delta mu values
+        ydws = ydws[idx] # reorder delta w values
+        xlabels = [labels[ii] for ii in idx] # reorder label values
+        
+        plt.figure(figsize=figsize)
+        ax1 = plt.subplot(2,1,1)
+        plt.title('Reference sample %s\nComponent %d: %s' %(ref, i, lbl))
+        plt.scatter(x, ydws, s=pointsize, c='k')
+        plt.xticks([])
+        plt.ylabel('Δ\u03C9 (%)')
+
+        plt.subplot(2,1,2)
+        plt.scatter(x, ydmus, s=pointsize, c='k')
+        plt.xticks(x, xlabels, rotation=90)
+        plt.ylabel('Δ\u03BC')
+
+        plt.tight_layout()
+        lbl = lbl.replace('/','')
+        plt.savefig(os.path.join(pop['output'], dname, 'deltas_comp%d_%s.png' % (i,lbl)), dpi=200, bbox_inches='tight')
+        plt.close()
+
+def assign_align(pop, ref=None, figsize=(15,15), pointsize=10):
+    if ref == None:
+        raise Exception('Please provide sample id of reference')
+    elif ref not in pop['samples']:
+        raise Exception('Provided reference not in sample list.\nYou can print the list of available samples with show_samples()')
+    pop['ref'] = ref # assign reference
+    gmm = pop['samples'][ref]['gmm'] # retrieve reference gmm
+    deltamus = np.zeros((gmm.n_components,pop['nsamples']), dtype=float) # array to store delta mu values
+    deltaws = np.zeros((gmm.n_components,pop['nsamples']), dtype=float) # array to store delta w values
+    W = pop['W'] # retrieve W matrix to project feature means later
+
+    for j,x in enumerate(pop['order']): # for each sample
+        if x != ref: # if sample x is different from reference sample
+            C = pop['samples'][x]['C'] # retrieve feature data for sample x
+            prediction = gmm.predict(C) # get cells assignments 
+            pop['samples'][x]['prediction'] = prediction # save cell assignments
+            ntestcells = C.shape[0] # get total number of cells for sample x
+            for i in range(gmm.n_components): # for each reference component i
+                try:
+                    idx = np.where(prediction==i)[0] # get test cells indices that match reference component #i
+                    sub = C[idx,:] # subset test feature data with above indices
+                    mean = sub.mean(axis=0) # get cloud mean
+                    mu_test = np.array(mean.dot(W.T)).flatten() # compute test component mu in filtered gene space
+                    mu_ref = pop['samples'][ref]['means_genes'][i] # get ref component mu in filtered gene space
+                    w_test = len(idx)/ntestcells # compute test cloud w
+                    w_ref = gmm.weights_[i] # get reference component i's w
+                    deltamu = np.linalg.norm([np.array(mu_test).flatten() - np.array(mu_ref).flatten()], ord='fro') # compute delta mu between ref component and test cloud
+                    deltaw = (w_test - w_ref)*100 # compute delta w
+                    deltamus[i,j] = deltamu # store delta mu value
+                    deltaws[i,j] = deltaw # store delta w value
+                except:
+                    pass
+    plot_deltas_aa(pop, ref, deltamus, deltaws, figsize, pointsize) # plot deltas
+
 '''
 Rank functions
 '''
