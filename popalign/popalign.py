@@ -476,7 +476,7 @@ def mu_sigma(M, pop):
 	pop['nzidx'] = nzidx # store index for future gene selection and filtering
 	return lognzcv, lognzmean
 
-def filter(pop, remove_ribsomal=True):
+def filter(pop, remove_ribsomal=True, remove_mitochondrial=True):
 	'''
 	Filter genes from data in `pop`. Discards Ribosomal genes that start with RPS or RPL
 
@@ -489,12 +489,19 @@ def filter(pop, remove_ribsomal=True):
 	'''
 	gene_idx = pop['filter_idx'] # get indices of genes to keep
 	genes = pop['genes'] # get all genes names
-	if remove_ribsomal == True:
+	if remove_ribsomal or remove_mitochondrial:
+		if remove_ribsomal and remove_mitochondrial:
+			prefixes = ('RPS', 'RPL', 'MT-')
+		elif remove_ribsomal:
+			prefixes = ('RPS', 'RPL')
+		elif remove_mitochondrial:
+			prefixes = ('MT-')
+
 		tmp = []
-		print('Removing ribosomal genes')
+		print('Removing ribosomal and/or mitochondrial genes')
 		for i in gene_idx:
 			g = genes[i]
-			if g.startswith('RPS') or g.startswith('RPL'):
+			if g.startswith(prefixes):
 				pass
 			else:
 				tmp.append(i) # only append gene index if gene name doesn't star with RPS or RPL
@@ -2636,7 +2643,6 @@ def score_subpopulations(pop, ref=None, figsize=(10,5)):
 		plt.savefig(os.path.join(pop['output'], dname, 'rankings_%d_%s.png' % (i,subpop)), dpi=200)
 		plt.close()
 
-
 def rank(pop, ref=None, k=100, niter=200, method='LLR', mincells=50, figsize=(10,5)):
 	'''
 	Generate a ranking plot of the samples against a reference model
@@ -2715,6 +2721,13 @@ def rank(pop, ref=None, k=100, niter=200, method='LLR', mincells=50, figsize=(10
 	# emphasize how these control sample score
 	min_ = df[df.labels == ref].scores.min()
 	max_ = df[df.labels == ref].scores.max()
+
+	if method=='LL':
+		ylabel = 'Log-likelihood scores'
+		title = 'Log-likelihood scores against reference model (%s)' % ref
+	else:
+		ylabel = 'Log-likelihood ratio scores'
+		title = 'Log-likelihood ratio scores against reference model (%s)' % ref
 	
 	# create boxplot using the computed order based on score means
 	plt.figure(figsize=figsize)
@@ -2725,12 +2738,12 @@ def rank(pop, ref=None, k=100, niter=200, method='LLR', mincells=50, figsize=(10
 	x = range(len(lblorder))
 	plt.xticks(x, lblorder, rotation=90)
 	plt.xlabel('Samples')
-	plt.ylabel('Log-likelihood scores')
-	plt.title('Likelihood scores against reference model (%s)' % ref)
+	plt.ylabel(ylabel)
+	plt.title(title)
 	plt.tight_layout()
 	dname = 'ranking'
 	mkdir(os.path.join(pop['output'], dname))
-	plt.savefig(os.path.join(pop['output'], dname, 'rankings_boxplot.png'), dpi=200)
+	plt.savefig(os.path.join(pop['output'], dname, '%s_rankings_boxplot.png' % method), dpi=200)
 	plt.close()
 
 	# create stripplot using the computed order based on score means
@@ -2742,13 +2755,13 @@ def rank(pop, ref=None, k=100, niter=200, method='LLR', mincells=50, figsize=(10
 	x = range(len(lblorder))
 	plt.xticks(x, lblorder, rotation=90)
 	plt.xlabel('Samples')
-	plt.ylabel('Log-likelihood scores')
-	plt.title('Likelihood scores against reference model (%s)' % ref)
+	plt.ylabel(ylabel)
+	plt.title(title)
 	#plt.title('Sample scores against %s sample\n(For each sample: %d random cells %d times)' % (ref, k, niter))
 	plt.tight_layout()
 	dname = 'ranking'
 	mkdir(os.path.join(pop['output'], dname))
-	plt.savefig(os.path.join(pop['output'], dname, 'rankings_stripplot.png'), dpi=200)
+	plt.savefig(os.path.join(pop['output'], dname, '%s_rankings_stripplot.png' % method), dpi=200)
 	plt.close()
 
 '''
@@ -3404,7 +3417,7 @@ def subpopulations_grid(pop, method='tsne', figsize=(20,20), size_background=.1,
 
 		dname = 'embedding/subpopulations/' # folder name
 		mkdir(os.path.join(pop['output'], dname)) # create folder if does not exist
-		plt.savefig(os.path.join(pop['output'], dname, '%s_subpopulations.png' % sample), dpi=200) # save plot
+		plt.savefig(os.path.join(pop['output'], dname, '%s_subpopulations_%s.png' % (sample, method)), dpi=200) # save plot
 		plt.close() # close plot
 		start = end # update start index
 
