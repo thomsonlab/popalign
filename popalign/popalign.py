@@ -485,7 +485,9 @@ def filter(pop, remove_ribsomal=True, remove_mitochondrial=True):
 	pop :dict
 		Popalign object
 	remove_ribsomal : bool
-		Wether to remove or not the ribosomal genes.
+		Wether to remove or not the ribosomal genes
+	remove_mitochondrial : bool
+		Wether to remove or not the mitochondrial geneset
 	'''
 	gene_idx = pop['filter_idx'] # get indices of genes to keep
 	genes = pop['genes'] # get all genes names
@@ -1131,7 +1133,7 @@ def onmf(pop, ncells=2000, nfeats=[5,7,9], nreps=3, niter=300):
 	plot_H(pop, method='complete', n=2000)
 	#plot_reconstruction(pop) # plot reconstruction data
 
-def pca(pop, fromspace='genes'):
+def pca(pop, n_components=2, fromspace='genes'):
 	'''
 	Run PCA on the samples data
 
@@ -1142,7 +1144,6 @@ def pca(pop, fromspace='genes'):
 	fromspace : str
 		What data to use. If 'genes', normalized filtered data is used, if 'features', projected data is used.
 	'''
-	n_components = 2
 	pca = PCA(n_components=n_components,
 		copy=True, 
 		whiten=False, 
@@ -1478,7 +1479,6 @@ def render_model(pop, name, figsizesingle):
 	name : str
 		Sample name
 	'''
-
 	if name == 'unique_gmm':
 		gmm = pop['gmm']
 		C = cat_data(pop,'C')
@@ -1493,6 +1493,7 @@ def render_model(pop, name, figsizesingle):
 	plt.figure(figsize=figsizesingle)
 	pcacomps = pop['pca']['components'] # get the pca space
 	cmap = 'jet' # define colormap
+	cmap = 'viridis'
 	w_factor = 3000 # factor to get the mean point sizes (multiplied by the mean weights)
 	alpha = 0.2
 	mean_color = 'black'
@@ -1537,11 +1538,12 @@ def render_model(pop, name, figsizesingle):
 			print('Sample %s: Component %d only contains one cell.' % (name, k))
 
 	sample_density = np.log(sample_density) # log density
+	
 	pp = plt.pcolor(x1, x2, sample_density, cmap=cmap, vmin=cbarmin, vmax=cbarmax) # plot density
 	plt.scatter(x=mean_proj[:,0], y=mean_proj[:,1], s=w_factor*w, alpha=alpha, c=mean_color) # plot means
 	texts=[]
 	for i,txt in enumerate(mean_labels):
-		texts.append(plt.text(mean_proj[i,0], mean_proj[i,1], txt, color='black')) # plot mean labels (or numbers)
+		texts.append(plt.text(mean_proj[i,0], mean_proj[i,1], txt, color='white')) # plot mean labels (or numbers)
 	adjustText.adjust_text(texts)
 
 	pp.set_edgecolor('face')
@@ -1559,6 +1561,7 @@ def render_model(pop, name, figsizesingle):
 	name = name.replace('/','')
 	plt.savefig(os.path.join(pop['output'], dname, 'model_rendering_%s.png' % name), dpi=200)
 	plt.close()
+	
 	return sample_density
 
 def grid_rendering(pop, q, figsize, samples):
@@ -1573,9 +1576,12 @@ def grid_rendering(pop, q, figsize, samples):
 		list of sample density arrays
 	figsize : tuple, optional
 		Size of the figure. Default is (10,10)
+	samples : list
+		Order in which to plot the sample renderings in the grid
 	'''
 	pcacomps = pop['pca']['components']
 	cmap = 'jet'
+	cmap = 'viridis'
 	cbarmin = -15
 	cbarmax = -3
 	lims_ext = pop['pca']['lims_ext']
@@ -1665,11 +1671,15 @@ def render_models(pop, figsizegrouped, figsizesingle, samples, mode='grouped'):
 	if mode == 'unique':
 		sd = render_model(pop, 'unique_gmm', figsizesingle)
 	else:
+		'''
 		with Pool(pop['ncores']) as p:
 			q = p.starmap(render_model, [(pop, x, figsizesingle) for x in samples])
+		'''
+		q = [render_model(pop, x, figsizesingle) for x in samples]
 		if mode == 'grouped':
 			if len(samples)>1:
-				grid_rendering(pop, q, figsizegrouped, samples)	
+				grid_rendering(pop, q, figsizegrouped, samples)
+		return q
 
 def build_single_GMM(k, C, reg_covar):
 	'''
@@ -1731,6 +1741,8 @@ def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar=
 		Size of the figure for the renderings together. Default is (20,20)
 	figsizesingle : tuple, optional
 		Size of the figure for each single sample rendering. Default is (5,5)
+	only: list or str, optional
+		Sample label or list of sample labels. Will force GMM construction for specified samples only. Defaults to None
 	'''
 	if isinstance(ks, tuple): # if ks is tuple
 		ks = np.arange(ks[0], ks[1]) # create array of ks
@@ -2127,7 +2139,7 @@ def plot_deltas(pop, figsize): # generate plot mu and delta w plots
 		plt.savefig(os.path.join(pop['output'], dname, 'deltas_comp%d_%s.png' % (i,lbl)), dpi=200, bbox_inches='tight')
 		plt.close()
 
-def plot_deltas_test(pop, figsize): # generate plot mu and delta w plots
+def plot_deltas_test(pop, pointsize, figsize):
 	'''
 	Genere delta mu and delta w plots for the computed alignments
 
@@ -2138,279 +2150,58 @@ def plot_deltas_test(pop, figsize): # generate plot mu and delta w plots
 	figsize : tuple, optional
 		Size of the figure. Default is (10,10)
 	'''
-	dname = 'deltas'
-	mkdir(os.path.join(pop['output'], dname))
+	dname = 'deltas' # create folder name
+	mkdir(os.path.join(pop['output'], dname)) # create folder
 
 	ref = pop['ref'] # get reference sample name
 	
-	list_ = pop['samples'][ref]['gmm_types']
+	list_ = pop['samples'][ref]['gmm_types'] # get cell types in reference model
 	if list_ == None:
 		list_ = [str(i) for i in range(pop['samples'][ref]['gmm'].n_components)]
 
 	for i, lbl in enumerate(list_): # for each reference subpopulation
-		samplelbls = []
-		xcoords = []
-		delta_mus = []
-		delta_ws = []
-		mean_mus = []
-		mean_ws = []
-		stds_mus = []
-		stds_ws = []
+		samplelbls = [] # store x labels (sample + component number)
+		xcoords = [] # store x coordinate
+		delta_mus = [] # store delta mu value
+		delta_ws = [] # store delta w value
+
 		mu_ref = pop['samples'][ref]['means_genes'][i] # get the mean i value
 		w_ref = pop['samples'][ref]['gmm'].weights_[i] # get the weight i value
 
-		k = 0
 		for x in pop['order']: # for each sample x
-			added = False
-			tmp_delta_mus = []
-			tmp_delta_ws = []
-
-			# parse the potential replicates of the reference sample
-			if x == ref:
-				if pop['nreplicates'] >= 1: # if gmm replicates exist
-					for j in range(pop['nreplicates']):
-						arr = pop['samples'][x]['replicates'][j]['alignments']
-						try:
-							irow = np.where(arr[:,1] == i) # try to get the row where the ref comp number matches i
-							itest = int(arr[irow, 0]) # get test comp number from row
-							mu_test = pop['samples'][x]['replicates'][j]['means_genes'][itest] # get the test comp mean value
-							w_test = pop['samples'][x]['replicates'][j]['gmm'].weights_[itest] # get the test comp weight value
-							samplelbls.append(x)
-							tmp_delta_mus.append(np.linalg.norm([np.array(mu_test).flatten() - np.array(mu_ref).flatten()], ord='fro')) # store delta mu
-							tmp_delta_ws.append((w_test - w_ref)*100) # store delta w
-							xcoords.append(k)
-							added = True
-						except:
-							pass
-			else:
+			if x != ref:
 				arr = pop['samples'][x]['alignments'] # get the alignments between x and the reference
-				try:
-					# parse the alignments for the sample's main GMM
-					irow = np.where(arr[:,1] == i)[0] # try to get the row where the ref comp number matches i
-					itest = int(arr[irow, 0]) # get test comp number from row
-					mu_test = pop['samples'][x]['means_genes'][itest] # get the test comp mean value
-					w_test = pop['samples'][x]['gmm'].weights_[itest] # get the test comp weight value
-					samplelbls.append(x) # store test sample label x
-					tmp_delta_mus.append(np.linalg.norm([np.array(mu_test).flatten() - np.array(mu_ref).flatten()], ord='fro')) # store delta mu
-					tmp_delta_ws.append((w_test - w_ref)*100) # store delta w
-					xcoords.append(k)
-					added = True
-
-					# if the sample's main GMM has an alignment for that reference component, try adding replicates
-					if pop['nreplicates'] >= 1: # if gmm replicates exist
-						for j in range(pop['nreplicates']):
-							arr = pop['samples'][x]['replicates'][j]['alignments']
-							try:
-								irow = np.where(arr[:,1] == i) # try to get the row where the ref comp number matches i
-								itest = int(arr[irow, 0]) # get test comp number from row
-								mu_test = pop['samples'][x]['replicates'][j]['means_genes'][itest] # get the test comp mean value
-								w_test = pop['samples'][x]['replicates'][j]['gmm'].weights_[itest] # get the test comp weight value
-								samplelbls.append(x)
-								tmp_delta_mus.append(np.linalg.norm([np.array(mu_test).flatten() - np.array(mu_ref).flatten()], ord='fro')) # store delta mu
-								tmp_delta_ws.append((w_test - w_ref)*100) # store delta w
-								xcoords.append(k)
-								added = True
-							except:
-								pass
-				except:
-					pass
-
-			if added == True:
-				k += 1
-				delta_mus += tmp_delta_mus
-				delta_ws += tmp_delta_ws
-				mean_mus.append(np.mean(tmp_delta_mus))
-				mean_ws.append(np.mean(tmp_delta_ws))
-				stds_mus.append(np.std(tmp_delta_mus))
-				stds_ws.append(np.std(tmp_delta_ws))
-				
-		seen = set()
-		seen_add = seen.add
-		xlbls = [x for x in samplelbls if not (x in seen or seen_add(x))]
-		x = [x for x in xcoords if not (x in seen or seen_add(x))]
-
-		# reorder by delta mu mean
-		idx = np.argsort(mean_mus)
-		mean_mus = [mean_mus[i] for i in idx]
-		mean_ws = [mean_ws[i] for i in idx]
-		stds_mus = [stds_mus[i] for i in idx]
-		stds_ws = [stds_ws[i] for i in idx]
-		xlbls = [xlbls[i] for i in idx]
-
-		'''
-		newxcoords = []
-		for value in xcoords:
-			newxcoords.append(np.where(idx==value)[0][0])
-		xcoords = newxcoords
-		'''
-		xcoords = [np.where(idx==value)[0][0] for value in xcoords]
-
-		plt.figure(figsize=figsize)
-
-		ax1 = plt.subplot(2,1,1)
-		plt.title('Reference sample %s\nComponent %d: %s' %(ref, i, lbl))
-		plt.scatter(xcoords, delta_ws, s=2, c='k')
-		plt.errorbar(x, mean_ws, stds_ws, color='k', elinewidth=.5, capsize=1, fmt=' ', label='Standard deviation')
-		plt.xticks([])
-		plt.ylabel('Δ\u03C9 (%)')
-
-		plt.subplot(2,1,2)
-		plt.scatter(xcoords, delta_mus, s=2,c='k')
-		plt.errorbar(x, mean_mus, stds_mus, color='k', elinewidth=.5, capsize=1, fmt=' ', label='Standard deviation')
-		plt.xticks(x, xlbls, rotation=90)
-		
-		plt.ylabel('Δ\u03BC')
-
-		plt.tight_layout()
-		
-		lbl = lbl.replace('/','')
-		plt.savefig(os.path.join(pop['output'], dname, 'deltas_comp%d_%s.png' % (i,lbl)), dpi=200, bbox_inches='tight')
-		plt.close()
-"""
-def plot_deltas_test(pop, figsize):
-	'''
-	Genere delta mu and delta w plots for the computed alignments
-
-	Parameters
-	----------
-	pop : dict
-		Popalign object
-	figsize : tuple, optional
-		Size of the figure. Default is (10,10)
-	'''
-	dname = 'deltas'
-	mkdir(os.path.join(pop['output'], dname))
-
-	ref = pop['ref'] # get reference sample name
-	
-	list_ = pop['samples'][ref]['gmm_types']
-	if list_ == None:
-		list_ = [str(i) for i in range(pop['samples'][ref]['gmm'].n_components)]
-
-	for i, lbl in enumerate(list_): # for each reference subpopulation
-		samplelbls = []
-		xcoords = []
-		delta_mus = []
-		delta_ws = []
-		mean_mus = []
-		mean_ws = []
-		stds_mus = []
-		stds_ws = []
-		mu_ref = pop['samples'][ref]['means_genes'][i] # get the mean i value
-		w_ref = pop['samples'][ref]['gmm'].weights_[i] # get the weight i value
-
-		k = 0
-		for x in pop['order']: # for each sample x
-			added = False
-			tmp_delta_mus = []
-			tmp_delta_ws = []
-
-			# parse the potential replicates of the reference sample
-			if x == ref:
-				if pop['nreplicates'] >= 1: # if gmm replicates exist
-					for j in range(pop['nreplicates']):
-						arr = pop['samples'][x]['replicates'][j]['alignments']
-						try:
-							irow = np.where(arr[:,1] == i)[0] # try to get the row where the ref comp number matches i
-							itest = int(arr[irow, 0]) # get test comp number from row
-							mu_test = pop['samples'][x]['replicates'][j]['means_genes'][itest] # get the test comp mean value
-							w_test = pop['samples'][x]['replicates'][j]['gmm'].weights_[itest] # get the test comp weight value
-							samplelbls.append(x)
-							tmp_delta_mus.append(np.linalg.norm([np.array(mu_test).flatten() - np.array(mu_ref).flatten()], ord='fro')) # store delta mu
-							tmp_delta_ws.append((w_test - w_ref)*100) # store delta w
-							xcoords.append(k)
-							added = True
-						except:
-							pass
-			else:
-				arr = pop['samples'][x]['alignments'] # get the alignments between x and the reference
-				try:
-					# parse the alignments for the sample's main GMM
-					irow = np.where(arr[:,1] == i)[0] # try to get the row where the ref comp number matches i
-					if len(irow) <=1:
-						itest = int(arr[irow, 0]) # get test comp number from row
+				for row in arr:
+					if row[1]==i:
+						itest = int(row[0])
 						mu_test = pop['samples'][x]['means_genes'][itest] # get the test comp mean value
 						w_test = pop['samples'][x]['gmm'].weights_[itest] # get the test comp weight value
-						samplelbls.append(x) # store test sample label x
-						tmp_delta_mus.append(np.linalg.norm([np.array(mu_test).flatten() - np.array(mu_ref).flatten()], ord='fro')) # store delta mu
-						tmp_delta_ws.append((w_test - w_ref)*100) # store delta w
-						xcoords.append(k)
-						added = True
-					elif len(irow)>1:
-						for subirow in irow:
+						samplelbls.append('%s (%d)' % (x,itest))
+						delta_mus.append(np.linalg.norm([np.array(mu_test).flatten() - np.array(mu_ref).flatten()], ord='fro')) # store delta mu
+						delta_ws.append((w_test - w_ref)*100) # store delta w
 
-
-					# if the sample's main GMM has an alignment for that reference component, try adding replicates
-					if pop['nreplicates'] >= 1: # if gmm replicates exist
-						for j in range(pop['nreplicates']):
-							arr = pop['samples'][x]['replicates'][j]['alignments']
-							try:
-								irow = np.where(arr[:,1] == i) # try to get the row where the ref comp number matches i
-								itest = int(arr[irow, 0]) # get test comp number from row
-								mu_test = pop['samples'][x]['replicates'][j]['means_genes'][itest] # get the test comp mean value
-								w_test = pop['samples'][x]['replicates'][j]['gmm'].weights_[itest] # get the test comp weight value
-								samplelbls.append(x)
-								tmp_delta_mus.append(np.linalg.norm([np.array(mu_test).flatten() - np.array(mu_ref).flatten()], ord='fro')) # store delta mu
-								tmp_delta_ws.append((w_test - w_ref)*100) # store delta w
-								xcoords.append(k)
-								added = True
-							except:
-								pass
-				except:
-					pass
-
-			if added == True:
-				k += 1
-				delta_mus += tmp_delta_mus
-				delta_ws += tmp_delta_ws
-				mean_mus.append(np.mean(tmp_delta_mus))
-				mean_ws.append(np.mean(tmp_delta_ws))
-				stds_mus.append(np.std(tmp_delta_mus))
-				stds_ws.append(np.std(tmp_delta_ws))
-				
-		seen = set()
-		seen_add = seen.add
-		xlbls = [x for x in samplelbls if not (x in seen or seen_add(x))]
-		x = [x for x in xcoords if not (x in seen or seen_add(x))]
-
-		# reorder by delta mu mean
-		idx = np.argsort(mean_mus)
-		mean_mus = [mean_mus[i] for i in idx]
-		mean_ws = [mean_ws[i] for i in idx]
-		stds_mus = [stds_mus[i] for i in idx]
-		stds_ws = [stds_ws[i] for i in idx]
-		xlbls = [xlbls[i] for i in idx]
-
-		'''
-		newxcoords = []
-		for value in xcoords:
-			newxcoords.append(np.where(idx==value)[0][0])
-		xcoords = newxcoords
-		'''
-		xcoords = [np.where(idx==value)[0][0] for value in xcoords]
+		idx = np.argsort(delta_mus)
+		delta_mus = [delta_mus[i] for i in idx]
+		delta_ws = [delta_ws[i] for i in idx]
+		samplelbls = [samplelbls[i] for i in idx]
+		xcoords = np.arange(len(samplelbls))
 
 		plt.figure(figsize=figsize)
-
 		ax1 = plt.subplot(2,1,1)
 		plt.title('Reference sample %s\nComponent %d: %s' %(ref, i, lbl))
-		plt.scatter(xcoords, delta_ws, s=2, c='k')
-		plt.errorbar(x, mean_ws, stds_ws, color='k', elinewidth=.5, capsize=1, fmt=' ', label='Standard deviation')
+		plt.scatter(xcoords, delta_ws, s=pointsize, c='k')
 		plt.xticks([])
 		plt.ylabel('Δ\u03C9 (%)')
 
 		plt.subplot(2,1,2)
-		plt.scatter(xcoords, delta_mus, s=2,c='k')
-		plt.errorbar(x, mean_mus, stds_mus, color='k', elinewidth=.5, capsize=1, fmt=' ', label='Standard deviation')
-		plt.xticks(x, xlbls, rotation=90)
-		
+		plt.scatter(xcoords, delta_mus, s=pointsize,c='k')
+		plt.xticks(xcoords, samplelbls, rotation=90)
 		plt.ylabel('Δ\u03BC')
 
 		plt.tight_layout()
-		
 		lbl = lbl.replace('/','')
 		plt.savefig(os.path.join(pop['output'], dname, 'deltas_comp%d_%s.png' % (i,lbl)), dpi=200, bbox_inches='tight')
 		plt.close()
-"""
 
 def aligner(refgmm, testgmm, method):
 	'''
@@ -2465,11 +2256,11 @@ def aligner(refgmm, testgmm, method):
 		res = np.zeros((len(idx), 3))
 		for ii, i in enumerate(idx):
 			res[ii,:] = np.array([i, minsidx[i], mins[i]])
-	return res
+	return res, arr
 
 def align(pop, ref=None, method='conservative', figsizedeltas=(10,10), figsizeentropy=(10,10)):
 	'''
-	Align the commponents of each sample's model to the components of a reference model
+	Align the components of each sample's model to the components of a reference model
 
 	Parameters
 	----------
@@ -2499,11 +2290,15 @@ def align(pop, ref=None, method='conservative', figsizedeltas=(10,10), figsizeen
 		if pop['nreplicates'] >= 1: # if replicates exist
 			for j in range(pop['nreplicates']): # for each replicate j
 				testgmm = pop['samples'][x]['replicates'][j]['gmm'] # grab replicate gmm
-				pop['samples'][x]['replicates'][j]['alignments'] = aligner(refgmm, testgmm, method) # align that replicate to reference model
+				alignments, arr = aligner(refgmm, testgmm, method) # align that replicate to reference model
+				pop['samples'][x]['replicates'][j]['alignments'] = alignments
+				pop['samples'][x]['replicates'][j]['fullalignments'] = arr
 
 		if x != ref: # if sample is not ref
 			testgmm = pop['samples'][x]['gmm'] # get test gmm
-			pop['samples'][x]['alignments'] = aligner(refgmm, testgmm, method) # align gmm to reference
+			alignments, arr = aligner(refgmm, testgmm, method) # align gmm to reference
+			pop['samples'][x]['alignments'] = alignments
+			pop['samples'][x]['fullalignments'] = arr
 			try:
 				pop['samples'][x]['test2ref'] = np.zeros(testgmm.n_components, dtype=int)
 				pop['samples'][x]['ref2test'] = np.zeros(testgmm.n_components, dtype=int)
@@ -2802,7 +2597,7 @@ def plot_query(pop, pcells=.2, nreps=10, figsize=(10,20), sharey=True):
 	nreps: int
 		Number of times to repeat the query process with different cells for each sample
 	figsize : tuple, optional
-		Size of the figure. Default is (10,20)
+		Size of the figure. Default is (5,20)
 	'''
 
 	#ncells = 1000
@@ -3193,7 +2988,7 @@ def plot_genes_gmm_cells(pop, sample='', genelist=[], savename='', metric='corre
 	plt.savefig(os.path.join(pop['output'], dname, '%s_cells.png' % savename), dpi=200, bbox_inches='tight')
 	plt.close()
 
-def scatter(pop, method='umap', sample=None, compnumber=None, color=None, size=.1):
+def scatter(pop, method='tsne', sample=None, compnumber=None, marker=None, size=.1):
 	'''
 	Run an embedding algorithm and plot the data in a scatter plot
 
@@ -3201,7 +2996,7 @@ def scatter(pop, method='umap', sample=None, compnumber=None, color=None, size=.
 		Popalign object
 	method : str
 		Embedding method. One of umap, tsne. Defaults to umap
-	color : str
+	marker : str
 		Either `samples` or a valid gene symbol. Defaults to None
 	size : float or int
 		Point size. Defaults to .1
@@ -3213,11 +3008,16 @@ def scatter(pop, method='umap', sample=None, compnumber=None, color=None, size=.
 			X = umap.UMAP().fit_transform(X) # run umap
 		elif method == 'tsne': # if method is tsne
 			X = TSNE(n_components=2).fit_transform(X) # run tsne
+		elif method == 'pca': # if method is pca
+			pca(pop) # build pca space if necessary
 		else: # if method not valid
 			raise Exception('Method value not supported. Must be one of tsne, umap.') # raise exception
 		pop[method] = X # store embedded coordinates
 	else: # if method has been run before
-		X = pop[method] # retrieve embedded coordinates
+		if method == 'pca':
+			X = pop[method]['proj']
+		else:
+			X = pop[method] # retrieve embedded coordinates
 		
 	if sample != None: # if a sample is provided
 		M = pop['samples'][sample]['M'] # get matrix
@@ -3238,9 +3038,9 @@ def scatter(pop, method='umap', sample=None, compnumber=None, color=None, size=.
 	else:
 		M = cat_data(pop,'M')
 		
-	if color:
+	if marker:
 		try:
-			ig = np.where(pop['genes']==color)[0][0] # get gene index if valid gene name
+			ig = np.where(pop['genes']==marker)[0][0] # get gene index if valid gene name
 			c = M[ig,:].toarray().flatten() # get expression values of gene
 			cmap = 'magma'
 		except:
@@ -3264,9 +3064,9 @@ def scatter(pop, method='umap', sample=None, compnumber=None, color=None, size=.
 	# update filename and plot title
 	title = '%s plot' % method
 	filename = '%s' % method
-	if color:
-		title += ', marker: %s' % color
-		filename += '_%s' % color
+	if marker:
+		title += ', marker: %s' % marker
+		filename += '_%s' % marker
 		plt.colorbar() # display colorbar
 	if sample != None:
 		title += '\n%s' % sample
@@ -3305,11 +3105,16 @@ def samples_grid(pop, method='tsne', figsize=(20,20), size_background=.1, size_s
 			X = umap.UMAP().fit_transform(X) # run umap
 		elif method == 'tsne': # if method is tsne
 			X = TSNE(n_components=2).fit_transform(X) # run tsne
+		elif method == 'pca': # if method is pca
+			pca(pop) # build pca space if necessary
 		else: # if method not valid
 			raise Exception('Method value not supported. Must be one of tsne, umap.') # raise exception
 		pop[method] = X # store embedded coordinates
 	else: # if method has been run before
-		X = pop[method] # retrieve embedded coordinates
+		if method == 'pca':
+			X = pop[method]['proj']
+		else:
+			X = pop[method] # retrieve embedded coordinates
 
 	x = X[:,0] # get x coordinates
 	y = X[:,1] # get y coordinates
@@ -3368,11 +3173,16 @@ def subpopulations_grid(pop, method='tsne', figsize=(20,20), size_background=.1,
 			X = umap.UMAP().fit_transform(X) # run umap
 		elif method == 'tsne': # if method is tsne
 			X = TSNE(n_components=2).fit_transform(X) # run tsne
+		elif method == 'pca': # if method is pca
+			pca(pop) # build pca space if necessary
 		else: # if method not valid
 			raise Exception('Method value not supported. Must be one of tsne, umap.') # raise exception
 		pop[method] = X # store embedded coordinates
 	else: # if method has been run before
-		X = pop[method] # retrieve embedded coordinates
+		if method == 'pca':
+			X = pop[method]['proj']
+		else:
+			X = pop[method] # retrieve embedded coordinates
 
 	x = X[:,0] # get x coordinates
 	y = X[:,1] # get y coordinates
@@ -3460,6 +3270,8 @@ def diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True, us
 
 	Parameters
 	----------
+	pop : dict
+		Popalign object
 	refcomp : int
 		Subpopulation number of the reference sample's GMM
 	sample : str
