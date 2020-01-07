@@ -324,14 +324,17 @@ def load_multiplexed(matrix, barcodes, metafile, genes=None, outputfolder='outpu
 			obj['order'].append(x) # save list of sample names to always call them in the same order for consistency
 
 	# save start and end of cell indices of sample relative to other samples
-	start = 0
+	if existing_obj != None:
+		start = existing_obj['ncells']
+	else:
+		start = 0
 	end = 0
 	for x in obj['order']:
 		n = obj['samples'][x]['M'].shape[1]
 		end = start+n
 		obj['samples'][x]['indices'] = (start,end)
 		start = end
-
+	obj['ncells'] = end
 	obj['nsamples'] = len(obj['order']) 
 	obj['output'] = outputfolder
 	return obj
@@ -405,7 +408,7 @@ def scale_factor(pop, ncells):
 	with Pool(pop['ncores']) as p:
 		q = p.starmap(comparison_factor, [(M.copy(), f, ogmean) for f in factorlist]) # try different factors
 	scalingfactor = factorlist[np.argmin(q)] # pick the factor that minimizes the difference between the new mean and the original one 
-
+	pop['scalingfactor'] = scalingfactor
 	with Pool(pop['ncores']) as p:
 		q = p.starmap(factor, [(pop['samples'][x]['M'], scalingfactor) for x in pop['order']]) #Multiply data values by picked factor in parallel
 	for i,x in enumerate(pop['order']):
@@ -786,7 +789,7 @@ def minibatchkmeans(m, k):
 	model.fit(m) # fit with data
 	return model.cluster_centers_.T, model.predict(m)
 
-def oNMF(X, k, n_iter=500, verbose=1, residual=1e-4, tof=1e-4):
+def oNMF(X, k, n_iter=500, verbose=0, residual=1e-4, tof=1e-4):
 	'''
 	Run orthogonal nonnegative matrix factorization
 
@@ -976,7 +979,7 @@ def plot_top_genes_features(pop):
 
 	dname = 'qc'
 	mkdir(os.path.join(pop['output'], dname)) # create subfolder
-	plt.savefig(os.path.join(pop['output'], dname, 'topgenes_features.pdf'), bbox_inches = "tight")
+	plt.savefig(os.path.join(pop['output'], dname, 'topgenes_features.png'), bbox_inches = "tight")
 	plt.close()
 
 	save_top_genes_features(pop, stds, stdfactor)
@@ -1665,7 +1668,7 @@ def render_models(pop, figsizegrouped, figsizesingle, samples, mode='grouped'):
 	mode : str
 		One of grouped, individual or unique.
 		Grouped will render the models individually and together in a separate grid
-		Inidividual will only render the models individually
+		Individual will only render the models individually
 		Unique will render the data's unique model
 	'''
 	if mode == 'unique':
@@ -2017,7 +2020,8 @@ def JeffreyDiv(mu1, cov1, mu2, cov2):
 	cov2 : array
 		Covariance matrix
 	'''
-	return np.log10(0.5*KL(mu1, cov1, mu2, cov2)+0.5*KL(mu2, cov2, mu1, cov1))
+	JD = 0.5*KL(mu1, cov1, mu2, cov2)+0.5*KL(mu2, cov2, mu1, cov1)
+	return np.log10(JD)
 
 def plot_deltas(pop, figsize): # generate plot mu and delta w plots
 	'''
@@ -2305,7 +2309,8 @@ def align(pop, ref=None, method='conservative', figsizedeltas=(10,10), figsizeen
 			except:
 				pass
 
-	plot_deltas(pop, figsizedeltas) # generate plot mu and delta w plots
+	#plot_deltas(pop, figsizedeltas) # generate plot mu and delta w plots
+	plot_deltas_test(pop, 20, figsizedeltas) # generate plot mu and delta w plots
 	entropy(pop, figsizeentropy)
 
 
@@ -2539,6 +2544,7 @@ def rank(pop, ref=None, k=100, niter=200, method='LLR', mincells=50, figsize=(10
 	dname = 'ranking'
 	mkdir(os.path.join(pop['output'], dname))
 	plt.savefig(os.path.join(pop['output'], dname, '%s_rankings_boxplot.png' % method), dpi=200)
+	plt.savefig(os.path.join(pop['output'], dname, '%s_rankings_boxplot.pdf' % method))
 	plt.close()
 
 	# create stripplot using the computed order based on score means
@@ -2557,6 +2563,7 @@ def rank(pop, ref=None, k=100, niter=200, method='LLR', mincells=50, figsize=(10
 	dname = 'ranking'
 	mkdir(os.path.join(pop['output'], dname))
 	plt.savefig(os.path.join(pop['output'], dname, '%s_rankings_stripplot.png' % method), dpi=200)
+	plt.savefig(os.path.join(pop['output'], dname, '%s_rankings_stripplot.pdf' % method))
 	plt.close()
 
 '''
@@ -2659,8 +2666,10 @@ def plot_query(pop, pcells=.2, nreps=10, figsize=(10,20), sharey=True):
 
 	dname = 'query'
 	mkdir(os.path.join(pop['output'], dname))
-	path_ = os.path.join(pop['output'], dname, 'query_plot.pdf')
-	plt.savefig(path_, bbox_inches='tight')
+	path_pdf = os.path.join(pop['output'], dname, 'query_plot.pdf')
+	path_png = os.path.join(pop['output'], dname, 'query_plot.png')
+	plt.savefig(path_pdf, bbox_inches='tight')
+	plt.savefig(path_png, dpi=200, bbox_inches='tight')
 	plt.close()
 
 def plot_query_heatmap(pop, figsize=(10,10)):
@@ -2778,9 +2787,60 @@ def plot_heatmap(pop, refcomp, genelist, clustersamples=True, clustercells=True,
 			if x != pop['ref']: # if that sample is not the reference sample
 				try: # check if an aligned subpopulation exists for that sample
 					arr = pop['samples'][x]['alignments'] # retrive test sample alignments
-					irow = np.where(arr[:,1] == refcomp) # get row number in alignments where ref subpop is the desired ref subpop
-					itest = int(arr[irow, 0]) # get test subpopulation number if exists
-					
+					irow = np.where(arr[:,1] == refcomp)[0] # get row number in alignments where ref subpop is the desired ref subpop
+
+					if len(irow)==1:
+						itest = int(arr[irow, 0]) # get test subpopulation number if exists
+						C = pop['samples'][x]['C'] # get test sample feature space data
+						prediction = pop['samples'][x]['gmm'].predict(C) # get the subpopulations assignments
+						idx = np.where(prediction == itest)[0] # get indices of cells that match aligned test subpopulation
+						M = pop['samples'][x]['M'][gidx,:] # get test sample gene space data, subsample
+						M = M[:,idx] # select test subpopulation cells
+						if clustercells == True:
+							cidx = cluster_rows(M.toarray().T, metric=cmetric, method=cmethod) # cluster cells of subpopulation
+							M = M[:,cidx] # reorder matrix
+						ncols.append(M.shape[1])
+						MS.append(M) # append to list
+						means.append(M.mean(axis=1))
+						MSlabels.append('%s (%d)' % (x,itest)) # append matching sample label to list
+					else:
+						for itest in irow:
+							C = pop['samples'][x]['C'] # get test sample feature space data
+							prediction = pop['samples'][x]['gmm'].predict(C) # get the subpopulations assignments
+							idx = np.where(prediction == itest)[0] # get indices of cells that match aligned test subpopulation
+							M = pop['samples'][x]['M'][gidx,:] # get test sample gene space data, subsample
+							M = M[:,idx] # select test subpopulation cells
+							if clustercells == True:
+								cidx = cluster_rows(M.toarray().T, metric=cmetric, method=cmethod) # cluster cells of subpopulation
+								M = M[:,cidx] # reorder matrix
+							ncols.append(M.shape[1])
+							MS.append(M) # append to list
+							means.append(M.mean(axis=1))
+							MSlabels.append('%s (%d)' % (x,itest)) # append matching sample label to list
+				except:
+					pass
+	else:
+		try:
+			x = only
+			arr = pop['samples'][x]['alignments'] # retrive test sample alignments
+			irow = np.where(arr[:,1] == refcomp)[0] # get row number in alignments where ref subpop is the desired ref subpop
+			if len(irow)==1:
+				itest = int(arr[irow, 0]) # get test subpopulation number if exists
+				C = pop['samples'][x]['C'] # get test sample feature space data
+				prediction = pop['samples'][x]['gmm'].predict(C) # get the subpopulations assignments
+				idx = np.where(prediction == itest)[0] # get indices of cells that match aligned test subpopulation
+
+				M = pop['samples'][x]['M'][gidx,:] # get test sample gene space data, subsample
+				M = M[:,idx] # select test subpopulation cells
+				if clustercells == True:
+					cidx = cluster_rows(M.toarray().T, metric=cmetric, method=cmethod) # cluster cells of subpopulation
+					M = M[:,cidx] # reorder matrix
+				ncols.append(M.shape[1])
+				MS.append(M) # append to list
+				means.append(M.mean(axis=1))
+				MSlabels.append('%s (%d)' % (x,itest)) # append matching sample label to list
+			else:
+				for itest in irow:
 					C = pop['samples'][x]['C'] # get test sample feature space data
 					prediction = pop['samples'][x]['gmm'].predict(C) # get the subpopulations assignments
 					idx = np.where(prediction == itest)[0] # get indices of cells that match aligned test subpopulation
@@ -2793,29 +2853,7 @@ def plot_heatmap(pop, refcomp, genelist, clustersamples=True, clustercells=True,
 					ncols.append(M.shape[1])
 					MS.append(M) # append to list
 					means.append(M.mean(axis=1))
-					MSlabels.append('%s (%d)' % (x,itest)) # append matching sample label to list
-				except:
-					pass
-	else:
-		try:
-			x = only
-			arr = pop['samples'][x]['alignments'] # retrive test sample alignments
-			irow = np.where(arr[:,1] == refcomp) # get row number in alignments where ref subpop is the desired ref subpop
-			itest = int(arr[irow, 0]) # get test subpopulation number if exists
-			
-			C = pop['samples'][x]['C'] # get test sample feature space data
-			prediction = pop['samples'][x]['gmm'].predict(C) # get the subpopulations assignments
-			idx = np.where(prediction == itest)[0] # get indices of cells that match aligned test subpopulation
-
-			M = pop['samples'][x]['M'][gidx,:] # get test sample gene space data, subsample
-			M = M[:,idx] # select test subpopulation cells
-			if clustercells == True:
-				cidx = cluster_rows(M.toarray().T, metric=cmetric, method=cmethod) # cluster cells of subpopulation
-				M = M[:,cidx] # reorder matrix
-			ncols.append(M.shape[1])
-			MS.append(M) # append to list
-			means.append(M.mean(axis=1))
-			MSlabels.append('%s (%d)' % (x,itest)) # append matching sample label to list
+					MSlabels.append('%s (%d)' % (x,itest)) # append matching sample label to list	
 		except:
 			pass
 
@@ -3042,7 +3080,7 @@ def scatter(pop, method='tsne', sample=None, compnumber=None, marker=None, size=
 		try:
 			ig = np.where(pop['genes']==marker)[0][0] # get gene index if valid gene name
 			c = M[ig,:].toarray().flatten() # get expression values of gene
-			cmap = 'magma'
+			cmap = 'Blues'
 		except:
 			raise Exception('Gene name not valid') # raise exception if gene name not valid
 	else:
@@ -3167,6 +3205,10 @@ def subpopulations_grid(pop, method='tsne', figsize=(20,20), size_background=.1,
 	size_subpops : float, int
 		Point size for the highlighted subpopulations
 	'''
+
+
+
+def subpopulations_grid_unique(pop, method='tsne', figsize=(20,20), size_background=.1, size_subpops=1):
 	if method not in pop: # if method not run before
 		X = cat_data(pop, 'C') # retrieve feature space data
 		if method == 'umap': # if method is umap
@@ -3190,46 +3232,39 @@ def subpopulations_grid(pop, method='tsne', figsize=(20,20), size_background=.1,
 	start = 0 # start index to subset sample cells
 	end = 0 # end index to subset sample cells
 
-	for sample in pop['order']: # for each sample in pop
-		C = pop['samples'][sample]['C'] # get sample feature data
-		gmm = pop['samples'][sample]['gmm'] # get sample gmm
-		poplabels = pop['samples'][sample]['gmm_types'] # get subpopulations labels
-		prediction = gmm.predict(C) # get subpopulation assignments for the cells
+	C = cat_data(pop, 'C')
+	gmm = pop['gmm']
+	poplabels = pop['gmm_types']
+	prediction = gmm.predict(C) # get subpopulation assignments for the cells
 
-		n = C.shape[0] # get number of cells for that sample
-		end = start+n # update end index
-		xsub = x[start:end] # subset x coordinates
-		ysub = y[start:end] # subset y coordinates
+	nr, nc = nr_nc(gmm.n_components) # get number of rows and columns for the grid plot
+	fig, axes = plt.subplots(nr,nc,figsize=figsize) # create figure and subaxes
+	axes = axes.flatten()
 
-		nr, nc = nr_nc(gmm.n_components) # get number of rows and columns for the grid plot
-		fig, axes = plt.subplots(nr,nc,figsize=figsize) # create figure and subaxes
-		axes = axes.flatten()
-		
-		for i in range(gmm.n_components): # for each subpopulation of sample
-			ax = axes[i] # assign sub axis
-			idx = np.where(prediction==i)[0] # get cell indices for that subpopulations
-			xtmp = xsub[idx] # subset sample's cells
-			ytmp = ysub[idx] # subset sample's cells
-			ax.scatter(x, y, c='lightgrey', s=size_background) # plot all cells as background
-			ax.scatter(xtmp, ytmp, c='purple', s=size_subpops) # plot subpopulation cells on top
-			ax.set(xticks=[]) # remove x ticks
-			ax.set(yticks=[]) # remove y ticks
-			ax.set(title='Subpopulation #%d\n%s' % (i, poplabels[i])) # set title
-			if i % nc == 0:
-				ax.set(ylabel='%s2' % method) # set y label
-			if i >= len(pop['order'])-nc:
-				ax.set(xlabel='%s1' % method) # set x label
+	for i in range(gmm.n_components): # for each subpopulation of sample
+		ax = axes[i] # assign sub axis
+		idx = np.where(prediction==i)[0] # get cell indices for that subpopulations
+		xtmp = x[idx] # subset sample's cells
+		ytmp = y[idx] # subset sample's cells
+		ax.scatter(x, y, c='lightgrey', s=size_background) # plot all cells as background
+		ax.scatter(xtmp, ytmp, c='purple', s=size_subpops) # plot subpopulation cells on top
+		ax.set(xticks=[]) # remove x ticks
+		ax.set(yticks=[]) # remove y ticks
+		ax.set(title='Subpopulation #%d\n%s' % (i, poplabels[i])) # set title
+		if i % nc == 0:
+			ax.set(ylabel='%s2' % method) # set y label
+		if i >= len(pop['order'])-nc:
+			ax.set(xlabel='%s1' % method) # set x label
 
-		rr = len(axes)-gmm.n_components # count how many empty plots in grid
-		for i in range(1,rr+1):
-			ax = axes[-i] # backtrack extra sub axes
-			ax.axis('off') # clear empty axis from plot
+	rr = len(axes)-gmm.n_components # count how many empty plots in grid
+	for i in range(1,rr+1):
+		ax = axes[-i] # backtrack extra sub axes
+		ax.axis('off') # clear empty axis from plot
 
-		dname = 'embedding/subpopulations/' # folder name
-		mkdir(os.path.join(pop['output'], dname)) # create folder if does not exist
-		plt.savefig(os.path.join(pop['output'], dname, '%s_subpopulations_%s.png' % (sample, method)), dpi=200) # save plot
-		plt.close() # close plot
-		start = end # update start index
+	dname = 'embedding/subpopulations/' # folder name
+	mkdir(os.path.join(pop['output'], dname)) # create folder if does not exist
+	plt.savefig(os.path.join(pop['output'], dname, 'unique_subpopulations_%s.png' % method), dpi=200) # save plot
+	plt.close() # close plot
 
 '''
 Differential expression functions
@@ -3263,7 +3298,7 @@ def l1norm(ig, arr1, arr2, nbins):
 		else:
 			return np.linalg.norm(b1-b2, ord=1)
 
-def diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True, usefiltered=True):
+def diffexp(pop, refcomp=0, testcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True, usefiltered=True, equalncells=True, figsize=(20,20)):
 	'''
 	Find  differentially expressed genes between a refernce subpopulation
 	and the subpopulation of a sample that aligned to it
@@ -3274,6 +3309,8 @@ def diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True, us
 		Popalign object
 	refcomp : int
 		Subpopulation number of the reference sample's GMM
+	testcomp : int
+		Subpopulation number of the test sample's GMM
 	sample : str
 		Name of the sample to compare
 	nbins : int, optional
@@ -3296,14 +3333,20 @@ def diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True, us
 		raise Exception('Component number too high. Must be between 0 and %d' % ncomps)
 
 	xtest = sample # test sample label
+	arr = pop['samples'][xtest]['alignments'] # get alignments between reference and test
+	if [testcomp, refcomp] not in arr[:,:-1].tolist():
+		raise Exception('Could not retrieve a matching alignment for sample %s, between test component %d and reference component %d' % (sample, testcomp, refcomp))
 
+	'''
 	try:
 		arr = pop['samples'][xtest]['alignments'] # get alignments between reference and test
+		print(arr)
 		irow = np.where(arr[:,1] == refcomp)[0] # get alignment that match reference subpopulation
 		itest = int(arr[irow, 0]) # get test subpopulation number
+		#print(itest)
 	except:
 		raise Exception('Could not retrieve a matching alignment between sample %s and reference component %d' % (sample, refcomp))
-
+	'''
 	if usefiltered == True:
 		Mref = pop['samples'][xref]['M_norm'] # get filtered reference sample matrix
 		Mtest = pop['samples'][xtest]['M_norm'] # get filtered test sample matrix
@@ -3317,9 +3360,9 @@ def diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True, us
 	predictiontest = pop['samples'][xtest]['gmm'].predict(pop['samples'][xtest]['C']) # get test cell assignments
 
 	idxref = np.where(predictionref==refcomp)[0] # get matching indices
-	idxtest = np.where(predictiontest==itest)[0] # get matching indices
+	idxtest = np.where(predictiontest==testcomp)[0] # get matching indices
 	subref = Mref[:,idxref] # subset cells that match subpopulation refcomp
-	subtest = Mtest[:,idxtest] # subset cells that match subpopulation itest
+	subtest = Mtest[:,idxtest] # subset cells that match subpopulation testcomp
 	subref = subref.toarray() # from sparse matrix to numpy array for slicing efficiency
 	subtest = subtest.toarray() # from sparse matrix to numpy array for slicing efficiency
 	
@@ -3407,7 +3450,7 @@ def diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True, us
 			plt.bar(beref[:-1], btest, label=xtest, alpha=0.3, width=width)
 			plt.legend()
 			plt.xlabel('Normalized counts')
-			plt.ylabel('Percentage of cells in subpopulation')
+			plt.ylabel('Fraction of cells in subpopulation')
 			plt.title('Gene %s\nSubpopulation #%d of %s' % (gname, refcomp, xref))
 
 			filename = '%s_%s' % (lbl, gname)
@@ -3415,7 +3458,7 @@ def diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True, us
 			plt.close()
 
 	lidx = [genes[i] for i in lidx]
-	plot_heatmap(pop, refcomp, lidx, clustersamples=False, clustercells=True, savename='%d_%s_only' % (refcomp, sample), figsize=(15,15), cmap='Purples', samplelimits=False, scalegenes=True, only=sample, equalncells=True)
+	plot_heatmap(pop, refcomp, lidx, clustersamples=False, clustercells=True, savename='%d_%s_only' % (refcomp, sample), figsize=figsize, cmap='Purples', samplelimits=False, scalegenes=True, only=sample, equalncells=equalncells)
 	return lidx
 
 def diffexp_testcomp(pop, testcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True, usefiltered=True):
