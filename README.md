@@ -1,6 +1,6 @@
 # Popalign framework
 
-This is a Python implementation of the Popalign framework.
+This is a Python3 implementation of the Popalign framework (this package will not run with Python2).
 
 ## Introduction
 
