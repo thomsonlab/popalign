@@ -3771,3 +3771,40 @@ import sys
 if not sys.warnoptions:
 	import warnings
 	warnings.simplefilter("ignore")
+
+
+def run_pca(pop, n_components=10):
+	'''
+	Run PCA on the samples data
+	Parameters
+	----------
+	pop : dict
+		Popalign object
+	fromspace : str
+		What data to use. If 'genes', normalized filtered data is used, if 'features', projected data is used.
+	'''
+	pca = PCA(n_components=n_components,
+		copy=True, 
+		whiten=False, 
+		svd_solver='auto', 
+		tol=0.0, 
+		iterated_power='auto', 
+		random_state=None) # generate sklearn PCA model
+
+	M_norm = cat_data(pop, 'M_norm') # grab normalized data
+	pcaproj = pca.fit_transform(M_norm.toarray().T) # fit PCA model with all the cells
+
+	start = 0
+	end = 0
+	for x in pop['order']: # for each sample x
+		n = pop['samples'][x]['M'].shape[1] # number of cells
+		end += n # update end index
+		pop['samples'][x]['C'] = pcaproj[start:end,:] # store PCA projection for x as C (for cast)
+		start = end
+
+	pop['W'] = pca.components_
+	pop['nfeats'] = n_components
+        pop['reg_covar'] = 1e-6
+	#pop['reg_covar'] = max(np.linalg.eig(np.cov(proj.T))[0])/100 # store a regularization value for GMM covariance matrices
+	#gsea(pop) # run GSEA on feature space
+	#plot_top_genes_features(pop) # plot a heatmap of top genes for W
