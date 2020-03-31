@@ -3381,7 +3381,8 @@ def diffexp(pop, refcomp=0, testcomp=0, sample='', nbins=20, cutoff=.5, renderhi
 
 	# render l1norm values
 	samplename = sample.replace('/','') # remove slash char to not mess up the folder path
-	dname = 'diffexp/%d_%s/' % (refcomp, samplename) # define directory name
+	dname = 'diffexp/%d_%s_%t/' % (refcomp, samplename,testcomp) # define directory name
+	# dname = 'diffexp/%d_%s/' % (refcomp, samplename) # define directory name
 	mkdir(os.path.join(pop['output'], dname)) # create directory if needed
 	x = np.arange(len(q))
 	y = q
