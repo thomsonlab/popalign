@@ -12,6 +12,8 @@ from scipy import sparse as ss
 from scipy import optimize as so
 from scipy import stats
 from scipy.stats import linregress
+from scipy.stats import norm
+from scipy.stats import rankdata
 from scipy.cluster import hierarchy as shc
 from scipy.spatial import distance as scd
 from sklearn.utils.sparsefuncs import mean_variance_axis
@@ -41,6 +43,7 @@ from plotly.offline import iplot
 import umap.umap_ as umap
 import time
 import shutil
+
 
 '''
 Misc functions
