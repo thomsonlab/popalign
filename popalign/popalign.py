@@ -3328,6 +3328,7 @@ def diffexp(pop, refcomp=0, testcomp=0, sample='', nbins=20, cutoff=.5, renderhi
 		Wether to use filtered genes or not. If False, all genes will be used to run the differential expression
 	'''
 	xref = pop['ref'] # get reference sample label
+	reftype = pop['samples']['xref']['gmm_types'][testcomp]
 	ncomps = pop['samples'][xref]['gmm'].n_components-1
 
 	if sample not in pop['order']:
@@ -3381,7 +3382,7 @@ def diffexp(pop, refcomp=0, testcomp=0, sample='', nbins=20, cutoff=.5, renderhi
 
 	# render l1norm values
 	samplename = sample.replace('/','') # remove slash char to not mess up the folder path
-	dname = 'diffexp/%d_%s_%d/' % (refcomp, samplename,testcomp) # define directory name
+	dname = 'diffexp/%d_%s_%s_%d/' % (refcomp, reftype, samplename,testcomp) # define directory name
 	# dname = 'diffexp/%d_%s/' % (refcomp, samplename) # define directory name
 	mkdir(os.path.join(pop['output'], dname)) # create directory if needed
 	x = np.arange(len(q))
@@ -3429,7 +3430,9 @@ def diffexp(pop, refcomp=0, testcomp=0, sample='', nbins=20, cutoff=.5, renderhi
 		fout.write('\n'.join(ur_genesets))
 	
 	if renderhists == True: # if variable is True, then start histogram rendering
-		dname = 'diffexp/%d_%s/hists/' % (refcomp, samplename) # define directory name
+	#   dname = 'diffexp/%d_%s/hists/' % (refcomp, samplename) # define directory name
+		dname = 'diffexp/%d_%s_%s_%d/hists/' % (refcomp, reftype, samplename,testcomp) # define directory name
+
 		try:
 			shutil.rmtree(os.path.join(pop['output'], dname))
 		except:
@@ -3638,7 +3641,7 @@ def all_diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True
 	renderhists : bool
 		Render histograms or not for the top differentially expressed genes
 	usefiltered : bool
-		Wether to use filtered genes or not. If False, all genes will be used to run the differential expression
+		Whether to use filtered genes or not. If False, all genes will be used to run the differential expression
 	'''
 	xref = pop['ref'] # get reference sample label
 	ncomps = pop['samples'][xref]['gmm'].n_components-1
@@ -3775,3 +3778,7 @@ import sys
 if not sys.warnoptions:
 	import warnings
 	warnings.simplefilter("ignore")
+
+
+
+
