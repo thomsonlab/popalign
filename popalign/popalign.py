@@ -2760,9 +2760,9 @@ def plot_heatmap(pop, refcomp, genelist, clustersamples=True, clustercells=True,
 	cmap : str, optional
 		Name of the Matplotlib colormap to use. Default is Purples
 	samplelimits : bool, optional
-		Wether to draw vertical lines on the heatmap to visually separate cells from different samples
+		Whether to draw vertical lines on the heatmap to visually separate cells from different samples
 	scalegenes : bool, optional
-		Wether to scale the genes by substracting the min and dividing by the max for each gene
+		Whether to scale the genes by substracting the min and dividing by the max for each gene
 	'''
 	genelist = [g for g in genelist if g in pop['genes']] # only keep valid genes
 	gidx = [np.where(pop['genes']==g)[0][0] for g in genelist] # get indices for those genes
@@ -3328,7 +3328,7 @@ def diffexp(pop, refcomp=0, testcomp=0, sample='', nbins=20, cutoff=.5, renderhi
 		Wether to use filtered genes or not. If False, all genes will be used to run the differential expression
 	'''
 	xref = pop['ref'] # get reference sample label
-	reftype = pop['samples']['xref']['gmm_types'][testcomp]
+	reftype = pop['samples'][xref]['gmm_types'][refcomp]
 	ncomps = pop['samples'][xref]['gmm'].n_components-1
 
 	if sample not in pop['order']:
@@ -3470,7 +3470,7 @@ def diffexp(pop, refcomp=0, testcomp=0, sample='', nbins=20, cutoff=.5, renderhi
 
 def diffexp_testcomp(pop, testcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True, usefiltered=True):
 	'''
-	Find  differentially expressed genes between a refernce subpopulation
+	Find  differentially expressed genes between a reference subpopulation
 	and the subpopulation of a sample that aligned to it
 
 	Parameters
@@ -3490,7 +3490,8 @@ def diffexp_testcomp(pop, testcomp=0, sample='', nbins=20, cutoff=.5, renderhist
 	usefiltered : bool
 		Wether to use filtered genes or not. If False, all genes will be used to run the differential expression
 	'''
-	xref = pop['ref'] # get reference sample label
+	xref = pop['ref'] # get reference sample label	
+	reftype = pop['samples'][xref]['gmm_types'][refcomp]
 	ncomps = pop['samples'][xref]['gmm'].n_components-1
 
 	if sample not in pop['order']:
@@ -3538,7 +3539,8 @@ def diffexp_testcomp(pop, testcomp=0, sample='', nbins=20, cutoff=.5, renderhist
 
 	# render l1norm values
 	samplename = sample.replace('/','') # remove slash char to not mess up the folder path
-	dname = 'diffexp/%d_%s/' % (refcomp, samplename) # define directory name
+	# dname = 'diffexp/%d_%s/' % (refcomp, samplename) # define directory name
+	dname = 'diffexp/%d_%s_%s_%d/' % (refcomp, reftype, samplename,testcomp) # define directory name
 	mkdir(os.path.join(pop['output'], dname)) # create directory if needed
 	x = np.arange(len(q))
 	y = q
@@ -3585,7 +3587,8 @@ def diffexp_testcomp(pop, testcomp=0, sample='', nbins=20, cutoff=.5, renderhist
 		fout.write('\n'.join(ur_genesets))
 	
 	if renderhists == True: # if variable is True, then start histogram rendering
-		dname = 'diffexp/%d_%s/hists/' % (refcomp, samplename) # define directory name
+		dname = 'diffexp/%d_%s_%s_%d/hists/' % (refcomp, reftype, samplename,testcomp) # define directory name
+		# dname = 'diffexp/%d_%s/hists/' % (refcomp, samplename) # define directory name
 		try:
 			shutil.rmtree(os.path.join(pop['output'], dname))
 		except:
