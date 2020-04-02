@@ -557,7 +557,7 @@ def plot_mean_cv(pop, offset):
 
 	dname = 'qc'
 	mkdir(os.path.join(pop['output'], dname))
-	plt.savefig(os.path.join(pop['output'], dname, 'gene_filtering.png'), dpi=200)
+	plt.savefig(os.path.join(pop['output'], dname, 'gene_filtering.pdf'), dpi=200)
 	
 	pop['filter_idx'] = pop['nzidx'][selection_idx]
 
@@ -982,7 +982,7 @@ def plot_top_genes_features(pop):
 
 	dname = 'qc'
 	mkdir(os.path.join(pop['output'], dname)) # create subfolder
-	plt.savefig(os.path.join(pop['output'], dname, 'topgenes_features.png'), bbox_inches = "tight")
+	plt.savefig(os.path.join(pop['output'], dname, 'topgenes_features.pdf'), bbox_inches = "tight")
 	plt.close()
 
 	save_top_genes_features(pop, stds, stdfactor)
@@ -1090,7 +1090,7 @@ def plot_H(pop, method='complete', n=None):
 
 	dname = 'qc'
 	mkdir(os.path.join(pop['output'], dname)) # create subfolder
-	plt.savefig(os.path.join(pop['output'], dname, 'projection_cells.png'), bbox_inches = "tight", dpi=300)
+	plt.savefig(os.path.join(pop['output'], dname, 'projection_cells.pdf'), bbox_inches = "tight", dpi=300)
 	plt.close()
 
 def onmf(pop, ncells=2000, nfeats=[5,7,9], nreps=3, niter=300):
@@ -1565,7 +1565,7 @@ def render_model(pop, name, figsizesingle):
 	dname = 'renderings'
 	mkdir(os.path.join(pop['output'], dname))
 	name = name.replace('/','')
-	plt.savefig(os.path.join(pop['output'], dname, 'model_rendering_%s.png' % name), dpi=200)
+	plt.savefig(os.path.join(pop['output'], dname, 'model_rendering_%s.pdf' % name), dpi=200)
 	plt.close()
 	
 	return sample_density
@@ -1632,7 +1632,7 @@ def grid_rendering(pop, q, figsize, samples):
 	dname = 'renderings'
 	mkdir(os.path.join(pop['output'], dname))
 	name = name.replace('/','')
-	plt.savefig(os.path.join(pop['output'], dname, 'model_rendering_%s.png' % 'allsamples'), dpi=200)
+	plt.savefig(os.path.join(pop['output'], dname, 'model_rendering_%s.pdf' % 'allsamples'), dpi=200)
 	plt.close()
 
 	'''
@@ -1654,7 +1654,7 @@ def grid_rendering(pop, q, figsize, samples):
 	dname = 'renderings'
 	mkdir(os.path.join(pop['output'], dname))
 	name = name.replace('/','')
-	plt.savefig(os.path.join(pop['output'], dname, 'model_rendering_%s.png' % 'allsamples'), dpi=200)
+	plt.savefig(os.path.join(pop['output'], dname, 'model_rendering_%s.pdf' % 'allsamples'), dpi=200)
 	plt.close()
 	'''
 
@@ -1947,7 +1947,7 @@ def plot_entropies(pop, figsize):
 	
 	dname = 'entropy'
 	mkdir(os.path.join(pop['output'], dname))
-	plt.savefig(os.path.join(pop['output'], dname, 'models_entropy.png'), dpi=200, bbox_inches='tight')
+	plt.savefig(os.path.join(pop['output'], dname, 'models_entropy.pdf'), dpi=200, bbox_inches='tight')
 	plt.close()
 
 def single_entropy(N, S):
@@ -2143,7 +2143,7 @@ def plot_deltas(pop, figsize): # generate plot mu and delta w plots
 		plt.tight_layout()
 		
 		lbl = lbl.replace('/','')
-		plt.savefig(os.path.join(pop['output'], dname, 'deltas_comp%d_%s.png' % (i,lbl)), dpi=200, bbox_inches='tight')
+		plt.savefig(os.path.join(pop['output'], dname, 'deltas_comp%d_%s.pdf' % (i,lbl)), dpi=200, bbox_inches='tight')
 		plt.close()
 
 def plot_deltas_test(pop, pointsize, figsize):
@@ -2207,7 +2207,7 @@ def plot_deltas_test(pop, pointsize, figsize):
 
 		plt.tight_layout()
 		lbl = lbl.replace('/','')
-		plt.savefig(os.path.join(pop['output'], dname, 'deltas_comp%d_%s.png' % (i,lbl)), dpi=200, bbox_inches='tight')
+		plt.savefig(os.path.join(pop['output'], dname, 'deltas_comp%d_%s.pdf' % (i,lbl)), dpi=200, bbox_inches='tight')
 		plt.close()
 
 def aligner(refgmm, testgmm, method):
@@ -2222,6 +2222,14 @@ def aligner(refgmm, testgmm, method):
 		Test model
 	method : str
 		Alignment method. Must be one of: test2ref, ref2test, conservative
+
+	Output
+	----------
+	arr: array, int
+		pairwise JD values between two GMMs
+	res: array, int
+		Array giving best alignments. Leftmost square matrix:  'boolean' shows associated pairs 
+		Rightmost column: JD values for those associated pairs 
 	'''
 	ltest = testgmm.n_components # get test number of components
 	lref = refgmm.n_components # get ref number of components
@@ -2357,7 +2365,7 @@ def plot_deltas_aa(pop, ref, deltamus, deltaws, figsize, pointsize):
 
         plt.tight_layout()
         lbl = lbl.replace('/','')
-        plt.savefig(os.path.join(pop['output'], dname, 'deltas_comp%d_%s.png' % (i,lbl)), dpi=200, bbox_inches='tight')
+        plt.savefig(os.path.join(pop['output'], dname, 'deltas_comp%d_%s.pdf' % (i,lbl)), dpi=200, bbox_inches='tight')
         plt.close()
 
 def assign_align(pop, ref=None, figsize=(15,15), pointsize=10):
@@ -2443,7 +2451,7 @@ def score_subpopulations(pop, ref=None, figsize=(10,5)):
 		plt.tight_layout()
 		dname = 'ranking_test'
 		mkdir(os.path.join(pop['output'], dname))
-		plt.savefig(os.path.join(pop['output'], dname, 'rankings_%d_%s.png' % (i,subpop)), dpi=200)
+		plt.savefig(os.path.join(pop['output'], dname, 'rankings_%d_%s.pdf' % (i,subpop)), dpi=200)
 		plt.close()
 
 def rank(pop, ref=None, k=100, niter=200, method='LLR', mincells=50, figsize=(10,5)):
@@ -2693,7 +2701,7 @@ def plot_query_heatmap(pop, figsize=(10,10)):
 	# get percentage of cells per component
 	gmm = pop['gmm']
 	N = len(pop['order'])
-	arr = np.zeros((N, gmm.n_components))
+	arr = np.zeros((N, gmm.n_components)) 
 	for i,x in enumerate(pop['order']):
 		C = pop['samples'][x]['C']
 		prediction = gmm.predict(C)
@@ -2920,7 +2928,7 @@ def plot_heatmap(pop, refcomp, genelist, clustersamples=True, clustercells=True,
 	else:
 		filename = 'comp%d_heatmap' % refcomp
 	filename = filename.replace('/','')
-	plt.savefig(os.path.join(pop['output'], dname, '%s.png' % filename), dpi=200, bbox_inches='tight')
+	plt.savefig(os.path.join(pop['output'], dname, '%s.pdf' % filename), dpi=200, bbox_inches='tight')
 	plt.close()
 
 def plot_genes_gmm_cells(pop, sample='', genelist=[], savename='', metric='correlation', method='single', clustergenes=True, clustercells=True, cmap='magma', figsize=(10,15)):
@@ -3026,7 +3034,7 @@ def plot_genes_gmm_cells(pop, sample='', genelist=[], savename='', metric='corre
 	if savename == '':
 		savename = 'gmm_%s' % sample # default name if none is provided
 	savename = savename.replace('/','')
-	plt.savefig(os.path.join(pop['output'], dname, '%s_cells.png' % savename), dpi=200, bbox_inches='tight')
+	plt.savefig(os.path.join(pop['output'], dname, '%s_cells.pdf' % savename), dpi=200, bbox_inches='tight')
 	plt.close()
 
 def scatter(pop, method='tsne', sample=None, compnumber=None, marker=None, size=.1):
@@ -3119,7 +3127,7 @@ def scatter(pop, method='tsne', sample=None, compnumber=None, marker=None, size=
 	
 	dname = 'embedding/markers/' # directory name
 	mkdir(os.path.join(pop['output'], dname)) # create directory if needed
-	plt.savefig(os.path.join(pop['output'], dname, '%s.png' % filename), dpi=200, bbox_inches='tight') # save figure
+	plt.savefig(os.path.join(pop['output'], dname, '%s.pdf' % filename), dpi=200, bbox_inches='tight') # save figure
 	plt.close()
 
 def samples_grid(pop, method='tsne', figsize=(20,20), size_background=.1, size_samples=.1):
@@ -3208,8 +3216,6 @@ def subpopulations_grid(pop, method='tsne', figsize=(20,20), size_background=.1,
 	size_subpops : float, int
 		Point size for the highlighted subpopulations
 	'''
-
-
 
 def subpopulations_grid_unique(pop, method='tsne', figsize=(20,20), size_background=.1, size_subpops=1):
 	if method not in pop: # if method not run before
@@ -3395,7 +3401,7 @@ def diffexp(pop, refcomp=0, testcomp=0, sample='', nbins=20, cutoff=.5, renderhi
 	plt.xlabel('Genes')
 	plt.legend()
 	filename = 'l1norm_values'
-	filename = os.path.join(pop['output'], dname, '%s.png' % filename)
+	filename = os.path.join(pop['output'], dname, '%s.pdf' % filename)
 	plt.savefig(filename, dpi=200, bbox_inches='tight')
 	plt.close()
 
@@ -3461,7 +3467,7 @@ def diffexp(pop, refcomp=0, testcomp=0, sample='', nbins=20, cutoff=.5, renderhi
 			plt.title('Gene %s\nSubpopulation #%d of %s' % (gname, refcomp, xref))
 
 			filename = '%s_%s' % (lbl, gname)
-			plt.savefig(os.path.join(pop['output'], dname, '%s.png' % filename), dpi=200, bbox_inches='tight')
+			plt.savefig(os.path.join(pop['output'], dname, '%s.pdf' % filename), dpi=200, bbox_inches='tight')
 			plt.close()
 
 	lidx = [genes[i] for i in lidx]
@@ -3552,7 +3558,7 @@ def diffexp_testcomp(pop, testcomp=0, sample='', nbins=20, cutoff=.5, renderhist
 	plt.xlabel('Genes')
 	plt.legend()
 	filename = 'l1norm_values'
-	filename = os.path.join(pop['output'], dname, '%s.png' % filename)
+	filename = os.path.join(pop['output'], dname, '%s.pdf' % filename)
 	plt.savefig(filename, dpi=200, bbox_inches='tight')
 	plt.close()
 
@@ -3617,7 +3623,7 @@ def diffexp_testcomp(pop, testcomp=0, sample='', nbins=20, cutoff=.5, renderhist
 			plt.title('Gene %s\nSubpopulation #%d of %s' % (gname, refcomp, xref))
 
 			filename = '%s_%s' % (lbl, gname)
-			plt.savefig(os.path.join(pop['output'], dname, '%s.png' % filename), dpi=200, bbox_inches='tight')
+			plt.savefig(os.path.join(pop['output'], dname, '%s.pdf' % filename), dpi=200, bbox_inches='tight')
 			plt.close()
 
 	lidx = [genes[i] for i in lidx]
@@ -3734,7 +3740,7 @@ def all_diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True
 	plt.xlabel('Genes')
 	plt.legend()
 	filename = 'l1norm_values'
-	plt.savefig(os.path.join(pop['output'], dname, '%s.png' % filename), dpi=200, bbox_inches='tight')
+	plt.savefig(os.path.join(pop['output'], dname, '%s.pdf' % filename), dpi=200, bbox_inches='tight')
 	plt.close()
 	
 	if renderhists == True: # if variable is True, then start histogram rendering
@@ -3770,7 +3776,7 @@ def all_diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True
 			plt.title('Gene %s\nSubpopulation #%d of %s' % (gname, refcomp, xref))
 
 			filename = '%s_%s' % (lbl, gname)
-			plt.savefig(os.path.join(pop['output'], dname, '%s.png' % filename), dpi=200, bbox_inches='tight')
+			plt.savefig(os.path.join(pop['output'], dname, '%s.pdf' % filename), dpi=200, bbox_inches='tight')
 			plt.close()
 
 	lidx = [genes[i] for i in lidx]
