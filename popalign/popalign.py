@@ -2026,7 +2026,7 @@ def JeffreyDiv(mu1, cov1, mu2, cov2):
 	JD = 0.5*KL(mu1, cov1, mu2, cov2)+0.5*KL(mu2, cov2, mu1, cov1)
 	return np.log10(JD)
 
-def plot_deltas(pop, figsize): # generate plot mu and delta w plots
+def plot_deltas(pop, figsize=(10,10), sortby='mu', pthresh = 0.05): # generate plot mu and delta w plots
 	'''
 	Genere delta mu and delta w plots for the computed alignments
 
@@ -2036,17 +2036,25 @@ def plot_deltas(pop, figsize): # generate plot mu and delta w plots
 		Popalign object
 	figsize : tuple, optional
 		Size of the figure. Default is (10,10)
+	sortby : string
+		Either 'mu' (gene expression) or 'w' (abundance)
+	pthresh : float 
+		p-value threshold at which colors are no longer plotted
+
 	'''
 	dname = 'deltas'
 	mkdir(os.path.join(pop['output'], dname))
 
 	ref = pop['ref'] # get reference sample name
 	
-	list_ = pop['samples'][ref]['gmm_types']
-	if list_ == None:
-		list_ = [str(i) for i in range(pop['samples'][ref]['gmm'].n_components)]
+	celltypes = pop['samples'][ref]['gmm_types']
+	if celltypes == None:
+		celltypes = [str(i) for i in range(pop['samples'][ref]['gmm'].n_components)]
 
-	for i, lbl in enumerate(list_): # for each reference subpopulation
+	# Make an object that stores the orders for each cell type
+	deltaobj = dict()
+
+	for i, currtype in enumerate(celltypes): # for each reference subpopulation
 		samplelbls = []
 		xcoords = []
 		delta_mus = []
@@ -2102,49 +2110,121 @@ def plot_deltas(pop, figsize): # generate plot mu and delta w plots
 				mean_ws.append(np.mean(tmp_delta_ws))
 				stds_mus.append(np.std(tmp_delta_mus))
 				stds_ws.append(np.std(tmp_delta_ws))
-				
+
 		seen = set()
 		seen_add = seen.add
 		xlbls = [x for x in samplelbls if not (x in seen or seen_add(x))]
 		x = [x for x in xcoords if not (x in seen or seen_add(x))]
 
-		# reorder by delta mu mean
-		idx = np.argsort(mean_mus)
+		# Calculate the p-values for the means
+		control_delta_mus = [mean_mus[i] for i in x if 'CTRL' in xlbls[i]]
+		pvals_mus, control_mus_CI_min,control_mus_CI_max = calc_p_value(control_delta_mus, mean_mus)
+
+		# Calculate the p-values for the abundances
+		control_delta_ws = [mean_ws[i] for i in x if 'CTRL' in xlbls[i]]
+		pvals_ws,control_ws_CI_min,control_ws_CI_max = calc_p_value(control_delta_ws, mean_ws)
+
+		# Max/Min of bootstrapped measurements
+		control_delta_mus_min = min([delta_mus[i] for i in range(len(delta_mus)) if 'CTRL' in xlbls[xcoords[i]]])
+		control_delta_mus_max = max([delta_mus[i] for i in range(len(delta_mus)) if 'CTRL' in xlbls[xcoords[i]]])
+
+		control_delta_ws_min = min([delta_ws[i] for i in range(len(delta_ws)) if 'CTRL' in xlbls[xcoords[i]]])
+		control_delta_ws_max = max([delta_ws[i] for i in range(len(delta_ws)) if 'CTRL' in xlbls[xcoords[i]]])
+
+
+		print(len(mean_mus))
+		print(len(mean_ws))
+		
+		print(len(stds_mus))
+		print(len(stds_ws))
+
+		print(len(pvals_mus))
+		print(len(pvals_ws))
+
+		# reorder data 
+		if sortby=="mu": 
+			idx = np.argsort(mean_mus)
+		elif sortby=="w": 
+			idx = np.argsort(mean_ws)
+		else: 
+			raise Exception("Sortby must be either mu (gene expression) or w (abundance)")
+		xlbls = [xlbls[i] for i in idx]
 		mean_mus = [mean_mus[i] for i in idx]
 		mean_ws = [mean_ws[i] for i in idx]
 		stds_mus = [stds_mus[i] for i in idx]
 		stds_ws = [stds_ws[i] for i in idx]
-		xlbls = [xlbls[i] for i in idx]
+		pvals_mus = [pvals_mus[i] for i in idx]
+		pvals_ws= [pvals_ws[i] for i in idx]
 
-		'''
-		newxcoords = []
-		for value in xcoords:
-			newxcoords.append(np.where(idx==value)[0][0])
-		xcoords = newxcoords
-		'''
 		xcoords = [np.where(idx==value)[0][0] for value in xcoords]
 
+		# Only plot colors for adjusted p-values < pthresh
+		plot_pval_ws=[x if x < pthresh else 1 for x in pvals_ws]
+		plot_pval_mus=[x if x < pthresh else 1 for x in pvals_mus]
+
+		rbcmap = matplotlib.colors.LinearSegmentedColormap.from_list("", ["black","red"])
 		plt.figure(figsize=figsize)
 
+		# Plot the delta ws - upper
 		ax1 = plt.subplot(2,1,1)
-		plt.title('Reference sample %s\nComponent %d: %s' %(ref, i, lbl))
+		plt.title('Reference sample %s\nComponent %d: %s' %(ref, i, currtype))
 		plt.scatter(xcoords, delta_ws, s=2, c='k')
+		plt.scatter(x, mean_ws, s=36, c =-np.log10(plot_pval_ws) ,cmap=rbcmap)
 		plt.errorbar(x, mean_ws, stds_ws, color='k', elinewidth=.5, capsize=1, fmt=' ', label='Standard deviation')
+		# Plot the control ranges:
+		plt.fill_between(range(-1,len(mean_ws)+1),control_ws_CI_min,control_ws_CI_max,alpha=0.2, color='black')
+		plt.hlines([control_delta_ws_min,control_delta_ws_max], -1, len(mean_ws), colors='k', linestyles='dotted')   
 		plt.xticks([])
 		plt.ylabel('Δ\u03C9 (%)')
+		cbar=plt.colorbar()
+		cbar.set_label('-log10(p-val)', rotation=90)
 
+		# Plot the delta mus - lower
 		plt.subplot(2,1,2)
-		plt.scatter(xcoords, delta_mus, s=2,c='k')
-		plt.errorbar(x, mean_mus, stds_mus, color='k', elinewidth=.5, capsize=1, fmt=' ', label='Standard deviation')
+		plt.scatter(xcoords, delta_mus, s=2, c='k')
+		plt.scatter(x, mean_mus, s=36,  c = -np.log10(plot_pval_mus), cmap=rbcmap)
+		plt.errorbar(x, mean_mus, stds_mus, color='k', elinewidth=.3, capsize=1, fmt=' ', label='Standard deviation')
+		plt.fill_between(range(-1,len(mean_mus)+1),control_mus_CI_min,control_mus_CI_max,alpha=0.2, color='black')
+		plt.hlines([control_delta_mus_min,control_delta_mus_max], -1, len(mean_mus), colors='k', linestyles='dotted')
 		plt.xticks(x, xlbls, rotation=90)
-		
 		plt.ylabel('Δ\u03BC')
+		cbar=plt.colorbar()
+
+		cbar.set_label('-log10(p-val)', rotation=90)
 
 		plt.tight_layout()
-		
-		lbl = lbl.replace('/','')
-		plt.savefig(os.path.join(pop['output'], dname, 'deltas_comp%d_%s.pdf' % (i,lbl)), dpi=200, bbox_inches='tight')
+		currtype = currtype.replace('/','')
+		plt.rc('font', size= 18) 
+		plt.savefig(os.path.join(pop['output'], dname, 'deltas_comp%d_%s_%ssort.pdf' % (i,currtype, sortby)), format='pdf', bbox_inches='tight')
 		plt.close()
+
+		# add delta values to the delta obj
+		deltaobj[currtype]={}
+		deltaobj[currtype]['idx'] = idx
+		deltaobj[currtype]['orderedsamples'] = xlbls
+		deltaobj[currtype]['mean_mus'] = mean_mus
+		deltaobj[currtype]['mean_ws'] = mean_ws  
+		deltaobj[currtype]['delta_mus'] = delta_mus
+		deltaobj[currtype]['delta_ws'] = delta_ws
+		deltaobj[currtype]['pvals_mus'] = pvals_mus
+		deltaobj[currtype]['pvals_ws'] = pvals_ws
+		deltaobj[currtype]['xcoords'] = xcoords
+
+		# Combine mean data together into a single dataframe
+		t = pd.DataFrame(np.array([idx,xlbls, mean_mus, pvals_mus, mean_ws, pvals_ws]),
+			index=['origidx','orderedsamples', 'mean_delta_mu', 'pvals_mu','mean_delta_w','pvals_w'])      
+		t = pd.DataFrame.transpose(t);
+		deltaobj[currtype]={}
+		deltaobj[currtype]['idx'] = idx
+		deltaobj[currtype]['orderedsamples'] = xlbls
+		deltaobj[currtype]['singles']={}
+		deltaobj[currtype]['singles']['delta_mus'] = delta_mus
+		deltaobj[currtype]['singles']['delta_ws'] = delta_ws
+		deltaobj[currtype]['singles']['xcoords'] = xcoords
+		deltaobj[currtype]['combined'] = t # table of data
+
+	pop['deltas'] = deltaobj
+
 
 def plot_deltas_test(pop, pointsize, figsize):
 	'''
@@ -2162,11 +2242,11 @@ def plot_deltas_test(pop, pointsize, figsize):
 
 	ref = pop['ref'] # get reference sample name
 	
-	list_ = pop['samples'][ref]['gmm_types'] # get cell types in reference model
-	if list_ == None:
-		list_ = [str(i) for i in range(pop['samples'][ref]['gmm'].n_components)]
+	celltypes = pop['samples'][ref]['gmm_types'] # get cell types in reference model
+	if celltypes == None:
+		celltypes = [str(i) for i in range(pop['samples'][ref]['gmm'].n_components)]
 
-	for i, lbl in enumerate(list_): # for each reference subpopulation
+	for i, lbl in enumerate(celltypes): # for each reference subpopulation
 		samplelbls = [] # store x labels (sample + component number)
 		xcoords = [] # store x coordinate
 		delta_mus = [] # store delta mu value
@@ -3783,7 +3863,7 @@ def all_diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True
 	plot_heatmap(pop, refcomp, lidx, clustersamples=False, clustercells=True, savename='%d_%s_only' % (refcomp, sample), figsize=(15,15), cmap='Purples', samplelimits=False, scalegenes=True, only=sample, equalncells=True)
 	return lidx
 
-def calc_p_value(controlvals, testvals)
+def calc_p_value(controlvals, testvals) : 
 	'''
 	Calculates the p-value using a one-sample t-test with FDR correction. 
 	In this case values for control replicates are considered the "sample", 
@@ -3819,6 +3899,12 @@ def calc_p_value(controlvals, testvals)
 	ranked_pvals = rankdata(pvals_raw)
 	pvals = pvals_raw * len(pvals_raw) / ranked_pvals
 	pvals[pvals > 1] = 1
+
+	# Calculate CI min and CI max
+	CI_min = control_mean - 1.96*control_std/np.sqrt(N)
+	CI_max = control_mean + 1.96*control_std/np.sqrt(N)
+
+	return pvals, CI_min, CI_max
 
 
 import sys
