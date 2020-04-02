@@ -1816,11 +1816,16 @@ def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar=
 		else:
 			pop['samples'][x]['gmm_types'] = [str(ii) for ii in range(gmm.n_components)]
 
+		# Also store first gmm in ['replicates'][0]: 
+		pop['samples'][x]['replicates'] = {}
+		pop['samples'][x]['replicates'][0] = {}
+		pop['samples'][x]['replicates'][0]['gmm'] = gmm # store gmm
+		pop['samples'][x]['replicates'][0]['means_genes'] = np.array(gmm.means_.dot(pop['W'].T))
+
 		# Create replicates
 		pop['nreplicates'] = nreplicates # store number of replicates in pop object
 		if nreplicates >=1: # if replicates are requested
-			pop['samples'][x]['replicates'] =  {} # create replicates entry for sample x
-			for j in range(nreplicates): # for each replicate number j
+			for j in range(1,nreplicates): # for each replicate number j
 				idx = np.random.choice(m, n, replace=False) # get n random cell indices
 				not_idx = np.setdiff1d(range(m), idx) # get the validation set indices
 				Ctrain = C[idx,:] # subset to get the training sdt
@@ -1838,7 +1843,6 @@ def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar=
 				if types != None:
 					pop['samples'][x]['replicates'][j]['gmm_types'] = typer_func(gmm=gmm, prediction=gmm.predict(C), M=M, genes=pop['genes'], types=types)
 				else:
-					pop['samples'][x]['replicates'][j]['gmm_types'] = None
 
 	print('Rendering models')
 	render_models(pop, figsizegrouped=figsizegrouped, figsizesingle=figsizesingle, samples=samples, mode=rendering) # render the models
@@ -3925,7 +3929,6 @@ def calc_p_value(controlvals, testvals, tail = 1) :
 	CI_max = control_mean + 1.96*control_std/np.sqrt(N)
 
 	return pvals, CI_min, CI_max
-
 
 import sys
 if not sys.warnoptions:
