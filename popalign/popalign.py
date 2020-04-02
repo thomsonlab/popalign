@@ -1843,6 +1843,7 @@ def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar=
 				if types != None:
 					pop['samples'][x]['replicates'][j]['gmm_types'] = typer_func(gmm=gmm, prediction=gmm.predict(C), M=M, genes=pop['genes'], types=types)
 				else:
+					pop['samples'][x]['replicates'][j]['gmm_types'] = [str(ii) for ii in range(gmm.n_components)]
 
 	print('Rendering models')
 	render_models(pop, figsizegrouped=figsizegrouped, figsizesingle=figsizesingle, samples=samples, mode=rendering) # render the models
@@ -3749,6 +3750,9 @@ def all_diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True
 		Whether to use filtered genes or not. If False, all genes will be used to run the differential expression
 	'''
 	xref = pop['ref'] # get reference sample label
+	celltypes = pop['samples'][xref]['gmm_types']
+	currtype = celltypes[refcomp]
+	print(currtype)
 	ncomps = pop['samples'][xref]['gmm'].n_components-1
 
 	if sample not in pop['order']:
@@ -3786,6 +3790,8 @@ def all_diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True
 	
 	with Pool(pop['ncores']) as p:
 		q = np.array(p.starmap(l1norm, [(ig, subref[ig,:], subtest[ig,:], nbins) for ig in range(subref.shape[0])])) # for each gene idx ig, call the l1norm function
+	q_raw = q
+	genes_raw = genes
 
 	idx = np.argsort(q)
 	q = q[idx]
@@ -3812,7 +3818,8 @@ def all_diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True
 	labels = ['downregulated']*len(downregulated_idx)+['upregulated']*len(upregulated_idx)
 
 	samplename = sample.replace('/','') # remove slash char to not mess up the folder path
-	dname = 'diffexp/%d_%s/' % (refcomp, samplename) # define directory name
+	# dname = 'diffexp/%d_%s/' % (refcomp, samplename) # define directory name
+	dname = 'diffexp/%d_%s_%s_%d/' % (refcomp, currtype,samplename, itest) 
 	mkdir(os.path.join(pop['output'], dname)) # create directory if needed
 	with open(os.path.join(pop['output'], dname, 'downregulated_genes.txt'),'w') as fout:
 		fout.write('Downregulated genes for sample %s relative to the reference sample\n\n' % sample)
@@ -3840,7 +3847,8 @@ def all_diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True
 	plt.close()
 	
 	if renderhists == True: # if variable is True, then start histogram rendering
-		dname = 'diffexp/%d_%s/hists/' % (refcomp, samplename) # define directory name
+		# dname = 'diffexp/%d_%s/hists/' % (refcomp,samplename) # define directory name
+		dname = 'diffexp/%d_%s_%s_%d/hists/' % (refcomp, currtype,samplename, itest) # define directory name
 		try:
 			shutil.rmtree(os.path.join(pop['output'], dname))
 		except:
@@ -3877,7 +3885,7 @@ def all_diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True
 
 	lidx = [genes[i] for i in lidx]
 	plot_heatmap(pop, refcomp, lidx, clustersamples=False, clustercells=True, savename='%d_%s_only' % (refcomp, sample), figsize=(15,15), cmap='Purples', samplelimits=False, scalegenes=True, only=sample, equalncells=True)
-	return lidx
+	return  q_raw, genes_raw, lidx, upregulated, downregulated
 
 def calc_p_value(controlvals, testvals, tail = 1) : 
 	'''
