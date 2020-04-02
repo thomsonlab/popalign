@@ -3793,9 +3793,12 @@ def all_diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True
 	q_raw = q
 	genes_raw = genes
 
+	# resort the genes according to L1 norm value and update multiple variables
 	idx = np.argsort(q)
 	q = q[idx]
 	genes = genes[idx]
+	subref = subref[idx,:]
+	subtest = subtest[idx,:]
 
 	downregulated_idx = np.where(np.array(q)<-cutoff)[0] # get indices of genes with low l1-norm values
 	upregulated_idx = np.where(np.array(q)>cutoff)[0] # get indices of genes with high l1-norm values
@@ -3845,7 +3848,10 @@ def all_diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True
 	filename = 'l1norm_values'
 	plt.savefig(os.path.join(pop['output'], dname, '%s.pdf' % filename), dpi=200, bbox_inches='tight')
 	plt.close()
-	
+
+	print(lidx)
+	print(genes)
+
 	if renderhists == True: # if variable is True, then start histogram rendering
 		# dname = 'diffexp/%d_%s/hists/' % (refcomp,samplename) # define directory name
 		dname = 'diffexp/%d_%s_%s_%d/hists/' % (refcomp, currtype,samplename, itest) # define directory name
@@ -3855,16 +3861,14 @@ def all_diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True
 			pass
 		mkdir(os.path.join(pop['output'], dname)) # create directory if needed
 		for lbl,i in zip(labels, lidx): # for each gene index in final list
-			if usefiltered==False:
-				gname = pop['genes'][i] 
-			elif usefiltered==True:
-				gname = pop['filtered_genes'][i] 
+			gname = genes[i]
 
 			arrref = subref[i,:]
 			arrtest = subtest[i,:]
 			maxref, maxtest = np.max(arrref), np.max(arrtest)
 			max_ = max(maxref,maxtest)
 
+			# Format data fo histogram plot:
 			nbins = 20
 			bref, beref = np.histogram(arrref, bins=nbins, range=(0,max_))
 			btest, betest = np.histogram(arrtest, bins=nbins, range=(0,max_))
@@ -3872,20 +3876,43 @@ def all_diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True
 			btest = btest/len(arrtest)
 
 			width = beref[-1]/nbins
-			plt.bar(beref[:-1], bref, label=xref, alpha=.3, width=width)
-			plt.bar(beref[:-1], btest, label=xtest, alpha=0.3, width=width)
+			ax1=plt.subplot(1, 2, 1)
+			plt.bar(beref[:-1], bref, label=xref[0:10], alpha=.3, width=width)
+			plt.bar(beref[:-1], btest, label=xtest[0:10], alpha=0.3, width=width)
 			plt.legend()
-			plt.xlabel('Normalized counts')
-			plt.ylabel('Percentage of cells in subpopulation')
-			plt.title('Gene %s\nSubpopulation #%d of %s' % (gname, refcomp, xref))
+			plt.xlabel('Normalized log(counts)')
+			plt.ylabel('Cell Fraction')
+			plt.title('%s\n %s-%d of %s' % (gname, currtype, refcomp, xref)) 
+			ax1.legend(loc='upper center', bbox_to_anchor=(0.5, -0.05),ncol=2)
+
+			# Format data for violinplot:
+			labels1 = [xref[0:10]]*len(arrref)
+			labels2 = [xtest[0:10]]*len(arrtest)
+			fakey = [1]*(len(arrtest)+len(arrref))
+
+			v1 = np.concatenate([arrref,arrtest])
+			v2 = np.concatenate([labels1,labels2])
+			arrdf = pd.DataFrame(data = list([v1,v2]))
+			arrdf = pd.DataFrame.transpose(arrdf)
+			arrdf.rename(columns = {0:'values',1:'sample'},inplace=True)
+			arrdf['values']=arrdf['values'].astype('float64')
+			arrdf['sample']=arrdf['sample'].astype('category')
+			arrdf['y'] = fakey
+			arrdf['y'] = arrdf['y'].astype('float64')
+
+			ax2=plt.subplot(1, 2, 2)
+			sns.violinplot(y='values' ,x='y',data=arrdf,hue='sample',split=True, orient='v')
+			plt.ylabel('Normalized log(counts)')
+			plt.title(gname)
+			ax2.legend(loc='upper center', bbox_to_anchor=(0.5, -0.05), ncol=2)
 
 			filename = '%s_%s' % (lbl, gname)
-			plt.savefig(os.path.join(pop['output'], dname, '%s.pdf' % filename), dpi=200, bbox_inches='tight')
+			plt.savefig(os.path.join(pop['output'], dname, '%s.pdf' % filename),bbox_inches='tight')
 			plt.close()
 
 	lidx = [genes[i] for i in lidx]
 	plot_heatmap(pop, refcomp, lidx, clustersamples=False, clustercells=True, savename='%d_%s_only' % (refcomp, sample), figsize=(15,15), cmap='Purples', samplelimits=False, scalegenes=True, only=sample, equalncells=True)
-	return  q_raw, genes_raw, lidx, upregulated, downregulated
+	return q_raw, genes_raw, lidx, upregulated, downregulated
 
 def calc_p_value(controlvals, testvals, tail = 1) : 
 	'''
