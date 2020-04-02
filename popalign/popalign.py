@@ -2592,7 +2592,7 @@ def rank(pop, ref=None, k=100, niter=200, method='LLR', mincells=50, figsize=(10
 			else:
 				nk = m-5
 			# Score nk different random cells, niter times
-			# keep track of scores, labels and drug classes
+			# keep track of scores, labels and sample classes
 			if x == ref:
 				try:
 					gmmtest = pop['samples'][x]['replicates'][0]['gmm']
@@ -2613,7 +2613,7 @@ def rank(pop, ref=None, k=100, niter=200, method='LLR', mincells=50, figsize=(10
 		else:
 			print('Not enough cells for samples: %s' % x)
 					
-	# create dataframe from scores, labels and drug classes
+	# create dataframe from scores, labels and sample classes
 	# find sample order based on score means
 	df = pd.DataFrame({'scores': scores, 'labels': lbls})
 	if method == 'LL':
@@ -2839,6 +2839,8 @@ def plot_query_heatmap(pop, figsize=(10,10)):
 	plt.savefig(path_, bbox_inches='tight')
 	plt.close()
 
+
+
 '''
 Visualization functions
 '''
@@ -2873,6 +2875,7 @@ def plot_heatmap(pop, refcomp, genelist, clustersamples=True, clustercells=True,
 	gidx = [np.where(pop['genes']==g)[0][0] for g in genelist] # get indices for those genes
 
 	ref = pop['ref'] # get reference sample label
+	reftype = pop['samples'][ref]['gmm_types'][refcomp]
 	C = pop['samples'][ref]['C'] # get reference data in feature space
 	M = pop['samples'][ref]['M'][gidx,:] # get reference data in gene space, subsample genes
 	prediction = pop['samples'][ref]['gmm'].predict(C) # get cell predictions
@@ -2930,7 +2933,7 @@ def plot_heatmap(pop, refcomp, genelist, clustersamples=True, clustercells=True,
 	else:
 		try:
 			x = only
-			arr = pop['samples'][x]['alignments'] # retrive test sample alignments
+			arr = pop['samples'][x]['alignments'] # retrieve test sample alignments
 			irow = np.where(arr[:,1] == refcomp)[0] # get row number in alignments where ref subpop is the desired ref subpop
 			if len(irow)==1:
 				itest = int(arr[irow, 0]) # get test subpopulation number if exists
@@ -2982,7 +2985,8 @@ def plot_heatmap(pop, refcomp, genelist, clustersamples=True, clustercells=True,
 	M = ss.hstack(MS) # create full matrix
 	M = M.toarray() # to dense
 	if scalegenes == True:
-		tmp = (M.T-M.min(axis=1)).T # substract min
+		# tmp = (M.T-M.min(axis=1)).T # subtract min
+		tmp = M # Do not subtract the min
 		M = (tmp.T/tmp.max(axis=1)).T # divide by max
 
 	cols = np.concatenate([[0]*x if i%2==0 else [1]*x for i,x in enumerate(ncols)]) # create binary vector to color columns, length equals to number of cells. Should be: [0,...,0,1,...,1,0,...,0,1...,1,etc]
@@ -3016,10 +3020,11 @@ def plot_heatmap(pop, refcomp, genelist, clustersamples=True, clustercells=True,
 	plt.xticks(xtickscoords, MSlabels, rotation=90) # display sample names
 	
 	if only != None:
-		dname = 'diffexp/%d_%s/' % (refcomp, only) # define directory name
+		# dname = 'diffexp/%d_%s_%s/' % (refcomp, reftype, only) # define directory name
+		dname = 'diffexp/refpop%d_%s_%s/' % (refcomp, reftype, only)
 	else:
 		dname = 'heatmaps' # define directory name
-	mkdir(os.path.join(pop['output'], dname)) # create directory if needed
+		mkdir(os.path.join(pop['output'], dname)) # create directory if needed
 	if savename != None:
 		filename = savename
 	else:
@@ -3027,6 +3032,7 @@ def plot_heatmap(pop, refcomp, genelist, clustersamples=True, clustercells=True,
 	filename = filename.replace('/','')
 	plt.savefig(os.path.join(pop['output'], dname, '%s.pdf' % filename), dpi=200, bbox_inches='tight')
 	plt.close()
+
 
 def plot_genes_gmm_cells(pop, sample='', genelist=[], savename='', metric='correlation', method='single', clustergenes=True, clustercells=True, cmap='magma', figsize=(10,15)):
 	'''
@@ -3302,6 +3308,8 @@ def subpopulations_grid(pop, method='tsne', figsize=(20,20), size_background=.1,
 	'''
 	Generate grid plots of sample subpopulations in an embedding space
 
+	Parameters
+	----------
 	pop : dict
 		Popalign object
 	method : str
@@ -3371,6 +3379,97 @@ def subpopulations_grid_unique(pop, method='tsne', figsize=(20,20), size_backgro
 	mkdir(os.path.join(pop['output'], dname)) # create folder if does not exist
 	plt.savefig(os.path.join(pop['output'], dname, 'unique_subpopulations_%s.png' % method), dpi=200) # save plot
 	plt.close() # close plot
+
+
+def plot_L1_heatmap(pop, sample)
+
+	'''
+	Plots a heatmap of L1norm values for significant differentially expressed genes 
+	across all cell types for a specific sample. Genes are organized in order of 
+	1) overlapping genes
+	2) celltype specific 
+
+	Parameters
+	----------
+	pop : dict
+		Popalign object
+	'''
+	if 'diffexp' not in pop: 
+		raise Exception ('Differential expression analysis has not been run yet')
+
+	sidx = list(pop['samples'].keys()).index(sample)
+	deobj = pop['diffexp']
+	celltypes = set(pop['diffexp']['de_df'].celltype)
+
+	# xref = pop['ref'] # get reference sample label
+	# currtype = celltypes[refcomp]
+	# ncomps = pop['samples'][xref]['gmm'].n_components-1
+
+	# dual_impact_samples = ['Alprostadil', 'Loteprednol etabonate', 'Budesonide', 'Betamethasone Valerate', 'Triamcinolone Acetonide', 'Meprednisone']
+	# dname = 'diffexp/'
+	# celltypes = list({'Monocytes','T cells'})
+
+    
+    genes = deobj[celltypes[0]]['all_genes']
+    smdf = deobj['de_df'][deobj['de_df']['sample']==sample]
+    # print(smdf)
+    combogenes = smdf['genes'][smdf['celltype']=='overlap']
+    combogenes = ','.join(combogenes)
+    combogenes = combogenes.split(',')
+    print(combogenes)
+
+    for i in range(len(celltypes)) :
+        celltype = celltypes[i]
+        # get upregulated genes
+        currgenes = smdf['genes'][smdf['celltype']==celltype]
+        currgenes = ','.join(currgenes)
+        currgenes = currgenes.split(',')
+        combogenes = combogenes+currgenes
+
+    combogenes = list(dict.fromkeys(combogenes)) # Remove duplicates
+
+    print(combogenes)
+
+    ri = [] # row (gene) indexes 
+    for i in range(len(combogenes)) :
+        curridx = np.where(genes==combogenes[i])[0]
+        if curridx:
+            ri.append(np.asscalar(curridx))
+
+    ri = np.asarray(ri)
+
+    comboM = []
+    for i in range(len(celltypes)) :
+        celltype = celltypes[i]
+        # get upregulated genes
+        currM = deobj[celltype]['all_l1norm'][sidx,:]
+        if i==0:
+            comboM = currM;
+        else:
+            comboM = np.stack((comboM,currM),axis=1)
+
+    # ri = PA.cluster_rows(comboM2, metric='seuclidean',method='complete');
+
+    comboM2 = comboM
+    comboM2[abs(comboM2) < thresh]=0;
+    print(np.shape(deobj[celltype]['all_l1norm']))
+    print(genes)
+    print(ri)
+    print(genes[ri])
+
+    fig=plt.figure(figsize=(5, 6), dpi= 80)
+    plt.imshow(comboM2[ri,:], aspect='auto', interpolation='none', cmap=cmap,vmin=-1,vmax=1) # plot heatmap
+    plt.yticks(np.arange(len(ri)), genes[ri],fontsize=10) # display gene names
+    plt.xticks(np.arange(2),['T cells', 'Monocytes'],rotation=90,fontsize=8) # remove x ticks
+    cbar=plt.colorbar()
+    cbar.set_label('L1-error', rotation=90,fontsize=14)
+    plt.title(sample)
+    plt.ylabel('ngenes')
+    plt.tight_layout()
+#     plt.savefig(os.path.join(pop['output'], dname, '%s_degenes_heatmap.pdf' % sample))
+#     plt.close()
+
+
 
 '''
 Differential expression functions
@@ -3568,7 +3667,7 @@ def diffexp(pop, refcomp=0, testcomp=0, sample='', nbins=20, cutoff=.5, renderhi
 			plt.close()
 
 	lidx = [genes[i] for i in lidx]
-	plot_heatmap(pop, refcomp, lidx, clustersamples=False, clustercells=True, savename='%d_%s_only' % (refcomp, sample), figsize=figsize, cmap='Purples', samplelimits=False, scalegenes=True, only=sample, equalncells=equalncells)
+	plot_heatmap(pop, refcomp, lidx, clustersamples=False, clustercells=True, savename='refcomp%d_%s_%s' % (refcomp, reftype, sample), figsize=figsize, cmap='Purples', samplelimits=False, scalegenes=True, only=sample, equalncells=equalncells)
 	return lidx
 
 def diffexp_testcomp(pop, testcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True, usefiltered=True):
@@ -3752,7 +3851,6 @@ def all_diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True
 	xref = pop['ref'] # get reference sample label
 	celltypes = pop['samples'][xref]['gmm_types']
 	currtype = celltypes[refcomp]
-	print(currtype)
 	ncomps = pop['samples'][xref]['gmm'].n_components-1
 
 	if sample not in pop['order']:
@@ -3806,7 +3904,10 @@ def all_diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True
 	upregulated = [genes[i] for i in upregulated_idx] # get gene labels
 	
 	if len(downregulated+upregulated) == 0:
-		raise Exception('Cutoff value did not retrieve any gene. Please modify cutoff')
+		# raise Exception('Cutoff value did not retrieve any gene. Please modify cutoff')
+		lidx = [];
+		print('Cutoff value did not retrieve any genes for '+ xtest)
+		return  q_raw, genes_raw, lidx, upregulated, downregulated
 
 	# gsea
 	currpath = os.path.abspath(os.path.dirname(__file__)) # get current path of this file to find the genesets
@@ -3822,7 +3923,7 @@ def all_diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True
 
 	samplename = sample.replace('/','') # remove slash char to not mess up the folder path
 	# dname = 'diffexp/%d_%s/' % (refcomp, samplename) # define directory name
-	dname = 'diffexp/%d_%s_%s_%d/' % (refcomp, currtype,samplename, itest) 
+	dname = 'diffexp/refpop%d_%s_%s/' % (refcomp, currtype, samplename) 
 	mkdir(os.path.join(pop['output'], dname)) # create directory if needed
 	with open(os.path.join(pop['output'], dname, 'downregulated_genes.txt'),'w') as fout:
 		fout.write('Downregulated genes for sample %s relative to the reference sample\n\n' % sample)
@@ -3849,17 +3950,14 @@ def all_diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True
 	plt.savefig(os.path.join(pop['output'], dname, '%s.pdf' % filename), dpi=200, bbox_inches='tight')
 	plt.close()
 
-	print(lidx)
-	print(genes)
-
 	if renderhists == True: # if variable is True, then start histogram rendering
 		# dname = 'diffexp/%d_%s/hists/' % (refcomp,samplename) # define directory name
-		dname = 'diffexp/%d_%s_%s_%d/hists/' % (refcomp, currtype,samplename, itest) # define directory name
+		dnamehist = dname + 'hists/' # define directory name
 		try:
-			shutil.rmtree(os.path.join(pop['output'], dname))
+			shutil.rmtree(os.path.join(pop['output'], dnamehist))
 		except:
 			pass
-		mkdir(os.path.join(pop['output'], dname)) # create directory if needed
+		mkdir(os.path.join(pop['output'], dnamehist)) # create directory if needed
 		for lbl,i in zip(labels, lidx): # for each gene index in final list
 			gname = genes[i]
 
@@ -3907,12 +4005,174 @@ def all_diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True
 			ax2.legend(loc='upper center', bbox_to_anchor=(0.5, -0.05), ncol=2)
 
 			filename = '%s_%s' % (lbl, gname)
-			plt.savefig(os.path.join(pop['output'], dname, '%s.pdf' % filename),bbox_inches='tight')
+			plt.savefig(os.path.join(pop['output'], dnamehist, '%s.pdf' % filename),bbox_inches='tight')
 			plt.close()
 
 	lidx = [genes[i] for i in lidx]
-	plot_heatmap(pop, refcomp, lidx, clustersamples=False, clustercells=True, savename='%d_%s_only' % (refcomp, sample), figsize=(15,15), cmap='Purples', samplelimits=False, scalegenes=True, only=sample, equalncells=True)
+	plot_heatmap(pop, refcomp, lidx, clustersamples=False, clustercells=True, savename='refpop%d_%s_%s_only' % (refcomp,reftype, sample), figsize=(15,15), cmap='Purples', samplelimits=False, scalegenes=True, only=sample, equalncells=True)
 	return q_raw, genes_raw, lidx, upregulated, downregulated
+
+def all_samples_diffexp(pop, deltaobj, nbins=20, cutoff=[], renderhists=True, usefiltered=True, tailthresh=0.001):
+	'''
+	Make a diffexp object that contains differentially expressed genes 
+	for all cell types and all samples. 
+
+	Uses deltaobj to retrieve the sample order
+
+	Returns a differential expression object (deobj)
+
+	Parameters
+	----------
+	deltaobj : dict,
+		contains many keys including sample ordering for different cell types
+	nbins : int, optional
+		Number of histogram bins to use
+	cutoff : float
+		L1 norm cutoff. If this is empty, we recalculate it empirically from the control samples. 
+	renderhists : bool
+		Render histograms or not for the top differentially expressed genes. Default: True
+	usefiltered : bool
+		Whether to use filtered genes or all genes. Default: True. 
+	tailthresh : float
+		P-value threshold for total density "weight" within the distribution of L1 norm values for all control samples. 
+		This number is used to generate a L1norm threshold to determine which differentially expressed genes are significant
+		(p-val < tailthresh)
+	'''
+	dname = 'diffexp/'
+	deobj={}
+	samples = list(pop['samples'].keys())
+	controlstring = pop['controlstring']
+	#samples = list({'CTRL1','CTRL2','CTRL3','CTRL4','CTRL5','CTRL6','Budesonide'})
+	#samples = list({'Dexrazoxane HCl (ICRF-187, ADR-529)','Alprostadil','Meprednisone','Budesonide','Loteprednol etabonate','Betamethasone Valerate','Triamcinolone Acetonide'})
+
+	ref = pop['ref'] # get reference sample name
+	celltypes = pop['samples'][ref]['gmm_types']
+
+	# get control values
+	x = range(len(samples))
+	controls = [i for i in pop['samples'].keys() if controlstring in i]
+
+	
+	for y in range(len(celltypes)) : 
+		currtype = celltypes[y];
+
+		# Determine cutoff from control samples if it is not supplied
+		if not cutoff : 
+			# First calculate control values
+			print('******************************************************')
+			print('Using controls to determine a cutoff for '+currtype)
+			print('******************************************************')
+			all_control_q = []
+
+			for x in controls: 
+				print(x + ' ' + currtype)
+				# calculate the differentially expressed genes
+				q_raw, genes_raw, lidx, upregulated, downregulated = all_diffexp(pop, refcomp=y, sample=x, nbins=nbins, cutoff=0.5, renderhists=renderhists, usefiltered=usefiltered)
+				all_control_q.append(q_raw)
+
+			all_control_q = np.concatenate(all_control_q)
+			nbins = 100
+			max_ = np.max(all_control_q)
+			min_ = np.min(all_control_q)
+
+			bn, be = np.histogram(all_control_q, bins=nbins, range=(-max_,max_))
+			bn = bn /len(all_control_q) 
+
+		    # find the threshold at which less than 0.001% of the genes in the controls 
+		    # sample have this level of differential change
+		    # sweep from 0.45 to 0.65:
+			testrange = np.linspace(0.45,0.65,21)
+			for i in range(len(testrange)):
+				currcutoff = testrange[i]
+
+				tailidx = np.where(abs(be) > currcutoff)[0]
+				tailweight = np.sum(bn[tailidx[:-1]])
+				if tailweight < tailthresh :
+					break # keep current qthresh and don't try others
+
+			print(currtype + ' cutoff is: ' + str(currcutoff))
+			print('******************************************************')
+			print('Now calculating for the remaining samples...')
+			print('******************************************************')
+
+		# Run over rest of samples with cutoff (either supplied or cell-type specific)
+		deobj[currtype] = {}
+		deobj[currtype]['samples'] = {}  
+		deobj[currtype]['orderedsamples'] = deltaobj[currtype]['orderedsamples']
+		all_q = []            
+
+		for x in samples:
+			print('Calculating for ' + x + ' ' + currtype + '...')
+			# calculate the differentially expressed genes
+			q_raw, genes_raw, lidx, upregulated, downregulated = all_diffexp(pop, refcomp=y, sample=x, nbins=nbins, cutoff=currcutoff, renderhists=renderhists, usefiltered=usefiltered)
+			numgenes = len(lidx)
+			# create entry and load sparse matrix
+			deobj[currtype]['samples'][x]={}
+			deobj[currtype]['samples'][x]['numgenes'] = len(lidx)
+			deobj[currtype]['samples'][x]['numgenes_down'] = len(downregulated)
+			deobj[currtype]['samples'][x]['numgenes_up'] = len(upregulated)
+			deobj[currtype]['samples'][x]['genes'] = lidx
+			deobj[currtype]['samples'][x]['genes_down'] = downregulated
+			deobj[currtype]['samples'][x]['genes_up'] = upregulated
+			all_q.append(q_raw)
+
+		deobj[currtype]['all_l1norm'] = np.array(all_q)
+		deobj[currtype]['all_genes'] = genes_raw
+		deobj[currtype]['all_samples'] = samples
+		deobj[currtype]['cutoff'] = currcutoff # currcutoff is cell type specific
+
+	# Put all the computed values into a single dataframe, and also compute overlapping genes
+	samplelist = []
+	ctlist = []
+	signlist = []
+	ngeneslist = []
+	genelist = []
+
+	for x in samples: 
+		for currtype in celltypes :
+			# get downregulated genes
+			n_down = deobj[currtype]['samples'][x]['numgenes_down']
+			genes_down = deobj[currtype]['samples'][x]['genes_down']
+			samplelist.append(x)
+			ctlist.append(currtype)
+			signlist.append('down')
+			ngeneslist.append(n_down)
+			genelist.append( ','.join(genes_down))
+			# get downregulated genes
+			n_up = deobj[currtype]['samples'][x]['numgenes_up']
+			genes_up = deobj[currtype]['samples'][x]['genes_up']
+			samplelist.append(x)
+			ctlist.append(currtype)
+			signlist.append('up')
+			ngeneslist.append(n_up)    
+			genelist.append( ','.join(genes_up))
+
+		# Calculate overlapping genes as the intersection of affected genes in all cell types
+		overlap_up = deobj[celltypes[0]]['samples'][x]['genes_up']
+		overlap_down = deobj[celltypes[0]]['samples'][x]['genes_down']
+
+		# iterate through other cell types to get intersecting lists
+		for currtype in celltypes[1:] :
+			overlap_down = np.intersect1d(overlap_down, deobj[currtype]['samples'][x]['genes_down'])
+			samplelist.append(x)
+			ctlist.append('overlap')
+			signlist.append('down')
+			ngeneslist.append(len(overlap_down))
+			genelist.append( ','.join(overlap_down))
+
+			overlap_up = np.intersect1d(overlap_up, deobj[currtype]['samples'][x]['genes_up'])
+			samplelist.append(x)
+			ctlist.append('overlap')
+			signlist.append('up')
+			ngeneslist.append(len(overlap_up))
+			genelist.append( ','.join(overlap_up))
+
+	d = {'sample': samplelist, 'celltype': ctlist, 'sign' : signlist, 'ngenes': ngeneslist, 'genes': genelist}
+	de_df = pd.DataFrame(data=d)
+	deobj['de_df'] = de_df
+	de_df.to_csv(os.path.join(pop['output'], dname, 'all_degenes_by_celltype.csv')) # save dataframe in a single csv file
+
+	pop['diffexp'] = deobj
 
 def calc_p_value(controlvals, testvals, tail = 1) : 
 	'''
@@ -3932,6 +4192,10 @@ def calc_p_value(controlvals, testvals, tail = 1) :
 	Output
 	----------
 	pvals: list, floats
+	CI_min : float
+		minimum of 95% confidence interval 
+	CI_max : 
+		maximum of 95% confidence interval
 
 	'''
 	N = len(controlvals)
