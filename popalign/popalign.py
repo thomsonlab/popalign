@@ -2116,12 +2116,17 @@ def plot_deltas(pop, figsize=(10,10), sortby='mu', pthresh = 0.05): # generate p
 		xlbls = [x for x in samplelbls if not (x in seen or seen_add(x))]
 		x = [x for x in xcoords if not (x in seen or seen_add(x))]
 
-		# Calculate the p-values for the means
-		control_delta_mus = [mean_mus[i] for i in x if 'CTRL' in xlbls[i]]
-		pvals_mus, control_mus_CI_min,control_mus_CI_max = calc_p_value(control_delta_mus, mean_mus)
+
+		control_delta_mus = [mean_mus[i] for i in x if controlstring in xlbls[i]]
+		control_delta_ws = [mean_ws[i] for i in x if controlstring in xlbls[i]]
+
+		# Calculate the p-values for the means and abundances
+		if len(control_delta_mus)>1:
+			pvals_mus, control_mus_CI_min,control_mus_CI_max = calc_p_value(control_delta_mus, mean_mus)
+		else:
+			pvals_mus = 
 
 		# Calculate the p-values for the abundances
-		control_delta_ws = [mean_ws[i] for i in x if 'CTRL' in xlbls[i]]
 		pvals_ws,control_ws_CI_min,control_ws_CI_max = calc_p_value(control_delta_ws, mean_ws)
 
 		# Max/Min of bootstrapped measurements
@@ -2130,16 +2135,6 @@ def plot_deltas(pop, figsize=(10,10), sortby='mu', pthresh = 0.05): # generate p
 
 		control_delta_ws_min = min([delta_ws[i] for i in range(len(delta_ws)) if 'CTRL' in xlbls[xcoords[i]]])
 		control_delta_ws_max = max([delta_ws[i] for i in range(len(delta_ws)) if 'CTRL' in xlbls[xcoords[i]]])
-
-
-		print(len(mean_mus))
-		print(len(mean_ws))
-		
-		print(len(stds_mus))
-		print(len(stds_ws))
-
-		print(len(pvals_mus))
-		print(len(pvals_ws))
 
 		# reorder data 
 		if sortby=="mu": 
