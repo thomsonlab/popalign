@@ -3783,11 +3783,47 @@ def all_diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True
 	plot_heatmap(pop, refcomp, lidx, clustersamples=False, clustercells=True, savename='%d_%s_only' % (refcomp, sample), figsize=(15,15), cmap='Purples', samplelimits=False, scalegenes=True, only=sample, equalncells=True)
 	return lidx
 
+def calc_p_value(controlvals, testvals)
+	'''
+	Calculates the p-value using a one-sample t-test with FDR correction. 
+	In this case values for control replicates are considered the "sample", 
+	tested against the testvalues individually (i.e. the values for each perturbation)
+
+	Parameters
+	----------
+	controlvals : list, floats
+		values for the control samples
+	testvals : list, float
+		values for all test samples 
+	
+	Output
+	----------
+	pvals: list, floats
+
+	'''
+	N = len(controlvals)
+	control_mean = sum(controlvals)/len(controlvals)
+	control_std = np.std(controlvals)
+
+	# calculate the t-statistic
+	t_mu = (testvals - control_mean)/(control_std/np.sqrt(N))
+
+	## Compare with the critical t-value
+	# Degrees of freedom
+	df = len(controlvals)-1 # number of samples = control samples -1
+
+	# p-value after comparison with the t 
+	pvals_raw = 1 - stats.t.cdf(t_mu, df=df) 
+
+	# FDR correction
+	ranked_pvals = rankdata(pvals_raw)
+	pvals = pvals_raw * len(pvals_raw) / ranked_pvals
+	pvals[pvals > 1] = 1
+
+
 import sys
 if not sys.warnoptions:
 	import warnings
 	warnings.simplefilter("ignore")
-
-
 
 
