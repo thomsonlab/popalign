@@ -192,7 +192,7 @@ def load_genes(genes):
 		genes = np.array([row[0].upper() for row in csv.reader(open(genes), delimiter="\t")]) # base format with one gene name per row
 	return genes
 
-def load_samples(samples, genes=None, outputfolder='output', existing_obj=None):
+def load_samples(samples, controlstring, genes=None, outputfolder='output', existing_obj=None):
 	'''
 	Load data from a dictionary and gene labels from a file
 
@@ -200,6 +200,8 @@ def load_samples(samples, genes=None, outputfolder='output', existing_obj=None):
 	----------
 	samples : dict
 		Dictionary of sample names (keys) and paths to their respective matrix files (values)
+	controlstring: string
+		String containing common name across all control samples so that we can pull them out easily	
 	genes : str
 		Path to a .tsv 10X gene file. Optional if existing_obj is provided
 	outputfolder : str
@@ -214,6 +216,7 @@ def load_samples(samples, genes=None, outputfolder='output', existing_obj=None):
 		obj = {}
 		obj['samples'] = {}
 		obj['order'] = []
+		obj['controlstring'] = controlstring
 		obj['genes'] = load_genes(genes) # load and store genes
 		obj['ncores'] = None
 	else:
@@ -252,7 +255,7 @@ def check_cols(s,cols):
 	if s not in cols:
 		raise Exception('%s not a valid column. Must be one of:' % s, cols.tolist())
 
-def load_multiplexed(matrix, barcodes, metafile, genes=None, outputfolder='output', existing_obj=None, only=[], col=None, value=None):
+def load_multiplexed(matrix, barcodes, metafile, controlstring, genes=None, outputfolder='output', existing_obj=None, only=[], col=None, value=None):
 	'''
 	Load data from a screen experiment and genes from a file
 
@@ -264,6 +267,8 @@ def load_multiplexed(matrix, barcodes, metafile, genes=None, outputfolder='outpu
 		Path to a .tsv 10X barcodes file
 	metafile : str
 		Path to a metadata file. Must contains `cell_barcodes` and `sample_id` columns
+	controlstring: string
+		String containing common name across all control samples so that we can pull them out easily	
 	genes : str
 		Path to a .tsv 10X gene file. Optional if existing_obj is provided
 	outputfolder : str, optional
@@ -284,6 +289,7 @@ def load_multiplexed(matrix, barcodes, metafile, genes=None, outputfolder='outpu
 		obj = {}
 		obj['samples'] = {}
 		obj['order'] = []
+		obj['controlstring'] = controlstring
 		obj['genes'] = load_genes(genes) # load and store genes
 		obj['ncores'] = None
 	else:
@@ -2046,7 +2052,8 @@ def plot_deltas(pop, figsize=(10,10), sortby='mu', pthresh = 0.05): # generate p
 	mkdir(os.path.join(pop['output'], dname))
 
 	ref = pop['ref'] # get reference sample name
-	
+	controlstring = pop['controlstring']
+
 	celltypes = pop['samples'][ref]['gmm_types']
 	if celltypes == None:
 		celltypes = [str(i) for i in range(pop['samples'][ref]['gmm'].n_components)]
@@ -2122,19 +2129,20 @@ def plot_deltas(pop, figsize=(10,10), sortby='mu', pthresh = 0.05): # generate p
 
 		# Calculate the p-values for the means and abundances
 		if len(control_delta_mus)>1:
-			pvals_mus, control_mus_CI_min,control_mus_CI_max = calc_p_value(control_delta_mus, mean_mus)
+			pvals_mus, control_mus_CI_min,control_mus_CI_max = calc_p_value(control_delta_mus, mean_mus, 1)
+			pvals_ws,control_ws_CI_min,control_ws_CI_max = calc_p_value(control_delta_ws, mean_ws, 2)
 		else:
-			pvals_mus = 
-
-		# Calculate the p-values for the abundances
-		pvals_ws,control_ws_CI_min,control_ws_CI_max = calc_p_value(control_delta_ws, mean_ws)
+			pvals_mus, control_mus_CI_min,control_mus_CI_max = calc_p_value(control_delta_mus, mean_mus, 1)
+			pvals_mus = np.ones(len(pvals_mus))
+			pvals_ws,control_ws_CI_min,control_ws_CI_max = calc_p_value(control_delta_ws, mean_ws, 2)
+			pvals_ws = np.ones(len(pvals_ws))
 
 		# Max/Min of bootstrapped measurements
-		control_delta_mus_min = min([delta_mus[i] for i in range(len(delta_mus)) if 'CTRL' in xlbls[xcoords[i]]])
-		control_delta_mus_max = max([delta_mus[i] for i in range(len(delta_mus)) if 'CTRL' in xlbls[xcoords[i]]])
+		control_delta_mus_min = min([delta_mus[i] for i in range(len(delta_mus)) if controlstring in xlbls[xcoords[i]]])
+		control_delta_mus_max = max([delta_mus[i] for i in range(len(delta_mus)) if controlstring in xlbls[xcoords[i]]])
 
-		control_delta_ws_min = min([delta_ws[i] for i in range(len(delta_ws)) if 'CTRL' in xlbls[xcoords[i]]])
-		control_delta_ws_max = max([delta_ws[i] for i in range(len(delta_ws)) if 'CTRL' in xlbls[xcoords[i]]])
+		control_delta_ws_min = min([delta_ws[i] for i in range(len(delta_ws)) if controlstring in xlbls[xcoords[i]]])
+		control_delta_ws_max = max([delta_ws[i] for i in range(len(delta_ws)) if controlstring in xlbls[xcoords[i]]])
 
 		# reorder data 
 		if sortby=="mu": 
@@ -2164,28 +2172,37 @@ def plot_deltas(pop, figsize=(10,10), sortby='mu', pthresh = 0.05): # generate p
 		ax1 = plt.subplot(2,1,1)
 		plt.title('Reference sample %s\nComponent %d: %s' %(ref, i, currtype))
 		plt.scatter(xcoords, delta_ws, s=2, c='k')
-		plt.scatter(x, mean_ws, s=36, c =-np.log10(plot_pval_ws) ,cmap=rbcmap)
-		plt.errorbar(x, mean_ws, stds_ws, color='k', elinewidth=.5, capsize=1, fmt=' ', label='Standard deviation')
+		plt.scatter(x, mean_ws, s=36, c =-np.log10(plot_pval_ws) ,cmap=rbcmap, label = 'mean Δ\u03C9 (%)')
+		plt.errorbar(x, mean_ws, stds_ws, color='k', elinewidth=.5, capsize=1, fmt=' ')
 		# Plot the control ranges:
-		plt.fill_between(range(-1,len(mean_ws)+1),control_ws_CI_min,control_ws_CI_max,alpha=0.2, color='black')
-		plt.hlines([control_delta_ws_min,control_delta_ws_max], -1, len(mean_ws), colors='k', linestyles='dotted')   
+		plt.hlines([control_delta_ws_min,control_delta_ws_max], -1, len(mean_ws), colors='k', linestyles='dotted', label = ' control min/max')   
 		plt.xticks([])
 		plt.ylabel('Δ\u03C9 (%)')
-		cbar=plt.colorbar()
-		cbar.set_label('-log10(p-val)', rotation=90)
+		# Only plot CI and p-values if we can calculate them
+		if len(control_delta_ws)>1 : 
+			plt.fill_between(range(-1,len(mean_ws)+1),control_ws_CI_min,control_ws_CI_max,alpha=0.2, color='black', label = 'control CI')
+			cbar=plt.colorbar()
+			cbar.set_label('-log10(p-val)', rotation=90)
+		else : 
+			plt.clim(0,0)
+		plt.legend()
 
 		# Plot the delta mus - lower
 		plt.subplot(2,1,2)
 		plt.scatter(xcoords, delta_mus, s=2, c='k')
-		plt.scatter(x, mean_mus, s=36,  c = -np.log10(plot_pval_mus), cmap=rbcmap)
-		plt.errorbar(x, mean_mus, stds_mus, color='k', elinewidth=.3, capsize=1, fmt=' ', label='Standard deviation')
-		plt.fill_between(range(-1,len(mean_mus)+1),control_mus_CI_min,control_mus_CI_max,alpha=0.2, color='black')
-		plt.hlines([control_delta_mus_min,control_delta_mus_max], -1, len(mean_mus), colors='k', linestyles='dotted')
+		plt.scatter(x, mean_mus, s=36,  c = -np.log10(plot_pval_mus), cmap=rbcmap, label = 'mean Δ\u03BC')
+		plt.errorbar(x, mean_mus, stds_mus, color='k', elinewidth=.3, capsize=1, fmt=' ')
+		plt.hlines([control_delta_mus_min,control_delta_mus_max], -1, len(mean_mus), colors='k', linestyles='dotted', label = 'control min/max')
 		plt.xticks(x, xlbls, rotation=90)
 		plt.ylabel('Δ\u03BC')
-		cbar=plt.colorbar()
-
-		cbar.set_label('-log10(p-val)', rotation=90)
+		# Only plot CI and p-values if we can calculate them
+		if len(control_delta_mus)>1 : 
+			plt.fill_between(range(-1,len(mean_mus)+1),control_mus_CI_min,control_mus_CI_max,alpha=0.2, color='black', label = 'control CI')
+			cbar=plt.colorbar()
+			cbar.set_label('-log10(p-val)', rotation=90)
+		else : 
+			plt.clim(0,0)
+		plt.legend()
 
 		plt.tight_layout()
 		currtype = currtype.replace('/','')
@@ -3858,7 +3875,7 @@ def all_diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True
 	plot_heatmap(pop, refcomp, lidx, clustersamples=False, clustercells=True, savename='%d_%s_only' % (refcomp, sample), figsize=(15,15), cmap='Purples', samplelimits=False, scalegenes=True, only=sample, equalncells=True)
 	return lidx
 
-def calc_p_value(controlvals, testvals) : 
+def calc_p_value(controlvals, testvals, tail = 1) : 
 	'''
 	Calculates the p-value using a one-sample t-test with FDR correction. 
 	In this case values for control replicates are considered the "sample", 
@@ -3870,6 +3887,8 @@ def calc_p_value(controlvals, testvals) :
 		values for the control samples
 	testvals : list, float
 		values for all test samples 
+	tail : int
+		single(1) or double-tailed (2)
 	
 	Output
 	----------
@@ -3881,14 +3900,20 @@ def calc_p_value(controlvals, testvals) :
 	control_std = np.std(controlvals)
 
 	# calculate the t-statistic
-	t_mu = (testvals - control_mean)/(control_std/np.sqrt(N))
+	t_val = abs(testvals - control_mean)/(control_std/np.sqrt(N))
 
 	## Compare with the critical t-value
 	# Degrees of freedom
 	df = len(controlvals)-1 # number of samples = control samples -1
 
 	# p-value after comparison with the t 
-	pvals_raw = 1 - stats.t.cdf(t_mu, df=df) 
+	print(tail)
+	if tail == 1:
+		pvals_raw = 1 - stats.t.cdf(t_val, df=df) 
+	elif tail == 2: 
+		pvals_raw = (1-stats.t.cdf(t_val, df=df))*2
+	else: 
+		raise Exception('tail must be 1 or 2')
 
 	# FDR correction
 	ranked_pvals = rankdata(pvals_raw)
