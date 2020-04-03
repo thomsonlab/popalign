@@ -497,9 +497,9 @@ def filter(pop, remove_ribsomal=True, remove_mitochondrial=True):
 	pop :dict
 		Popalign object
 	remove_ribsomal : bool
-		Wether to remove or not the ribosomal genes
+		Whether to remove or not the ribosomal genes
 	remove_mitochondrial : bool
-		Wether to remove or not the mitochondrial geneset
+		Whether to remove or not the mitochondrial geneset
 	'''
 	gene_idx = pop['filter_idx'] # get indices of genes to keep
 	genes = pop['genes'] # get all genes names
@@ -3053,7 +3053,7 @@ def plot_genes_gmm_cells(pop, sample='', genelist=[], savename='', metric='corre
 	method : str
 		Method to use to cluster
 	clustergenes : boolean
-		Wether or not to cluster the genes (rows)
+		Whether or not to cluster the genes (rows)
 	cmap : str
 		Name of the colormap to use
 	figsize : tuple
@@ -3381,7 +3381,7 @@ def subpopulations_grid_unique(pop, method='tsne', figsize=(20,20), size_backgro
 	plt.close() # close plot
 
 
-def plot_L1_heatmap(pop, sample)
+def plot_L1_heatmap(pop, sample, dname):
 
 	'''
 	Plots a heatmap of L1norm values for significant differentially expressed genes 
@@ -3399,7 +3399,9 @@ def plot_L1_heatmap(pop, sample)
 
 	sidx = list(pop['samples'].keys()).index(sample)
 	deobj = pop['diffexp']
-	celltypes = set(pop['diffexp']['de_df'].celltype)
+	celltypes = list(set(pop['diffexp']['de_df'].celltype))
+	celltypes.insert(0, celltypes.pop(celltypes.index('overlap'))) # put overlap first
+	genes = deobj[celltypes[1]]['all_genes'] # don't use index 0 because that's 'overlap'
 
 	# xref = pop['ref'] # get reference sample label
 	# currtype = celltypes[refcomp]
@@ -3409,67 +3411,60 @@ def plot_L1_heatmap(pop, sample)
 	# dname = 'diffexp/'
 	# celltypes = list({'Monocytes','T cells'})
 
-    
-    genes = deobj[celltypes[0]]['all_genes']
-    smdf = deobj['de_df'][deobj['de_df']['sample']==sample]
-    # print(smdf)
-    combogenes = smdf['genes'][smdf['celltype']=='overlap']
-    combogenes = ','.join(combogenes)
-    combogenes = combogenes.split(',')
-    print(combogenes)
+	# genes = deobj[celltypes[0]]['all_genes']
+	samplelist=deobj['de_df']['sample']
+	smdf = deobj['de_df'][samplelist==sample]
+	combogenes = []
+	for i in range(len(celltypes)) :
+		currtype = celltypes[i]
+		# get upregulated genes
+		currgenes = smdf['genes'][smdf['celltype']==currtype]
+		currgenes = ','.join(currgenes)
+		currgenes = currgenes.split(',')
+		combogenes = combogenes+currgenes
 
-    for i in range(len(celltypes)) :
-        celltype = celltypes[i]
-        # get upregulated genes
-        currgenes = smdf['genes'][smdf['celltype']==celltype]
-        currgenes = ','.join(currgenes)
-        currgenes = currgenes.split(',')
-        combogenes = combogenes+currgenes
+	combogenes = list(dict.fromkeys(combogenes)) # Remove duplicates
 
-    combogenes = list(dict.fromkeys(combogenes)) # Remove duplicates
+	ri = [] # row (gene) indexes 
+	for i in range(len(combogenes)) :
+		curridx = np.where(genes==combogenes[i])[0]
+		if curridx:
+			ri.append(np.asscalar(curridx))
 
-    print(combogenes)
+	ri = np.asarray(ri)
 
-    ri = [] # row (gene) indexes 
-    for i in range(len(combogenes)) :
-        curridx = np.where(genes==combogenes[i])[0]
-        if curridx:
-            ri.append(np.asscalar(curridx))
+	# Concatenate all cell types together to get single matrix of L1 norms 
+	comboM = []
+	for i in range(1,len(celltypes)) : # don't start with 0 because that's 'overlap'
+		currtype = celltypes[i]
+		# get upregulated genes
+		currM = deobj[currtype]['all_l1norm'][sidx,:]
+		currthresh = deobj[currtype]['cutoff']
+		currM[abs(currM)<currthresh] = 0
+		if i==1:
+			comboM = currM;
+		else:
+			comboM = np.stack((comboM,currM),axis=1)
 
-    ri = np.asarray(ri)
+#	# ri = PA.cluster_rows(comboM2, metric='seuclidean',method='complete');
+ 
+	# print(np.shape(deobj[currtype]['all_l1norm']))
+	# print(genes)
+	# print(ri)
+	# print(genes[ri])
+	cmap = 'RdBu'
 
-    comboM = []
-    for i in range(len(celltypes)) :
-        celltype = celltypes[i]
-        # get upregulated genes
-        currM = deobj[celltype]['all_l1norm'][sidx,:]
-        if i==0:
-            comboM = currM;
-        else:
-            comboM = np.stack((comboM,currM),axis=1)
-
-    # ri = PA.cluster_rows(comboM2, metric='seuclidean',method='complete');
-
-    comboM2 = comboM
-    comboM2[abs(comboM2) < thresh]=0;
-    print(np.shape(deobj[celltype]['all_l1norm']))
-    print(genes)
-    print(ri)
-    print(genes[ri])
-
-    fig=plt.figure(figsize=(5, 6), dpi= 80)
-    plt.imshow(comboM2[ri,:], aspect='auto', interpolation='none', cmap=cmap,vmin=-1,vmax=1) # plot heatmap
-    plt.yticks(np.arange(len(ri)), genes[ri],fontsize=10) # display gene names
-    plt.xticks(np.arange(2),['T cells', 'Monocytes'],rotation=90,fontsize=8) # remove x ticks
-    cbar=plt.colorbar()
-    cbar.set_label('L1-error', rotation=90,fontsize=14)
-    plt.title(sample)
-    plt.ylabel('ngenes')
-    plt.tight_layout()
-#     plt.savefig(os.path.join(pop['output'], dname, '%s_degenes_heatmap.pdf' % sample))
-#     plt.close()
-
-
+	fig=plt.figure(figsize=(5, 6), dpi= 80)
+	plt.imshow(comboM [ri,:], aspect='auto', interpolation='none', cmap=cmap,vmin=-1,vmax=1) # plot heatmap
+	plt.yticks(np.arange(len(ri)), genes[ri],fontsize=10) # display gene names
+	plt.xticks(np.arange(2),['T cells', 'Monocytes'],rotation=90,fontsize=8) # remove x ticks
+	cbar=plt.colorbar()
+	cbar.set_label('L1-error', rotation=90,fontsize=14)
+	plt.title(sample)
+	plt.ylabel('ngenes')
+	plt.tight_layout()
+	plt.savefig(os.path.join(pop['output'], dname, '%s_degenes_heatmap.pdf' % sample))
+	plt.close()
 
 '''
 Differential expression functions
@@ -3505,7 +3500,7 @@ def l1norm(ig, arr1, arr2, nbins):
 
 def diffexp(pop, refcomp=0, testcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True, usefiltered=True, equalncells=True, figsize=(20,20)):
 	'''
-	Find  differentially expressed genes between a refernce subpopulation
+	Find  differentially expressed genes between a reference subpopulation
 	and the subpopulation of a sample that aligned to it
 
 	Parameters
@@ -3527,7 +3522,7 @@ def diffexp(pop, refcomp=0, testcomp=0, sample='', nbins=20, cutoff=.5, renderhi
 	renderhists : bool
 		Render histograms or not for the top differentially expressed genes
 	usefiltered : bool
-		Wether to use filtered genes or not. If False, all genes will be used to run the differential expression
+		Whether to use filtered genes or not. If False, all genes will be used to run the differential expression
 	'''
 	xref = pop['ref'] # get reference sample label
 	reftype = pop['samples'][xref]['gmm_types'][refcomp]
@@ -3672,7 +3667,7 @@ def diffexp(pop, refcomp=0, testcomp=0, sample='', nbins=20, cutoff=.5, renderhi
 
 def diffexp_testcomp(pop, testcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True, usefiltered=True):
 	'''
-	Find  differentially expressed genes between a reference subpopulation
+	Find differentially expressed genes between a reference subpopulation
 	and the subpopulation of a sample that aligned to it
 
 	Parameters
@@ -3690,7 +3685,7 @@ def diffexp_testcomp(pop, testcomp=0, sample='', nbins=20, cutoff=.5, renderhist
 	renderhists : bool
 		Render histograms or not for the top differentially expressed genes
 	usefiltered : bool
-		Wether to use filtered genes or not. If False, all genes will be used to run the differential expression
+		Whether to use filtered genes or not. If False, all genes will be used to run the differential expression
 	'''
 	xref = pop['ref'] # get reference sample label	
 	reftype = pop['samples'][xref]['gmm_types'][refcomp]
@@ -3828,7 +3823,7 @@ def diffexp_testcomp(pop, testcomp=0, sample='', nbins=20, cutoff=.5, renderhist
 
 def all_diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True, usefiltered=True):
 	'''
-	Find  differentially expressed genes between a refernce subpopulation
+	Find differentially expressed genes between a reference subpopulation
 	and the subpopulation of a sample that aligned to it
 
 	Parameters
@@ -4010,6 +4005,8 @@ def all_diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True
 
 	lidx = [genes[i] for i in lidx]
 	plot_heatmap(pop, refcomp, lidx, clustersamples=False, clustercells=True, savename='refpop%d_%s_%s_only' % (refcomp,reftype, sample), figsize=(15,15), cmap='Purples', samplelimits=False, scalegenes=True, only=sample, equalncells=True)
+	plot_L1_heatmap(pop, sample, 'diffexp/')
+
 	return q_raw, genes_raw, lidx, upregulated, downregulated
 
 def all_samples_diffexp(pop, deltaobj, nbins=20, cutoff=[], renderhists=True, usefiltered=True, tailthresh=0.001):
