@@ -3030,9 +3030,13 @@ def plot_heatmap(pop, refcomp, genelist, clustersamples=True, clustercells=True,
 	else:
 		filename = 'comp%d_heatmap' % refcomp
 	filename = filename.replace('/','')
-	plt.savefig(os.path.join(pop['output'], dname, '%s.pdf' % filename), dpi=200, bbox_inches='tight')
+	plt.savefig(os.path.join(pop['output'], dname, '%s.pdf' % filename),bbox_inches='tight')
 	plt.close()
-
+plot_heatmap(pop, refcomp, lidx, clustersamples=False, clustercells=True, 
+	savename='refcomp%d_%s_%s' % (refcomp, reftype, sample), 
+	figsize=figsize, cmap='Purples', samplelimits=False, scalegenes=True, 
+	only=sample, equalncells=equalncells)
+	
 
 def plot_genes_gmm_cells(pop, sample='', genelist=[], savename='', metric='correlation', method='single', clustergenes=True, clustercells=True, cmap='magma', figsize=(10,15)):
 	'''
@@ -3818,9 +3822,9 @@ def diffexp_testcomp(pop, testcomp=0, sample='', nbins=20, cutoff=.5, renderhist
 			plt.close()
 
 	lidx = [genes[i] for i in lidx]
-	plot_heatmap(pop, refcomp, lidx, clustersamples=False, clustercells=True, savename='%d_%s_only' % (refcomp, sample), figsize=(15,15), cmap='Purples', samplelimits=False, scalegenes=True, only=sample, equalncells=True)
+	plot_heatmap(pop, refcomp, lidx, clustersamples=False, clustercells=True,savename='refpop%d_%s_%s' % (refcomp,reftype, sample),figsize=(15,15), cmap='Purples', samplelimits=False, scalegenes=True, only=sample, equalncells=True)
 	return lidx
-
+	
 def all_diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True, usefiltered=True):
 	'''
 	Find differentially expressed genes between a reference subpopulation
@@ -3845,7 +3849,7 @@ def all_diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True
 	'''
 	xref = pop['ref'] # get reference sample label
 	celltypes = pop['samples'][xref]['gmm_types']
-	currtype = celltypes[refcomp]
+	reftype = celltypes[refcomp]
 	ncomps = pop['samples'][xref]['gmm'].n_components-1
 
 	if sample not in pop['order']:
@@ -3918,7 +3922,7 @@ def all_diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True
 
 	samplename = sample.replace('/','') # remove slash char to not mess up the folder path
 	# dname = 'diffexp/%d_%s/' % (refcomp, samplename) # define directory name
-	dname = 'diffexp/refpop%d_%s_%s/' % (refcomp, currtype, samplename) 
+	dname = 'diffexp/refpop%d_%s_%s/' % (refcomp, reftype, samplename) 
 	mkdir(os.path.join(pop['output'], dname)) # create directory if needed
 	with open(os.path.join(pop['output'], dname, 'downregulated_genes.txt'),'w') as fout:
 		fout.write('Downregulated genes for sample %s relative to the reference sample\n\n' % sample)
@@ -3975,7 +3979,7 @@ def all_diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True
 			plt.legend()
 			plt.xlabel('Normalized log(counts)')
 			plt.ylabel('Cell Fraction')
-			plt.title('%s\n %s-%d of %s' % (gname, currtype, refcomp, xref)) 
+			plt.title('%s\n %s-%d of %s' % (gname, reftype, refcomp, xref)) 
 			ax1.legend(loc='upper center', bbox_to_anchor=(0.5, -0.05),ncol=2)
 
 			# Format data for violinplot:
@@ -4004,8 +4008,7 @@ def all_diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True
 			plt.close()
 
 	lidx = [genes[i] for i in lidx]
-	plot_heatmap(pop, refcomp, lidx, clustersamples=False, clustercells=True, savename='refpop%d_%s_%s_only' % (refcomp,reftype, sample), figsize=(15,15), cmap='Purples', samplelimits=False, scalegenes=True, only=sample, equalncells=True)
-	plot_L1_heatmap(pop, sample, 'diffexp/')
+	plot_heatmap(pop, refcomp, lidx, clustersamples=False, clustercells=True, savename='refpop%d_%s_%s' % (refcomp,reftype, sample), figsize=(15,15), cmap='Purples', samplelimits=False, scalegenes=True, only=sample, equalncells=True)
 
 	return q_raw, genes_raw, lidx, upregulated, downregulated
 
@@ -4170,6 +4173,10 @@ def all_samples_diffexp(pop, deltaobj, nbins=20, cutoff=[], renderhists=True, us
 	de_df.to_csv(os.path.join(pop['output'], dname, 'all_degenes_by_celltype.csv')) # save dataframe in a single csv file
 
 	pop['diffexp'] = deobj
+
+	# Now run all samples thorugh L1 heatmap
+	for x in samples:
+		plot_L1_heatmap(pop, x, 'diffexp/')
 
 def calc_p_value(controlvals, testvals, tail = 1) : 
 	'''
