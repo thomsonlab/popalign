@@ -3385,7 +3385,7 @@ def subpopulations_grid_unique(pop, method='tsne', figsize=(20,20), size_backgro
 	plt.close() # close plot
 
 
-def plot_L1_heatmap(pop, sample, dname):
+def plot_L1_heatmap(pop, sample, dname,cmap=RdBu):
 
 	'''
 	Plots a heatmap of L1norm values for significant differentially expressed genes 
@@ -3450,14 +3450,6 @@ def plot_L1_heatmap(pop, sample, dname):
 		else:
 			comboM = np.stack((comboM,currM),axis=1)
 
-#	# ri = PA.cluster_rows(comboM2, metric='seuclidean',method='complete');
- 
-	# print(np.shape(deobj[currtype]['all_l1norm']))
-	# print(genes)
-	# print(ri)
-	# print(genes[ri])
-	cmap = 'RdBu'
-
 	fig=plt.figure(figsize=(5, 6), dpi= 80)
 	plt.imshow(comboM [ri,:], aspect='auto', interpolation='none', cmap=cmap,vmin=-1,vmax=1) # plot heatmap
 	plt.yticks(np.arange(len(ri)), genes[ri],fontsize=10) # display gene names
@@ -3469,6 +3461,94 @@ def plot_L1_heatmap(pop, sample, dname):
 	plt.tight_layout()
 	plt.savefig(os.path.join(pop['output'], dname, '%s_degenes_heatmap.pdf' % sample))
 	plt.close()
+
+def plot_violins(pop, refcomp, samples, genes, prefix):
+    '''
+    Plot violin plots of gene distributions for all samples that align
+    to a specified component from the reference sample
+
+    Parameters
+    ----------
+    pop : dict
+        Popalign object
+    refcomp : int
+        Subpopulation number of the reference sample's GMM
+    samples : str
+        list of samples to compare
+    genes : str
+        list of genes to pull out 
+    prefix : str 
+    	filename prefix, will create files in output/violins/ with name [prefix]_[celltype]_[gene].pdf 
+    '''
+    # start of file
+    xref = pop['ref'] # get reference sample label
+    currtype = pop['samples'][xref]['gmm_types'][refcomp]
+    dname = 'violins/'
+    
+    if not(set(samples).issubset(pop['order'])) : 
+        raise Exception('Sample names not valid. Use show_samples(pop) to display valid sample names.')
+    
+    genes = pop['genes']
+
+    for i in range(len(plotgenes)):
+        currgene = plotgenes[i]
+        gidx = np.where(genes==currgene)[0]
+
+        arrlist = []
+        lblslist = []
+        for j in range(len(samples)):
+            xtest = samples[j] # test sample label        
+            try:
+                arr = pop['samples'][xtest]['alignments'] # get alignments between reference and test
+                irow = np.where(arr[:,1] == refcomp) # get alignment that match reference subpopulation
+                itest = int(arr[irow, 0]) # get test subpopulation number
+            except:
+                raise Exception('Could not retrieve a matching alignment between sample %s and reference component %d' % (sample, refcomp))
+            Mtest = pop['samples'][xtest]['M']
+            predictiontest = pop['samples'][xtest]['gmm'].predict(pop['samples'][xtest]['C']) # get test cell assignments
+            idxtest = np.where(predictiontest==itest)[0] # get matching indices
+            subtest = Mtest[:,idxtest] # subset cells that match subpopulation itest
+            subtest = subtest.toarray() # from sparse matrix to numpy array for slicing efficiency
+
+            currarray = subtest[gidx,:]
+            currarray = currarray.tolist()
+            labels = [xtest[0:10]] * np.shape(currarray)[1]
+            arrlist.append(currarray)
+            lblslist.append(labels)
+
+        v1 = np.concatenate(arrlist,axis=1)
+        v1 = v1[0]
+        v2 = np.concatenate(lblslist)
+        fakey = [1]*(len(v1))
+
+        arrdf = pd.DataFrame(data = list([v1[:],v2]))
+        arrdf = pd.DataFrame.transpose(arrdf)
+        arrdf.rename(columns = {0:'values',1:'sample'},inplace=True)
+        arrdf['values']=arrdf['values'].astype('float64')
+        arrdf['sample']=arrdf['sample'].astype('category')
+        arrdf['y'] = fakey
+        arrdf['y'] = arrdf['y'].astype('float64')
+
+        # Determine number of columns 
+        if len(samples)>3:
+            ncols = 2
+        else:
+            ncols = 1
+        
+        mkdir(os.path.join(pop['output'], dname)) # create directory if needed
+
+        plt.figure(figsize=(3,3));
+        plt.rc('font',size=12)
+        ax=sns.violinplot(y='values' ,x='y',data=arrdf,hue='sample',split=False, orient='v')
+        ax.set_ylabel('Normalized log(counts)',fontsize=12)
+        ax.set_xlabel('')
+        ax.set_xticks([])
+        plt.title(currgene, fontsize=24)
+        plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.05), ncol=ncols, fontsize=10)
+
+        filename = '%s_%s_%s' % (prefix,currtype, currgene)
+        plt.savefig(os.path.join(pop['output'], dname, '%s.pdf' % filename),bbox_inches='tight')
+        plt.close()
 
 '''
 Differential expression functions
@@ -3822,9 +3902,9 @@ def diffexp_testcomp(pop, testcomp=0, sample='', nbins=20, cutoff=.5, renderhist
 			plt.close()
 
 	lidx = [genes[i] for i in lidx]
-	plot_heatmap(pop, refcomp, lidx, clustersamples=False, clustercells=True,savename='refpop%d_%s_%s' % (refcomp,reftype, sample),figsize=(15,15), cmap='Purples', samplelimits=False, scalegenes=True, only=sample, equalncells=True)
+	plot_heatmap(pop, refcomp, lidx, clustersamples=False, clustercells=True,savename='refpop%d_%s_%s_heatmap' % (refcomp,reftype, sample),figsize=(15,15), cmap='Purples', samplelimits=False, scalegenes=True, only=sample, equalncells=True)
 	return lidx
-	
+
 def all_diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True, usefiltered=True):
 	'''
 	Find differentially expressed genes between a reference subpopulation
@@ -4008,8 +4088,7 @@ def all_diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True
 			plt.close()
 
 	lidx = [genes[i] for i in lidx]
-	plot_heatmap(pop, refcomp, lidx, clustersamples=False, clustercells=True, savename='refpop%d_%s_%s' % (refcomp,reftype, sample), figsize=(15,15), cmap='Purples', samplelimits=False, scalegenes=True, only=sample, equalncells=True)
-
+	plot_heatmap(pop, refcomp, lidx, clustersamples=False, clustercells=True, savename='refpop%d_%s_%s_heatmap' % (refcomp,reftype, sample), figsize=(15,15), cmap='Purples', samplelimits=False, scalegenes=True, only=sample, equalncells=True)
 	return q_raw, genes_raw, lidx, upregulated, downregulated
 
 def all_samples_diffexp(pop, deltaobj, nbins=20, cutoff=[], renderhists=True, usefiltered=True, tailthresh=0.001):
