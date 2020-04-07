@@ -2052,6 +2052,21 @@ def plot_deltas(pop, figsize=(10,10), sortby='mu', pthresh = 0.05): # generate p
 	pthresh : float 
 		p-value threshold at which colors are no longer plotted
 
+	Outputs
+	----------
+	pop['deltas']: dict
+		contains the following objects: 
+
+	deltaobj[currtype]['combined'] : dataframe, 
+		contains: 'origidx','orderedsamples', 'mean_delta_mu', 'pvals_mu','mean_delta_w','pvals_w'
+
+	deltaobj[currtype]['idx'] = indices of ordered samples
+	deltaobj[currtype]['orderedsamples'] = ordered samples in currtype
+	deltaobj[currtype]['singles']={}
+	deltaobj[currtype]['singles']['delta_mus'] = delta_mu for each model (including replicates)
+	deltaobj[currtype]['singles']['delta_ws'] = delta_w for each model
+	deltaobj[currtype]['singles']['xcoords'] = x coordinates for delta_mus 
+
 	'''
 	dname = 'deltas'
 	mkdir(os.path.join(pop['output'], dname))
@@ -2214,18 +2229,6 @@ def plot_deltas(pop, figsize=(10,10), sortby='mu', pthresh = 0.05): # generate p
 		plt.rc('font', size= 18) 
 		plt.savefig(os.path.join(pop['output'], dname, 'deltas_comp%d_%s_%ssort.pdf' % (i,currtype, sortby)), format='pdf', bbox_inches='tight')
 		plt.close()
-
-		# add delta values to the delta obj
-		deltaobj[currtype]={}
-		deltaobj[currtype]['idx'] = idx
-		deltaobj[currtype]['orderedsamples'] = xlbls
-		deltaobj[currtype]['mean_mus'] = mean_mus
-		deltaobj[currtype]['mean_ws'] = mean_ws  
-		deltaobj[currtype]['delta_mus'] = delta_mus
-		deltaobj[currtype]['delta_ws'] = delta_ws
-		deltaobj[currtype]['pvals_mus'] = pvals_mus
-		deltaobj[currtype]['pvals_ws'] = pvals_ws
-		deltaobj[currtype]['xcoords'] = xcoords
 
 		# Combine mean data together into a single dataframe
 		t = pd.DataFrame(np.array([idx,xlbls, mean_mus, pvals_mus, mean_ws, pvals_ws]),
@@ -4160,7 +4163,6 @@ def all_samples_diffexp(pop, deltaobj, nbins=20, cutoff=[], renderhists=True, us
 
 	pop['diffexp'][celltype] : dict
 		Dictionary containing information for each cell type, including L1norm values
-		
 	'''
 	dname = 'diffexp/'
 	deobj={}
