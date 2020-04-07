@@ -2550,129 +2550,165 @@ def score_subpopulations(pop, ref=None, figsize=(10,5)):
 		mkdir(os.path.join(pop['output'], dname))
 		plt.savefig(os.path.join(pop['output'], dname, 'rankings_%d_%s.pdf' % (i,subpop)), dpi=200)
 		plt.close()
-
+'''
+RANK
+'''
 def rank(pop, ref=None, k=100, niter=200, method='LLR', mincells=50, figsize=(10,5)):
-	'''
-	Generate a ranking plot of the samples against a reference model
+    '''
+    Generate a ranking plot of the samples against a reference model
 
-	Parameters
-	----------
-	pop : dict
-		Popalign object
-	ref : str
-		Reference sample name
-	k : int
-		Number of random cells to use
-	niter : int
-		Number of iterations to perform
-	method : str
-		Scoring method to use. 'LLR' for log-likelihood ratio, 'LL' for log-likelihood.
-	mincells : int
-		If a sample has less than `mincells` cells, is discarded
-	figsize : tuple, optional
-		Size of the figure. Default is (10,5)
-	'''
-	# For a given sample S, k random cells are scored against the reference
-	# model. This process is repeated niter times and the results are 
-	# shown as boxplots
-	scores = []
-	lbls = []
-	gmmctrl = pop['samples'][ref]['gmm']
+    Parameters
+    ----------
+    pop : dict
+        Popalign object
+    ref : str
+        Reference sample name
+    k : int
+        Number of random cells to use
+    niter : int
+        Number of iterations to perform
+    method : str
+        Scoring method to use. 'LLR' for log-likelihood ratio, 'LL' for log-likelihood.
+    mincells : int
+        If a sample has less than `mincells` cells, is discarded
+    figsize : tuple, optional
+        Size of the figure. Default is (10,5)
+        
+    Outputs
+    ----------
+    pop['rankings']: dataframe
+        Add dataframe of samples sorted by meanLLR including p-values
 
-	for x in pop['order']:
-		C = pop['samples'][x]['C']
-		m,n = C.shape
-		if m > mincells:
-			# nk is actual number of cells used
-			# (based on # cells in sample)
-			# if k < # cells in sample, nk is k (unchanged)
-			# else if k >= # cells in sample, nk is changed to #cells in sample minus 5
-			if k<m:
-				nk = k
-			else:
-				nk = m-5
-			# Score nk different random cells, niter times
-			# keep track of scores, labels and sample classes
-			if x == ref:
-				try:
-					gmmtest = pop['samples'][x]['replicates'][0]['gmm']
-				except:
-					gmmtest = pop['samples'][x]['gmm']
-			else:
-				gmmtest = pop['samples'][x]['gmm']
-			for _ in range(niter):
-				idx = np.random.choice(m, nk, replace=False)
-				sub = C[idx,:]
-				if method == 'LLR':
-					scores.append(gmmctrl.score(sub) - gmmtest.score(sub)) # for Log Likelihood Ratio LLR
-				elif method == 'LL':
-					scores.append(gmmctrl.score(sub))
-				else:
-					raise Exception('method must be one of: LLR, LL')
-				lbls.append(x)
-		else:
-			print('Not enough cells for samples: %s' % x)
-					
-	# create dataframe from scores, labels and sample classes
-	# find sample order based on score means
-	df = pd.DataFrame({'scores': scores, 'labels': lbls})
-	if method == 'LL':
-		df.scores = df.scores - df.scores.max()
-	df2 = pd.DataFrame({col:vals["scores"] for col, vals in df.groupby("labels")})
-	means = df2.mean().sort_values()
-	lblorder = means.index.values.tolist()
+    '''
+    # For a given sample S, k random cells are scored against the reference
+    # model. This process is repeated niter times and the results are 
+    # shown as boxplots
+    scores = []
+    lbls = []
+    gmmctrl = pop['samples'][ref]['gmm']
 
-	x = range(len(lblorder))
+    for x in pop['order']:
+        C = pop['samples'][x]['C']
+        m,n = C.shape
+        if m > mincells:
+            # nk is actual number of cells used
+            # (based on # cells in sample)
+            # if k < # cells in sample, nk is k (unchanged)
+            # else if k >= # cells in sample, nk is changed to #cells in sample minus 5
+            if k<m:
+                nk = k
+            else:
+                nk = m-5
+            # Score nk different random cells, niter times
+            # keep track of scores, labels and drug classes
+            if x == ref:
+                try:
+                    gmmtest = pop['samples'][x]['replicates'][0]['gmm']
+                except:
+                    gmmtest = pop['samples'][x]['gmm']
+            else:
+                gmmtest = pop['samples'][x]['gmm']
+            for _ in range(niter):
+                idx = np.random.choice(m, nk, replace=False)
+                sub = C[idx,:]
+                if method == 'LLR':
+                    scores.append(gmmctrl.score(sub) - gmmtest.score(sub)) # for Log Likelihood Ratio LLR
+                elif method == 'LL':
+                    scores.append(gmmctrl.score(sub))
+                else:
+                    raise Exception('method must be one of: LLR, LL')
+                lbls.append(x)
+        else:
+            print('Not enough cells for samples: %s' % x)
 
-	# find min and max of the control samples scores
-	# against control model. Then plot grey bar to
-	# emphasize how these control sample score
-	min_ = df[df.labels == ref].scores.min()
-	max_ = df[df.labels == ref].scores.max()
+    # create dataframe from scores, labels and drug classes
+    # find sample order based on score means
+    df = pd.DataFrame({'scores': scores, 'labels': lbls})
+    if method == 'LL':
+        df.scores = df.scores - df.scores.max()
+    df2 = pd.DataFrame({col:vals["scores"] for col, vals in df.groupby("labels")})
+    means = df2.mean().sort_values()
+    lblorder = means.index.values.tolist()
 
-	if method=='LL':
-		ylabel = 'Log-likelihood scores'
-		title = 'Log-likelihood scores against reference model (%s)' % ref
-	else:
-		ylabel = 'Log-likelihood ratio scores'
-		title = 'Log-likelihood ratio scores against reference model (%s)' % ref
-	
-	# create boxplot using the computed order based on score means
-	plt.figure(figsize=figsize)
-	ax = sns.boxplot(x="labels", y="scores", data=df, order=lblorder, palette='tab20')
-	x = plt.xlim()
-	plt.fill_between(x, min_, max_, alpha=0.1, color='black')
-	# adjusting plot labels
-	x = range(len(lblorder))
-	plt.xticks(x, lblorder, rotation=90)
-	plt.xlabel('Samples')
-	plt.ylabel(ylabel)
-	plt.title(title)
-	plt.tight_layout()
-	dname = 'ranking'
-	mkdir(os.path.join(pop['output'], dname))
-	plt.savefig(os.path.join(pop['output'], dname, '%s_rankings_boxplot.png' % method), dpi=200)
-	plt.savefig(os.path.join(pop['output'], dname, '%s_rankings_boxplot.pdf' % method))
-	plt.close()
+    x = range(len(lblorder))
 
-	# create stripplot using the computed order based on score means
-	plt.figure(figsize=figsize)
-	ax = sns.stripplot(x="labels", y="scores", data=df, order=lblorder, palette='tab20', size=2)
-	x = plt.xlim()
-	plt.fill_between(x, min_, max_, alpha=0.1, color='black')
-	# adjusting plot labels
-	x = range(len(lblorder))
-	plt.xticks(x, lblorder, rotation=90)
-	plt.xlabel('Samples')
-	plt.ylabel(ylabel)
-	plt.title(title)
-	#plt.title('Sample scores against %s sample\n(For each sample: %d random cells %d times)' % (ref, k, niter))
-	plt.tight_layout()
-	dname = 'ranking'
-	mkdir(os.path.join(pop['output'], dname))
-	plt.savefig(os.path.join(pop['output'], dname, '%s_rankings_stripplot.png' % method), dpi=200)
-	plt.savefig(os.path.join(pop['output'], dname, '%s_rankings_stripplot.pdf' % method))
-	plt.close()
+    # Calculate the 95 % confidence interval for 
+    # the control samples. Then plot grey bar to
+    # designate the 95% CI
+    controls = [i for i in pop['samples'].keys() if 'CTRL' in i]
+    control_means = [means.get(x) for x in controls]
+    mean_ = sum(control_means)/len(control_means)
+    std_ = np.std(control_means)
+    CI_ = 1.96*std_/np.sqrt(len(control_means))
+    min_ = mean_ -(abs(CI_)) 
+    max_ = mean_ +(abs(CI_)) 
+    
+    # Calculate the p-value for each sample
+    z = (means - mean_)/(std_*np.sqrt(len(control_means)))
+    pvals = stats.norm.sf(abs(z))
+
+    # FDR correction
+    ranked_pvals = rankdata(pvals)
+    pvals_new = pvals * len(pvals) / ranked_pvals
+    pvals_new[pvals_new > 1] = 1
+
+    # Make dataframe with means and p-values
+    means_df = pd.Series.to_frame(means)
+    pvals_df = pd.DataFrame(pvals_new)
+    pvals_df.index = means_df.index
+    final_df = pd.concat([means_df,pvals_df],axis=1)
+    final_df.columns = ['meanLLR','pval']
+
+    if method=='LL':
+        ylabel = 'Log-likelihood scores'
+        title = 'Log-likelihood scores against reference model (%s)' % ref
+    else:
+        ylabel = 'Log-likelihood ratio scores'
+        title = 'Log-likelihood ratio scores against reference model (%s)' % ref
+
+    # create boxplot using the computed order based on score means
+    plt.figure(figsize=figsize)
+
+    boxprops = dict(linestyle='-', linewidth=0.5)
+    flierprops = dict(marker='D', markersize=2, linestyle='none')
+    ax = sns.boxplot(x="labels", y="scores", data=df, order=lblorder, palette='tab20',
+                     boxprops=boxprops, whiskerprops=boxprops, medianprops=boxprops,capprops=boxprops, flierprops = flierprops)
+    x = plt.xlim()
+    plt.fill_between(x, min_, max_, alpha=0.2, color='black')
+    # adjusting plot labels
+    x = range(len(lblorder))
+    plt.xticks(x, lblorder, rotation=90)
+    plt.xlabel('Samples')
+    plt.ylabel(ylabel)
+    plt.title(title)
+    plt.tight_layout()
+    plt.rc('font', size= 12) 
+    dname = 'ranking'
+    PA.mkdir(os.path.join(pop['output'], dname))
+    plt.savefig(os.path.join(pop['output'], dname, '%s_rankings_boxplot.png' % method), dpi=200)
+    plt.savefig(os.path.join(pop['output'], dname, '%s_rankings_boxplot.pdf' % method))
+    plt.close()
+
+    # create stripplot using the computed order based on score means
+    plt.figure(figsize=figsize)
+    ax = sns.stripplot(x="labels", y="scores", data=df, order=lblorder, palette='tab20', size=2)
+    x = plt.xlim()
+    plt.fill_between(x, min_, max_, alpha=0.2, color='black')
+    # adjusting plot labels
+    x = range(len(lblorder))
+    plt.xticks(x, lblorder, rotation=90)
+    plt.xlabel('Samples')
+    plt.ylabel(ylabel)
+    plt.title(title)
+    #plt.title('Sample scores against %s sample\n(For each sample: %d random cells %d times)' % (ref, k, niter))
+    plt.tight_layout()
+    dname = 'ranking'
+    PA.mkdir(os.path.join(pop['output'], dname))
+    plt.savefig(os.path.join(pop['output'], dname, '%s_rankings_stripplot.png' % method), dpi=200)
+    plt.savefig(os.path.join(pop['output'], dname, '%s_rankings_stripplot.pdf' % method))
+    plt.close()
+
+    pop['rankings'] = final_df
 
 '''
 Query functions
@@ -3461,94 +3497,90 @@ def plot_L1_heatmap(pop, sample, dname,cmap=RdBu):
 	plt.tight_layout()
 	plt.savefig(os.path.join(pop['output'], dname, '%s_degenes_heatmap.pdf' % sample))
 	plt.close()
+def plot_violins(pop, refcomp, samples, genes, prefix, **kwargs):
+	'''
+	Plot violin plots of gene distributions for all samples that align
+	to a specified component from the reference sample
 
-def plot_violins(pop, refcomp, samples, genes, prefix):
-    '''
-    Plot violin plots of gene distributions for all samples that align
-    to a specified component from the reference sample
+	Parameters
+	----------
+	pop : dict
+	    Popalign object
+	refcomp : int
+	    Subpopulation number of the reference sample's GMM
+	samples : str
+	    list of samples to compare
+	genes : str
+	    list of genes to pull out
+	**kwargs : 
+	    arguments that are be passed on to seaborn.violinplot        
+	'''
+	# start of file
+	xref = pop['ref'] # get reference sample label
+	currtype = pop['samples'][xref]['gmm_types'][refcomp]
 
-    Parameters
-    ----------
-    pop : dict
-        Popalign object
-    refcomp : int
-        Subpopulation number of the reference sample's GMM
-    samples : str
-        list of samples to compare
-    genes : str
-        list of genes to pull out 
-    prefix : str 
-    	filename prefix, will create files in output/violins/ with name [prefix]_[celltype]_[gene].pdf 
-    '''
-    # start of file
-    xref = pop['ref'] # get reference sample label
-    currtype = pop['samples'][xref]['gmm_types'][refcomp]
-    dname = 'violins/'
+	if not(set(samples).issubset(pop['order'])) : 
+		raise Exception('Sample names not valid. Use show_samples(pop) to display valid sample names.')
     
-    if not(set(samples).issubset(pop['order'])) : 
-        raise Exception('Sample names not valid. Use show_samples(pop) to display valid sample names.')
-    
-    genes = pop['genes']
+	genes = pop['genes']
 
-    for i in range(len(plotgenes)):
-        currgene = plotgenes[i]
-        gidx = np.where(genes==currgene)[0]
+	for i in range(len(plotgenes)):
+		currgene = plotgenes[i]
+		gidx = np.where(genes==currgene)[0]
 
-        arrlist = []
-        lblslist = []
-        for j in range(len(samples)):
-            xtest = samples[j] # test sample label        
-            try:
-                arr = pop['samples'][xtest]['alignments'] # get alignments between reference and test
-                irow = np.where(arr[:,1] == refcomp) # get alignment that match reference subpopulation
-                itest = int(arr[irow, 0]) # get test subpopulation number
-            except:
-                raise Exception('Could not retrieve a matching alignment between sample %s and reference component %d' % (sample, refcomp))
-            Mtest = pop['samples'][xtest]['M']
-            predictiontest = pop['samples'][xtest]['gmm'].predict(pop['samples'][xtest]['C']) # get test cell assignments
-            idxtest = np.where(predictiontest==itest)[0] # get matching indices
-            subtest = Mtest[:,idxtest] # subset cells that match subpopulation itest
-            subtest = subtest.toarray() # from sparse matrix to numpy array for slicing efficiency
+		arrlist = []
+		lblslist = []
+		for j in range(len(samples)):
+			xtest = samples[j] # test sample label        
+			try:
+				arr = pop['samples'][xtest]['alignments'] # get alignments between reference and test
+				irow = np.where(arr[:,1] == refcomp) # get alignment that match reference subpopulation
+				itest = int(arr[irow, 0]) # get test subpopulation number
+			except:
+				raise Exception('Could not retrieve a matching alignment between sample %s and reference component %d' % (sample, refcomp))
+			Mtest = pop['samples'][xtest]['M']
+			predictiontest = pop['samples'][xtest]['gmm'].predict(pop['samples'][xtest]['C']) # get test cell assignments
+			idxtest = np.where(predictiontest==itest)[0] # get matching indices
+			subtest = Mtest[:,idxtest] # subset cells that match subpopulation itest
+			subtest = subtest.toarray() # from sparse matrix to numpy array for slicing efficiency
 
-            currarray = subtest[gidx,:]
-            currarray = currarray.tolist()
-            labels = [xtest[0:10]] * np.shape(currarray)[1]
-            arrlist.append(currarray)
-            lblslist.append(labels)
+			currarray = subtest[gidx,:]
+			currarray = currarray.tolist()
+			labels = [xtest[0:10]] * np.shape(currarray)[1]
+			arrlist.append(currarray)
+			lblslist.append(labels)
 
-        v1 = np.concatenate(arrlist,axis=1)
-        v1 = v1[0]
-        v2 = np.concatenate(lblslist)
-        fakey = [1]*(len(v1))
+		v1 = np.concatenate(arrlist,axis=1)
+		v1 = v1[0]
+		v2 = np.concatenate(lblslist)
+		fakey = [1]*(len(v1))
 
-        arrdf = pd.DataFrame(data = list([v1[:],v2]))
-        arrdf = pd.DataFrame.transpose(arrdf)
-        arrdf.rename(columns = {0:'values',1:'sample'},inplace=True)
-        arrdf['values']=arrdf['values'].astype('float64')
-        arrdf['sample']=arrdf['sample'].astype('category')
-        arrdf['y'] = fakey
-        arrdf['y'] = arrdf['y'].astype('float64')
+		arrdf = pd.DataFrame(data = list([v1[:],v2]))
+		arrdf = pd.DataFrame.transpose(arrdf)
+		arrdf.rename(columns = {0:'values',1:'sample'},inplace=True)
+		arrdf['values']=arrdf['values'].astype('float64')
+		arrdf['sample']=arrdf['sample'].astype('category')
+		arrdf['y'] = fakey
+		arrdf['y'] = arrdf['y'].astype('float64')
 
-        # Determine number of columns 
-        if len(samples)>3:
-            ncols = 2
-        else:
-            ncols = 1
+		# Determine number of columns 
+		if len(samples)>3:
+			ncols = 2
+		else:
+			ncols = 1
         
-        mkdir(os.path.join(pop['output'], dname)) # create directory if needed
+		plt.figure(figsize=(3,3));
+		plt.rc('font',size=12)
+		ax=sns.violinplot(y='values' ,x='y',data=arrdf,hue='sample',split=False, orient='v',**kwargs)
+		ax.set_ylabel('Normalized log(counts)',fontsize=12)
+		ax.set_xlabel('')
+		ax.set_xticks([])
+		plt.title(currgene, fontsize=24)
+		plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.05), ncol=ncols, fontsize=10)
 
-        plt.figure(figsize=(3,3));
-        plt.rc('font',size=12)
-        ax=sns.violinplot(y='values' ,x='y',data=arrdf,hue='sample',split=False, orient='v')
-        ax.set_ylabel('Normalized log(counts)',fontsize=12)
-        ax.set_xlabel('')
-        ax.set_xticks([])
-        plt.title(currgene, fontsize=24)
-        plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.05), ncol=ncols, fontsize=10)
-
-        filename = '%s_%s_%s' % (prefix,currtype, currgene)
-        plt.savefig(os.path.join(pop['output'], dname, '%s.pdf' % filename),bbox_inches='tight')
-        plt.close()
+		filename = '%s_%s_%s' % (prefix,currtype, currgene)
+		plt.savefig(os.path.join(pop['output'], 'violins/', '%s.pdf' % filename),bbox_inches='tight')
+		plt.close()
 
 '''
 Differential expression functions
@@ -4116,6 +4148,19 @@ def all_samples_diffexp(pop, deltaobj, nbins=20, cutoff=[], renderhists=True, us
 		P-value threshold for total density "weight" within the distribution of L1 norm values for all control samples. 
 		This number is used to generate a L1norm threshold to determine which differentially expressed genes are significant
 		(p-val < tailthresh)
+
+	Outputs
+	----------
+	pop['diffexp']: dict
+		contains the following objects: 
+
+	pop['diffexp']['de_df'] : dataframe
+		table reporting on all genes up and downregulated across samples and cell types
+		column names are: sample, celltype, sign, ngenes, and genes
+
+	pop['diffexp'][celltype] : dict
+		Dictionary containing information for each cell type, including L1norm values
+		
 	'''
 	dname = 'diffexp/'
 	deobj={}
