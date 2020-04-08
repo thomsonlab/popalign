@@ -192,7 +192,7 @@ def load_genes(genes):
 		genes = np.array([row[0].upper() for row in csv.reader(open(genes), delimiter="\t")]) # base format with one gene name per row
 	return genes
 
-def load_samples(samples, controlstring, genes=None, outputfolder='output', existing_obj=None):
+def load_samples(samples, controlstring=None, genes=None, outputfolder='output', existing_obj=None):
 	'''
 	Load data from a dictionary and gene labels from a file
 
@@ -255,7 +255,7 @@ def check_cols(s,cols):
 	if s not in cols:
 		raise Exception('%s not a valid column. Must be one of:' % s, cols.tolist())
 
-def load_multiplexed(matrix, barcodes, metafile, controlstring, genes=None, outputfolder='output', existing_obj=None, only=[], col=None, value=None):
+def load_multiplexed(matrix, barcodes, metafile, controlstring=None, genes=None, outputfolder='output', existing_obj=None, only=[], col=None, value=None):
 	'''
 	Load data from a screen experiment and genes from a file
 
@@ -2039,7 +2039,7 @@ def JeffreyDiv(mu1, cov1, mu2, cov2):
 
 def plot_deltas(pop, figsize=(10,10), sortby='mu', pthresh = 0.05): # generate plot mu and delta w plots
 	'''
-	Genere delta mu and delta w plots for the computed alignments
+	Generate delta mu and delta w plots for the computed alignments
 
 	Parameters
 	----------
@@ -2060,6 +2060,7 @@ def plot_deltas(pop, figsize=(10,10), sortby='mu', pthresh = 0.05): # generate p
 	deltaobj[currtype]['combined'] : dataframe, 
 		contains: 'origidx','orderedsamples', 'mean_delta_mu', 'pvals_mu','mean_delta_w','pvals_w'
 
+	% The following should not need to be accessed directly:
 	deltaobj[currtype]['idx'] = indices of ordered samples
 	deltaobj[currtype]['orderedsamples'] = ordered samples in currtype
 	deltaobj[currtype]['singles']={}
@@ -2073,6 +2074,8 @@ def plot_deltas(pop, figsize=(10,10), sortby='mu', pthresh = 0.05): # generate p
 
 	ref = pop['ref'] # get reference sample name
 	controlstring = pop['controlstring']
+	if controlstring==None:
+		raise Exception('Did not supply controlstring during load. Can be set now by executing: pop[\'controlstring\']=X')
 
 	celltypes = pop['samples'][ref]['gmm_types']
 	if celltypes == None:
@@ -2603,7 +2606,7 @@ def rank(pop, ref=None, k=100, niter=200, method='LLR', mincells=50, figsize=(10
             else:
                 nk = m-5
             # Score nk different random cells, niter times
-            # keep track of scores, labels and drug classes
+            # keep track of scores, labels and sample(drug) classes
             if x == ref:
                 try:
                     gmmtest = pop['samples'][x]['replicates'][0]['gmm']
@@ -2624,7 +2627,7 @@ def rank(pop, ref=None, k=100, niter=200, method='LLR', mincells=50, figsize=(10
         else:
             print('Not enough cells for samples: %s' % x)
 
-    # create dataframe from scores, labels and drug classes
+    # create dataframe from scores, labels and sample (i.e. drug) classes
     # find sample order based on score means
     df = pd.DataFrame({'scores': scores, 'labels': lbls})
     if method == 'LL':
@@ -3071,11 +3074,6 @@ def plot_heatmap(pop, refcomp, genelist, clustersamples=True, clustercells=True,
 	filename = filename.replace('/','')
 	plt.savefig(os.path.join(pop['output'], dname, '%s.pdf' % filename),bbox_inches='tight')
 	plt.close()
-plot_heatmap(pop, refcomp, lidx, clustersamples=False, clustercells=True, 
-	savename='refcomp%d_%s_%s' % (refcomp, reftype, sample), 
-	figsize=figsize, cmap='Purples', samplelimits=False, scalegenes=True, 
-	only=sample, equalncells=equalncells)
-	
 
 def plot_genes_gmm_cells(pop, sample='', genelist=[], savename='', metric='correlation', method='single', clustergenes=True, clustercells=True, cmap='magma', figsize=(10,15)):
 	'''
@@ -3424,7 +3422,7 @@ def subpopulations_grid_unique(pop, method='tsne', figsize=(20,20), size_backgro
 	plt.close() # close plot
 
 
-def plot_L1_heatmap(pop, sample, dname,cmap=RdBu):
+def plot_L1_heatmap(pop, sample, dname,cmap='RdBu'):
 
 	'''
 	Plots a heatmap of L1norm values for significant differentially expressed genes 
@@ -3444,7 +3442,7 @@ def plot_L1_heatmap(pop, sample, dname,cmap=RdBu):
 	deobj = pop['diffexp']
 	celltypes = list(set(pop['diffexp']['de_df'].celltype))
 	celltypes.insert(0, celltypes.pop(celltypes.index('overlap'))) # put overlap first
-	genes = deobj[celltypes[1]]['all_genes'] # don't use index 0 because that's 'overlap'
+	genes = deobj[celltypes[1]]['all_genes'] # don't use index 0['overlap'] which does not have a separate entry in the object
 
 	# xref = pop['ref'] # get reference sample label
 	# currtype = celltypes[refcomp]
@@ -3475,6 +3473,7 @@ def plot_L1_heatmap(pop, sample, dname,cmap=RdBu):
 			ri.append(np.asscalar(curridx))
 
 	ri = np.asarray(ri)
+	ri = ri.astype(int) # convert to integer
 
 	# Concatenate all cell types together to get single matrix of L1 norms 
 	comboM = []
@@ -3488,7 +3487,9 @@ def plot_L1_heatmap(pop, sample, dname,cmap=RdBu):
 			comboM = currM;
 		else:
 			comboM = np.stack((comboM,currM),axis=1)
-
+	print(ri)
+	print(type(ri))	
+	
 	fig=plt.figure(figsize=(5, 6), dpi= 80)
 	plt.imshow(comboM [ri,:], aspect='auto', interpolation='none', cmap=cmap,vmin=-1,vmax=1) # plot heatmap
 	plt.yticks(np.arange(len(ri)), genes[ri],fontsize=10) # display gene names
@@ -3500,6 +3501,7 @@ def plot_L1_heatmap(pop, sample, dname,cmap=RdBu):
 	plt.tight_layout()
 	plt.savefig(os.path.join(pop['output'], dname, '%s_degenes_heatmap.pdf' % sample))
 	plt.close()
+
 def plot_violins(pop, refcomp, samples, genes, prefix, **kwargs):
 	'''
 	Plot violin plots of gene distributions for all samples that align
@@ -3584,6 +3586,93 @@ def plot_violins(pop, refcomp, samples, genes, prefix, **kwargs):
 		filename = '%s_%s_%s' % (prefix,currtype, currgene)
 		plt.savefig(os.path.join(pop['output'], 'violins/', '%s.pdf' % filename),bbox_inches='tight')
 		plt.close()
+
+def plot_ribbon_ngenes(pop, samples = None, prefix='all_samples',toplot = 'ngenes', sortby = 'ngenes',colors = None, **kwargs):
+	'''
+	Plots a ribbon plot showing the number of genes that have changed across all cell types 
+
+	Parameters
+	----------
+	pop : dict
+	    Popalign object
+	samples : str
+	    list of samples to compare
+	    if samples is empty, we use all samples from the pop object
+	prefix : str
+	    prefix of saved plot name
+	toplot : str
+	    options are 'ngenes'(the number of genes) or 'perc' (percentage of genes). Default: ngenes
+	sortby : str
+	    options are 'ngenes'(total number of genes affected) or 'orig'(keep original order). Default: ngenes
+	colors: list
+	    list of hex colors, must be more than the number of cell types
+	**kwargs : 
+	    arguments that are passed onto df.plot.area()
+	'''
+	if samples == None:
+		samples = list(pop['samples'].keys())
+	if colors == None:
+		colors = sns.color_palette('muted')
+	if prefix == None: 
+		prefix = ''
+	    
+	dname = 'diffexp/'
+	celltypes = list(set(pop['diffexp']['de_df'].celltype))
+	celltypes.insert(0, celltypes.pop(celltypes.index('overlap'))) # put overlap first
+
+	# check to make sure that we have enough colors to plot all cell types
+	if len(colors) < len(celltypes): 
+		raise Exception('Must supply as many colors as celltypes')
+
+	# check to make sure that the differential expression boject has already been created in pop
+	if 'diffexp' not in pop.keys():
+		raise Exception('Must run all_samples_diffexp before calling this function')
+
+	deobj = pop['diffexp']
+
+	allns = np.zeros(len(celltypes))
+	for i in range(len(samples)):
+		xtest = samples[i]
+
+		didx = list(pop['samples'].keys()).index(xtest)
+		smdf = deobj['de_df'][deobj['de_df']['sample']==xtest]
+
+		# Start sample vector
+		samplens = []
+		for i in range(len(celltypes)) :
+			currtype = celltypes[i]
+			if currtype == 'overlap': 
+				currn = np.sum(smdf[smdf['celltype']==currtype]['ngenes'])
+			else:
+				currn = np.sum(smdf[smdf['celltype']==currtype]['ngenes']) - np.sum(smdf[smdf['celltype']=='overlap']['ngenes'])
+			samplens.append(np.asscalar(currn))
+		allns = np.column_stack((allns,samplens))
+
+	# Transform array into percentages
+	allns = np.transpose(allns)
+	allns = np.delete(allns, obj=0, axis=0)
+	totgenes = np.sum(allns,axis=1)
+	allperc = allns / totgenes[:,None]
+
+	# Sort rows by percentage overlap
+	if sortby == 'orig':
+		colidx = range(0,len(samples))
+	elif sortby == 'ngenes':
+		colidx = np.argsort(totgenes)
+	sortedsamples = [samples[i] for i in colidx]
+
+	if toplot == 'perc':
+		df = pd.DataFrame(data = allperc[colidx,:], columns = celltypes, index = sortedsamples)
+	elif toplot == 'ngenes':
+		df = pd.DataFrame(data = allns[colidx,:], columns = celltypes, index = sortedsamples )
+
+	fig = plt.figure(figsize=(6,3), dpi=200)
+	df.plot.area(colors = colors, **kwargs)
+	plt.xticks(np.arange(len(samples)),sortedsamples,rotation=90,fontsize=14) # remove x ticks
+	plt.legend(fontsize=14,loc='upper left')
+	plt.ylabel('ngenes')
+	plt.savefig(os.path.join(pop['output'], dname, '%s_ngenes_ribbon.pdf' % prefix),bbox_inches='tight')
+	plt.close()
 
 '''
 Differential expression functions
@@ -4168,6 +4257,9 @@ def all_samples_diffexp(pop, deltaobj, nbins=20, cutoff=[], renderhists=True, us
 	deobj={}
 	samples = list(pop['samples'].keys())
 	controlstring = pop['controlstring']
+	if controlstring==None:
+		raise Exception('Did not supply controlstring during load. Can be set now by executing: pop[\'controlstring\']=X')
+
 	#samples = list({'CTRL1','CTRL2','CTRL3','CTRL4','CTRL5','CTRL6','Budesonide'})
 	#samples = list({'Dexrazoxane HCl (ICRF-187, ADR-529)','Alprostadil','Meprednisone','Budesonide','Loteprednol etabonate','Betamethasone Valerate','Triamcinolone Acetonide'})
 
@@ -4302,7 +4394,11 @@ def all_samples_diffexp(pop, deltaobj, nbins=20, cutoff=[], renderhists=True, us
 
 	# Now run all samples thorugh L1 heatmap
 	for x in samples:
-		plot_L1_heatmap(pop, x, 'diffexp/')
+		plot_L1_heatmap(pop, x, dname)
+
+	# Now plot ribbon plot for numbers of genes that have changed
+	ribboncols = sns.color_palette('muted')
+	plot_ribbon_ngenes(pop, colors = ribboncols)
 
 def calc_p_value(controlvals, testvals, tail = 1) : 
 	'''
