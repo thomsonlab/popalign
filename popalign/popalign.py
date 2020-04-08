@@ -435,6 +435,13 @@ def normalize(pop, scaling_factor=None, ncells=None):
 		Number used to scale the data values. If None, that factor is computed automatically.
 	ncells : int or None
 		Number of cells to randomly subsample to try different normalization factors to use less memory. If None, all cells are used.
+	
+	Output
+	----------
+	pop['normed']: bool
+		Indicates if data has been rescaled and logged
+	pop['original_mean']: list, float
+		Gene means before normalizing
 	'''
 	if 'normed' in pop:
 		print('Data already column normalized')
@@ -466,6 +473,11 @@ def mu_sigma(M, pop):
 		Matrix for which genes mu and sigma values will be computed
 	pop : dict
 		Popalign object
+	Outputs: 
+	----------
+	Adds the following fields to the pop object: 
+	pop['nzidx'] : list, int
+		indices of nonzero genes
 	'''
 	mean, var = mean_variance_axis(M, axis=1) # get genes means and variances from M
 	std = np.sqrt(var) # compute standard deviations from variances
@@ -497,9 +509,17 @@ def filter(pop, remove_ribsomal=True, remove_mitochondrial=True):
 	pop :dict
 		Popalign object
 	remove_ribsomal : bool
-		Whether to remove or not the ribosomal genes
+		Whether to remove the ribosomal genes. Default: True
 	remove_mitochondrial : bool
-		Whether to remove or not the mitochondrial geneset
+		Whether to remove the mitochondrial geneset. Default: True
+	Outputs: 
+	----------
+	Adds the following fields to the pop object: 
+	pop['filtered_genes'] : list
+		Names of filtered genes
+	pop['filtered_genes_set'] : set
+		Names of filtered genes
+
 	'''
 	gene_idx = pop['filter_idx'] # get indices of genes to keep
 	genes = pop['genes'] # get all genes names
@@ -521,7 +541,7 @@ def filter(pop, remove_ribsomal=True, remove_mitochondrial=True):
 				tmp.append(i) # only append gene index if gene name doesn't star with RPS or RPL
 		gene_idx = np.array(tmp)
 
-	print('Filtering genes ang logging data')
+	print('Filtering genes and logging data')
 	for x in pop['order']: # for each sample x
 		M_norm = pop['samples'][x]['M'][gene_idx,:] # filter genes
 		M_norm.data = np.log(M_norm.data+1) # log the data
@@ -542,6 +562,13 @@ def plot_mean_cv(pop, offset):
 		Popalign object
 	offset : float
 		Offset value to slide filtering line
+
+	Outputs: 
+	----------
+	Adds the following fields to the pop object: 
+	pop['filter_idx'] : list, int
+		indices of filtered genes based on offset
+
 	'''
 
 	lognzcv = pop['genefiltering']['lognzcv'] # get cv values
@@ -569,12 +596,30 @@ def plot_mean_cv(pop, offset):
 
 def plot_gene_filter(pop, offset=1):
 	'''
-	Plot genes by their log(mean) and log(coefficient of variation)
+	Plot genes by their log(mean) and log(coefficient of variation) 
+	and also filters genes based on specified offset. 
 
-	Parameters
+	Parameters: 
 	----------
 	offset: float
 		Value (its log) will be added to the intercept of the linear fit to filter genes
+
+	Outputs: 
+	----------
+	Adds the following fields to the pop object: 
+	pop['filter_idx'] : list, int
+		indices of filtered genes based on offset
+		Added by plot_mean_cv
+	pop['nzidx'] : list, int
+		indices of nonzero genes
+		Added by mu_sigma
+
+	The following should not need to be accessed directly: 
+	pop['genefiltering']['lognzcv'] 
+	pop['genefiltering']['lognzmean'] 
+	pop['genefiltering']['slope'] 
+	pop['genefiltering']['intercept'] 
+
 	'''
 	M = cat_data(pop, 'M') # get column normalized, factored data
 	if 'genefiltering' not in pop:
@@ -1504,7 +1549,6 @@ def render_model(pop, name, figsizesingle):
 
 	plt.figure(figsize=figsizesingle)
 	pcacomps = pop['pca']['components'] # get the pca space
-	cmap = 'jet' # define colormap
 	cmap = 'viridis'
 	w_factor = 3000 # factor to get the mean point sizes (multiplied by the mean weights)
 	alpha = 0.2
@@ -1567,6 +1611,7 @@ def render_model(pop, name, figsizesingle):
 	plt.ylabel('PC%d' % (y+1))
 	plt.tick_params(labelsize='small')
 	plt.title('Model rendering\n%s' % name)
+	plt.tight_layout()
 
 	dname = 'renderings'
 	mkdir(os.path.join(pop['output'], dname))
@@ -1745,7 +1790,7 @@ def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar=
 		If 'auto', the regularization value will be computed from the feature data
 		If float, value will be used as reg_covar parameter to build GMMs
 	rendering : str
-		One of grouped, individual or unique
+		Either 'grouped', 'individual' or 'unique'
 	types : dict, str or None
 		Dictionary of cell types.
 		If None, a default PBMC cell types dictionary is provided
@@ -2037,6 +2082,34 @@ def JeffreyDiv(mu1, cov1, mu2, cov2):
 	JD = 0.5*KL(mu1, cov1, mu2, cov2)+0.5*KL(mu2, cov2, mu1, cov1)
 	return np.log10(JD)
 
+def checkalignment(pop, refcomp, sample):
+	'''
+	Returns a boolean indicating whether an alignment exists between reference component and specified sample
+	
+	Parameters
+	----------
+	refcomp : int
+		component number in reference sample to compare to
+	sample: str
+		name of string
+
+	Output
+	----------
+	alignbool : bool
+		indicates whether an alignment exists or not
+	'''
+	if sample not in pop['samples']:
+		raise Exception('Sample name not valid. Use show_samples(pop) to display valid sample names.')
+	try:
+		arr = pop['samples'][sample]['alignments'] # get alignments between reference and test
+		irow = np.where(arr[:,1] == refcomp) # get alignment that match reference subpopulation
+		itest = int(arr[irow, 0]) # get test subpopulation number
+		alignbool = True
+	except:
+		alignbool = False
+
+	return alignbool    
+
 def plot_deltas(pop, figsize=(10,10), sortby='mu', pthresh = 0.05): # generate plot mu and delta w plots
 	'''
 	Generate delta mu and delta w plots for the computed alignments
@@ -2057,16 +2130,16 @@ def plot_deltas(pop, figsize=(10,10), sortby='mu', pthresh = 0.05): # generate p
 	pop['deltas']: dict
 		contains the following objects: 
 
-	deltaobj[currtype]['combined'] : dataframe, 
+	pop['deltas'][currtype]['combined'] : dataframe, 
 		contains: 'origidx','orderedsamples', 'mean_delta_mu', 'pvals_mu','mean_delta_w','pvals_w'
 
 	% The following should not need to be accessed directly:
-	deltaobj[currtype]['idx'] = indices of ordered samples
-	deltaobj[currtype]['orderedsamples'] = ordered samples in currtype
-	deltaobj[currtype]['singles']={}
-	deltaobj[currtype]['singles']['delta_mus'] = delta_mu for each model (including replicates)
-	deltaobj[currtype]['singles']['delta_ws'] = delta_w for each model
-	deltaobj[currtype]['singles']['xcoords'] = x coordinates for delta_mus 
+	pop['deltas'][currtype]['idx'] = indices of ordered samples
+	pop['deltas'][currtype]['orderedsamples'] = ordered samples in currtype
+	pop['deltas'][currtype]['singles']={}
+	pop['deltas'][currtype]['singles']['delta_mus'] = delta_mu for each model (including replicates)
+	pop['deltas'][currtype]['singles']['delta_ws'] = delta_w for each model
+	pop['deltas'][currtype]['singles']['xcoords'] = x coordinates for delta_mus 
 
 	'''
 	dname = 'deltas'
@@ -2145,7 +2218,6 @@ def plot_deltas(pop, figsize=(10,10), sortby='mu', pthresh = 0.05): # generate p
 		seen_add = seen.add
 		xlbls = [x for x in samplelbls if not (x in seen or seen_add(x))]
 		x = [x for x in xcoords if not (x in seen or seen_add(x))]
-
 
 		control_delta_mus = [mean_mus[i] for i in x if controlstring in xlbls[i]]
 		control_delta_ws = [mean_ws[i] for i in x if controlstring in xlbls[i]]
@@ -2247,71 +2319,6 @@ def plot_deltas(pop, figsize=(10,10), sortby='mu', pthresh = 0.05): # generate p
 		deltaobj[currtype]['combined'] = t # table of data
 
 	pop['deltas'] = deltaobj
-
-
-def plot_deltas_test(pop, pointsize, figsize):
-	'''
-	Genere delta mu and delta w plots for the computed alignments
-
-	Parameters
-	----------
-	pop : dict
-		Popalign object
-	figsize : tuple, optional
-		Size of the figure. Default is (10,10)
-	'''
-	dname = 'deltas' # create folder name
-	mkdir(os.path.join(pop['output'], dname)) # create folder
-
-	ref = pop['ref'] # get reference sample name
-	
-	celltypes = pop['samples'][ref]['gmm_types'] # get cell types in reference model
-	if celltypes == None:
-		celltypes = [str(i) for i in range(pop['samples'][ref]['gmm'].n_components)]
-
-	for i, lbl in enumerate(celltypes): # for each reference subpopulation
-		samplelbls = [] # store x labels (sample + component number)
-		xcoords = [] # store x coordinate
-		delta_mus = [] # store delta mu value
-		delta_ws = [] # store delta w value
-
-		mu_ref = pop['samples'][ref]['means_genes'][i] # get the mean i value
-		w_ref = pop['samples'][ref]['gmm'].weights_[i] # get the weight i value
-
-		for x in pop['order']: # for each sample x
-			if x != ref:
-				arr = pop['samples'][x]['alignments'] # get the alignments between x and the reference
-				for row in arr:
-					if row[1]==i:
-						itest = int(row[0])
-						mu_test = pop['samples'][x]['means_genes'][itest] # get the test comp mean value
-						w_test = pop['samples'][x]['gmm'].weights_[itest] # get the test comp weight value
-						samplelbls.append('%s (%d)' % (x,itest))
-						delta_mus.append(np.linalg.norm([np.array(mu_test).flatten() - np.array(mu_ref).flatten()], ord='fro')) # store delta mu
-						delta_ws.append((w_test - w_ref)*100) # store delta w
-
-		idx = np.argsort(delta_mus)
-		delta_mus = [delta_mus[i] for i in idx]
-		delta_ws = [delta_ws[i] for i in idx]
-		samplelbls = [samplelbls[i] for i in idx]
-		xcoords = np.arange(len(samplelbls))
-
-		plt.figure(figsize=figsize)
-		ax1 = plt.subplot(2,1,1)
-		plt.title('Reference sample %s\nComponent %d: %s' %(ref, i, lbl))
-		plt.scatter(xcoords, delta_ws, s=pointsize, c='k')
-		plt.xticks([])
-		plt.ylabel('Δ\u03C9 (%)')
-
-		plt.subplot(2,1,2)
-		plt.scatter(xcoords, delta_mus, s=pointsize,c='k')
-		plt.xticks(xcoords, samplelbls, rotation=90)
-		plt.ylabel('Δ\u03BC')
-
-		plt.tight_layout()
-		lbl = lbl.replace('/','')
-		plt.savefig(os.path.join(pop['output'], dname, 'deltas_comp%d_%s.pdf' % (i,lbl)), dpi=200, bbox_inches='tight')
-		plt.close()
 
 def aligner(refgmm, testgmm, method):
 	'''
@@ -2423,8 +2430,7 @@ def align(pop, ref=None, method='conservative', figsizedeltas=(10,10), figsizeen
 			except:
 				pass
 
-	#plot_deltas(pop, figsizedeltas) # generate plot mu and delta w plots
-	plot_deltas_test(pop, 20, figsizedeltas) # generate plot mu and delta w plots
+	plot_deltas(pop, figsizedeltas) # generate plot mu and delta w plots
 	entropy(pop, figsizeentropy)
 
 
@@ -2690,7 +2696,7 @@ def rank(pop, ref=None, k=100, niter=200, method='LLR', mincells=50, figsize=(10
     plt.tight_layout()
     plt.rc('font', size= 12) 
     dname = 'ranking'
-    PA.mkdir(os.path.join(pop['output'], dname))
+    mkdir(os.path.join(pop['output'], dname))
     plt.savefig(os.path.join(pop['output'], dname, '%s_rankings_boxplot.png' % method), dpi=200)
     plt.savefig(os.path.join(pop['output'], dname, '%s_rankings_boxplot.pdf' % method))
     plt.close()
@@ -2709,7 +2715,7 @@ def rank(pop, ref=None, k=100, niter=200, method='LLR', mincells=50, figsize=(10
     #plt.title('Sample scores against %s sample\n(For each sample: %d random cells %d times)' % (ref, k, niter))
     plt.tight_layout()
     dname = 'ranking'
-    PA.mkdir(os.path.join(pop['output'], dname))
+    mkdir(os.path.join(pop['output'], dname))
     plt.savefig(os.path.join(pop['output'], dname, '%s_rankings_stripplot.png' % method), dpi=200)
     plt.savefig(os.path.join(pop['output'], dname, '%s_rankings_stripplot.pdf' % method))
     plt.close()
@@ -3502,7 +3508,7 @@ def plot_L1_heatmap(pop, sample, dname,cmap='RdBu'):
 	plt.savefig(os.path.join(pop['output'], dname, '%s_degenes_heatmap.pdf' % sample))
 	plt.close()
 
-def plot_violins(pop, refcomp, samples, genes, prefix, **kwargs):
+def plot_violins(pop, refcomp, samples, plotgenes, prefix, **kwargs):
 	'''
 	Plot violin plots of gene distributions for all samples that align
 	to a specified component from the reference sample
@@ -3514,7 +3520,7 @@ def plot_violins(pop, refcomp, samples, genes, prefix, **kwargs):
 	refcomp : int
 	    Subpopulation number of the reference sample's GMM
 	samples : str
-	    list of samples to compare
+	    list of samples to compare, sets the order for plotting
 	genes : str
 	    list of genes to pull out
 	**kwargs : 
@@ -3523,11 +3529,12 @@ def plot_violins(pop, refcomp, samples, genes, prefix, **kwargs):
 	# start of file
 	xref = pop['ref'] # get reference sample label
 	currtype = pop['samples'][xref]['gmm_types'][refcomp]
-
 	if not(set(samples).issubset(pop['order'])) : 
 		raise Exception('Sample names not valid. Use show_samples(pop) to display valid sample names.')
     
 	genes = pop['genes']
+	dname = 'violins/'
+	mkdir(os.path.join(pop['output'], dname)) # create directory if needed
 
 	for i in range(len(plotgenes)):
 		currgene = plotgenes[i]
@@ -3542,7 +3549,7 @@ def plot_violins(pop, refcomp, samples, genes, prefix, **kwargs):
 				irow = np.where(arr[:,1] == refcomp) # get alignment that match reference subpopulation
 				itest = int(arr[irow, 0]) # get test subpopulation number
 			except:
-				raise Exception('Could not retrieve a matching alignment between sample %s and reference component %d' % (sample, refcomp))
+				raise Exception('Could not retrieve a matching alignment between sample %s and reference component %d' % (xtest, refcomp))
 			Mtest = pop['samples'][xtest]['M']
 			predictiontest = pop['samples'][xtest]['gmm'].predict(pop['samples'][xtest]['C']) # get test cell assignments
 			idxtest = np.where(predictiontest==itest)[0] # get matching indices
@@ -3565,8 +3572,10 @@ def plot_violins(pop, refcomp, samples, genes, prefix, **kwargs):
 		arrdf.rename(columns = {0:'values',1:'sample'},inplace=True)
 		arrdf['values']=arrdf['values'].astype('float64')
 		arrdf['sample']=arrdf['sample'].astype('category')
+		arrdf['sample'].cat.categories = samples  # enforces original ordering in plots
 		arrdf['y'] = fakey
 		arrdf['y'] = arrdf['y'].astype('float64')
+
 
 		# Determine number of columns 
 		if len(samples)>3:
@@ -3584,8 +3593,9 @@ def plot_violins(pop, refcomp, samples, genes, prefix, **kwargs):
 		plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.05), ncol=ncols, fontsize=10)
 
 		filename = '%s_%s_%s' % (prefix,currtype, currgene)
-		plt.savefig(os.path.join(pop['output'], 'violins/', '%s.pdf' % filename),bbox_inches='tight')
+		plt.savefig(os.path.join(pop['output'], dname, '%s.pdf' % filename),bbox_inches='tight')
 		plt.close()
+
 
 def plot_ribbon_ngenes(pop, samples = None, prefix='all_samples',toplot = 'ngenes', sortby = 'ngenes',colors = None, **kwargs):
 	'''
@@ -4032,7 +4042,7 @@ def diffexp_testcomp(pop, testcomp=0, sample='', nbins=20, cutoff=.5, renderhist
 def all_diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True, usefiltered=True):
 	'''
 	Find differentially expressed genes between a reference subpopulation
-	and the subpopulation of a sample that aligned to it
+	and all subpopulations within a sample that align to it
 
 	Parameters
 	----------
@@ -4215,14 +4225,13 @@ def all_diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True
 	plot_heatmap(pop, refcomp, lidx, clustersamples=False, clustercells=True, savename='refpop%d_%s_%s_heatmap' % (refcomp,reftype, sample), figsize=(15,15), cmap='Purples', samplelimits=False, scalegenes=True, only=sample, equalncells=True)
 	return q_raw, genes_raw, lidx, upregulated, downregulated
 
-def all_samples_diffexp(pop, deltaobj, nbins=20, cutoff=[], renderhists=True, usefiltered=True, tailthresh=0.001):
+def all_samples_diffexp(pop, nbins=20, cutoff=[], renderhists=True, usefiltered=True, tailthresh=0.001):
 	'''
-	Make a diffexp object that contains differentially expressed genes 
-	for all cell types and all samples. 
+	Compute differentially expressed genes for all cell types and all samples. 
 
-	Uses deltaobj to retrieve the sample order
+	Uses pop['deltas'][currtype]['orderedsamples'] to retrieve the sample order
 
-	Returns a differential expression object (deobj)
+	Puts differential expression outputs in pop['diffexp']
 
 	Parameters
 	----------
@@ -4259,9 +4268,7 @@ def all_samples_diffexp(pop, deltaobj, nbins=20, cutoff=[], renderhists=True, us
 	controlstring = pop['controlstring']
 	if controlstring==None:
 		raise Exception('Did not supply controlstring during load. Can be set now by executing: pop[\'controlstring\']=X')
-
-	#samples = list({'CTRL1','CTRL2','CTRL3','CTRL4','CTRL5','CTRL6','Budesonide'})
-	#samples = list({'Dexrazoxane HCl (ICRF-187, ADR-529)','Alprostadil','Meprednisone','Budesonide','Loteprednol etabonate','Betamethasone Valerate','Triamcinolone Acetonide'})
+	deltaobj = pop['deltas']
 
 	ref = pop['ref'] # get reference sample name
 	celltypes = pop['samples'][ref]['gmm_types']
@@ -4269,7 +4276,8 @@ def all_samples_diffexp(pop, deltaobj, nbins=20, cutoff=[], renderhists=True, us
 	# get control values
 	x = range(len(samples))
 	controls = [i for i in pop['samples'].keys() if controlstring in i]
-
+	# remove reference control sample
+	controls.pop(controls.index(ref))
 	
 	for y in range(len(celltypes)) : 
 		currtype = celltypes[y];
@@ -4278,7 +4286,7 @@ def all_samples_diffexp(pop, deltaobj, nbins=20, cutoff=[], renderhists=True, us
 		if not cutoff : 
 			# First calculate control values
 			print('******************************************************')
-			print('Using controls to determine a cutoff for '+currtype)
+			print('Using controls to determine an L1 cutoff for '+currtype)
 			print('******************************************************')
 			all_control_q = []
 
