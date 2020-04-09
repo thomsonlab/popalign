@@ -4197,7 +4197,7 @@ def all_diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True
 			plt.xlabel('Normalized log(counts)')
 			plt.ylabel('Cell Fraction')
 			plt.title('%s\n %s-%d of %s' % (gname, reftype, refcomp, xref)) 
-			ax1.legend(loc='upper center', bbox_to_anchor=(0.5, -0.05),ncol=2)
+			ax1.legend(loc='upper center', bbox_to_anchor=(0.5, -0.05),ncol=1)
 
 			# Format data for violinplot:
 			labels1 = [xref]*len(arrref)
@@ -4218,7 +4218,7 @@ def all_diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True
 			sns.violinplot(y='values' ,x='y',data=arrdf,hue='sample',split=True, orient='v')
 			plt.ylabel('Normalized log(counts)')
 			plt.title(gname)
-			ax2.legend(loc='upper center', bbox_to_anchor=(0.5, -0.05), ncol=2)
+			ax2.legend(loc='upper center', bbox_to_anchor=(0.5, -0.05), ncol=1)
 
 			filename = '%s_%s' % (lbl, gname)
 			plt.savefig(os.path.join(pop['output'], dnamehist, '%s.pdf' % filename),bbox_inches='tight')
