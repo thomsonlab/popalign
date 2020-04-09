@@ -2598,6 +2598,7 @@ def rank(pop, ref=None, k=100, niter=200, method='LLR', mincells=50, figsize=(10
     scores = []
     lbls = []
     gmmctrl = pop['samples'][ref]['gmm']
+    controlstring = pop['controlstring']
 
     for x in pop['order']:
         C = pop['samples'][x]['C']
@@ -2647,7 +2648,7 @@ def rank(pop, ref=None, k=100, niter=200, method='LLR', mincells=50, figsize=(10
     # Calculate the 95 % confidence interval for 
     # the control samples. Then plot grey bar to
     # designate the 95% CI
-    controls = [i for i in pop['samples'].keys() if 'CTRL' in i]
+    controls = [i for i in pop['samples'].keys() if controlstring in i]
     control_means = [means.get(x) for x in controls]
     mean_ = sum(control_means)/len(control_means)
     std_ = np.std(control_means)
@@ -3523,6 +3524,8 @@ def plot_violins(pop, refcomp, samples, plotgenes, prefix, **kwargs):
 	    list of samples to compare, sets the order for plotting
 	genes : str
 	    list of genes to pull out
+	prefix : str
+		filename prefix for all plots
 	**kwargs : 
 	    arguments that are be passed on to seaborn.violinplot        
 	'''
@@ -4197,8 +4200,8 @@ def all_diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True
 			ax1.legend(loc='upper center', bbox_to_anchor=(0.5, -0.05),ncol=2)
 
 			# Format data for violinplot:
-			labels1 = [xref[0:10]]*len(arrref)
-			labels2 = [xtest[0:10]]*len(arrtest)
+			labels1 = [xref]*len(arrref)
+			labels2 = [xtest]*len(arrtest)
 			fakey = [1]*(len(arrtest)+len(arrref))
 
 			v1 = np.concatenate([arrref,arrtest])
