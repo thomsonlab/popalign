@@ -4267,8 +4267,7 @@ def all_samples_diffexp(pop, nbins=20, cutoff=[], renderhists=True, usefiltered=
 	'''
 	dname = 'diffexp/'
 	deobj={}
-	# samples = pop['order']
-	samples = ['CTRL2','Meprednisone','Alprostadil']
+	samples = pop['order']
 	controlstring = pop['controlstring']
 	if controlstring==None:
 		raise Exception('Did not supply controlstring during load. Can be set now by executing: pop[\'controlstring\']=X')
