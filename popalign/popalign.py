@@ -3434,7 +3434,7 @@ def plot_L1_heatmap(pop, sample, dname,cmap='RdBu'):
 	'''
 	Plots a heatmap of L1norm values for significant differentially expressed genes 
 	across all cell types for a specific sample. Genes are organized in order of 
-	1) overlapping genes
+	1) shared genes
 	2) celltype specific 
 
 	Parameters
@@ -3447,8 +3447,8 @@ def plot_L1_heatmap(pop, sample, dname,cmap='RdBu'):
 
 	deobj = pop['diffexp']
 	celltypes = list(set(pop['diffexp']['de_df'].celltype))
-	celltypes.insert(0, celltypes.pop(celltypes.index('overlap'))) # put overlap first
-	genes = deobj[celltypes[1]]['all_genes'] # don't use index 0['overlap'] which does not have a separate entry in the object
+	celltypes.insert(0, celltypes.pop(celltypes.index('shared'))) # put shared first
+	genes = deobj[celltypes[1]]['all_genes'] # don't use index 0['shared'] which does not have a separate entry in the object
 	
 	allsamples =deobj[celltypes[1]]['all_samples']
 	sidx = allsamples.index(sample)
@@ -3486,7 +3486,7 @@ def plot_L1_heatmap(pop, sample, dname,cmap='RdBu'):
 
 	# Concatenate all cell types together to get single matrix of L1 norms 
 	comboM = []
-	for i in range(1,len(celltypes)) : # don't start with 0 because that's 'overlap'
+	for i in range(1,len(celltypes)) : # don't start with 0 because that's 'shared'
 		currtype = celltypes[i]
 		# get upregulated genes
 		currM = deobj[currtype]['all_l1norm'][sidx]
@@ -3631,7 +3631,7 @@ def plot_ribbon_ngenes(pop, samples = None, prefix='all_samples',toplot = 'ngene
 	    
 	dname = 'diffexp/'
 	celltypes = list(set(pop['diffexp']['de_df'].celltype))
-	celltypes.insert(0, celltypes.pop(celltypes.index('overlap'))) # put overlap first
+	celltypes.insert(0, celltypes.pop(celltypes.index('shared'))) # put shared first
 
 	# check to make sure that we have enough colors to plot all cell types
 	if len(colors) < len(celltypes): 
@@ -3654,10 +3654,10 @@ def plot_ribbon_ngenes(pop, samples = None, prefix='all_samples',toplot = 'ngene
 		samplens = []
 		for i in range(len(celltypes)) :
 			currtype = celltypes[i]
-			if currtype == 'overlap': 
+			if currtype == 'shared': 
 				currn = np.sum(smdf[smdf['celltype']==currtype]['ngenes'])
 			else:
-				currn = np.sum(smdf[smdf['celltype']==currtype]['ngenes']) - np.sum(smdf[smdf['celltype']=='overlap']['ngenes'])
+				currn = np.sum(smdf[smdf['celltype']==currtype]['ngenes']) - np.sum(smdf[smdf['celltype']=='shared']['ngenes'])
 			samplens.append(np.asscalar(currn))
 		allns = np.column_stack((allns,samplens))
 
@@ -3667,7 +3667,7 @@ def plot_ribbon_ngenes(pop, samples = None, prefix='all_samples',toplot = 'ngene
 	totgenes = np.sum(allns,axis=1)
 	allperc = allns / totgenes[:,None]
 
-	# Sort rows by percentage overlap
+	# Sort rows by percentage shared
 	if sortby == 'orig':
 		colidx = range(0,len(samples))
 	elif sortby == 'ngenes':
@@ -4360,7 +4360,7 @@ def all_samples_diffexp(pop, nbins=20, cutoff=[], renderhists=True, usefiltered=
 		deobj[currtype]['all_samples'] = samples
 		deobj[currtype]['cutoff'] = currcutoff # currcutoff is cell type specific
 
-	# Put all the computed values into a single dataframe, and also compute overlapping genes
+	# Put all the computed values into a single dataframe, and also compute sharedping genes
 	samplelist = []
 	ctlist = []
 	signlist = []
@@ -4386,25 +4386,25 @@ def all_samples_diffexp(pop, nbins=20, cutoff=[], renderhists=True, usefiltered=
 			ngeneslist.append(n_up)    
 			genelist.append( ','.join(genes_up))
 
-		# Calculate overlapping genes as the intersection of affected genes in all cell types
-		overlap_up = deobj[celltypes[0]]['samples'][x]['genes_up']
-		overlap_down = deobj[celltypes[0]]['samples'][x]['genes_down']
+		# Calculate shared genes as the intersection of affected genes in all cell types
+		shared_up = deobj[celltypes[0]]['samples'][x]['genes_up']
+		shared_down = deobj[celltypes[0]]['samples'][x]['genes_down']
 
 		# iterate through other cell types to get intersecting lists
 		for currtype in celltypes[1:] :
-			overlap_down = np.intersect1d(overlap_down, deobj[currtype]['samples'][x]['genes_down'])
+			shared_down = np.intersect1d(shared_down, deobj[currtype]['samples'][x]['genes_down'])
 			samplelist.append(x)
-			ctlist.append('overlap')
+			ctlist.append('shared')
 			signlist.append('down')
-			ngeneslist.append(len(overlap_down))
-			genelist.append( ','.join(overlap_down))
+			ngeneslist.append(len(shared_down))
+			genelist.append( ','.join(shared_down))
 
-			overlap_up = np.intersect1d(overlap_up, deobj[currtype]['samples'][x]['genes_up'])
+			shared_up = np.intersect1d(shared_up, deobj[currtype]['samples'][x]['genes_up'])
 			samplelist.append(x)
-			ctlist.append('overlap')
+			ctlist.append('shared')
 			signlist.append('up')
-			ngeneslist.append(len(overlap_up))
-			genelist.append( ','.join(overlap_up))
+			ngeneslist.append(len(shared_up))
+			genelist.append( ','.join(shared_up))
 
 	d = {'sample': samplelist, 'celltype': ctlist, 'sign' : signlist, 'ngenes': ngeneslist, 'genes': genelist}
 	de_df = pd.DataFrame(data=d)
