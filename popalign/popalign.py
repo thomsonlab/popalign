@@ -3445,11 +3445,13 @@ def plot_L1_heatmap(pop, sample, dname,cmap='RdBu'):
 	if 'diffexp' not in pop: 
 		raise Exception ('Differential expression analysis has not been run yet')
 
-	sidx = list(pop['samples'].keys()).index(sample)
 	deobj = pop['diffexp']
 	celltypes = list(set(pop['diffexp']['de_df'].celltype))
 	celltypes.insert(0, celltypes.pop(celltypes.index('overlap'))) # put overlap first
 	genes = deobj[celltypes[1]]['all_genes'] # don't use index 0['overlap'] which does not have a separate entry in the object
+	
+	allsamples =deobj[celltypes[1]]['all_samples']
+	sidx = allsamples.index(sample)
 
 	# xref = pop['ref'] # get reference sample label
 	# currtype = celltypes[refcomp]
@@ -3487,16 +3489,14 @@ def plot_L1_heatmap(pop, sample, dname,cmap='RdBu'):
 	for i in range(1,len(celltypes)) : # don't start with 0 because that's 'overlap'
 		currtype = celltypes[i]
 		# get upregulated genes
-		currM = deobj[currtype]['all_l1norm'][sidx,:]
+		currM = deobj[currtype]['all_l1norm'][sidx]
 		currthresh = deobj[currtype]['cutoff']
 		currM[abs(currM)<currthresh] = 0
 		if i==1:
 			comboM = currM;
 		else:
 			comboM = np.stack((comboM,currM),axis=1)
-	print(ri)
-	print(type(ri))	
-	
+
 	fig=plt.figure(figsize=(5, 6), dpi= 80)
 	plt.imshow(comboM [ri,:], aspect='auto', interpolation='none', cmap=cmap,vmin=-1,vmax=1) # plot heatmap
 	plt.yticks(np.arange(len(ri)), genes[ri],fontsize=10) # display gene names
@@ -4267,7 +4267,7 @@ def all_samples_diffexp(pop, nbins=20, cutoff=[], renderhists=True, usefiltered=
 	'''
 	dname = 'diffexp/'
 	deobj={}
-	samples = list(pop['samples'].keys())
+	samples = pop['order']
 	controlstring = pop['controlstring']
 	if controlstring==None:
 		raise Exception('Did not supply controlstring during load. Can be set now by executing: pop[\'controlstring\']=X')
@@ -4332,10 +4332,19 @@ def all_samples_diffexp(pop, nbins=20, cutoff=[], renderhists=True, usefiltered=
 
 		for x in samples:
 			print('Calculating for ' + x + ' ' + currtype + '...')
+
 			# calculate the differentially expressed genes
-			q_raw, genes_raw, lidx, upregulated, downregulated = all_diffexp(pop, refcomp=y, sample=x, nbins=nbins, cutoff=currcutoff, renderhists=renderhists, usefiltered=usefiltered)
-			numgenes = len(lidx)
+			if checkalignment(pop, y, x): 			
+				q_raw, genes_raw, lidx, upregulated, downregulated = all_diffexp(pop, refcomp=y, sample=x, nbins=nbins, cutoff=currcutoff, renderhists=renderhists, usefiltered=usefiltered)
+				numgenes = len(lidx)
+			else: 
+				print('alignment does not exist')
+				lidx = []
+				downregulated = []
+				upregulated = []
+				q_raw = np.zeros((1,len(genes_raw)))
 			# create entry and load sparse matrix
+
 			deobj[currtype]['samples'][x]={}
 			deobj[currtype]['samples'][x]['numgenes'] = len(lidx)
 			deobj[currtype]['samples'][x]['numgenes_down'] = len(downregulated)
