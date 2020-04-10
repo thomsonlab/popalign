@@ -3501,12 +3501,14 @@ def plot_L1_heatmap(pop, sample, dname,cmap='RdBu'):
 			comboM = currM;
 		else:
 			comboM = np.vstack((comboM,currM))
-		comboM = comboM.T # transpose to get the matrix oriented correctly
+	comboM = comboM.T # transpose to get the matrix oriented correctly
+
+	mkdir(os.path.join(pop['output'], dname)) # create directory if needed
 
 	fig=plt.figure(figsize=(5, 6), dpi= 80)
 	plt.imshow(comboM [ri,:], aspect='auto', interpolation='none', cmap=cmap,vmin=-1,vmax=1) # plot heatmap
 	plt.yticks(np.arange(len(ri)), genes[ri],fontsize=6) # display gene names
-	plt.xticks(np.arange(2),celltypes[1:],rotation=90,fontsize=8) # remove x ticks
+	plt.xticks(np.arange(len(celltypes)-1),celltypes[1:],rotation=90,fontsize=8) # remove x ticks
 	cbar=plt.colorbar()
 	cbar.set_label('L1-error', rotation=90,fontsize=14)
 	plt.title(sample)
