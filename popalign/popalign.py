@@ -3669,6 +3669,9 @@ def plot_ribbon_ngenes(pop, samples = None, prefix='all_samples',toplot = 'ngene
 			samplens.append(np.asscalar(currn))
 		allns = np.column_stack((allns,samplens))
 
+	print(allns)
+	print(celltypes)
+
 	# Transform array into percentages
 	allns = np.transpose(allns)
 	allns = np.delete(allns, obj=0, axis=0)
@@ -4367,7 +4370,7 @@ def all_samples_diffexp(pop, nbins=20, cutoff=[], renderhists=True, usefiltered=
 		deobj[currtype]['all_samples'] = samples
 		deobj[currtype]['cutoff'] = currcutoff # currcutoff is cell type specific
 
-	# Put all the computed values into a single dataframe, and also compute sharedping genes
+	# Put all the computed values into a single dataframe, and also compute shared genes
 	samplelist = []
 	ctlist = []
 	signlist = []
@@ -4400,18 +4403,19 @@ def all_samples_diffexp(pop, nbins=20, cutoff=[], renderhists=True, usefiltered=
 		# iterate through other cell types to get intersecting lists
 		for currtype in celltypes[1:] :
 			shared_down = np.intersect1d(shared_down, deobj[currtype]['samples'][x]['genes_down'])
-			samplelist.append(x)
-			ctlist.append('shared')
-			signlist.append('down')
-			ngeneslist.append(len(shared_down))
-			genelist.append( ','.join(shared_down))
-
 			shared_up = np.intersect1d(shared_up, deobj[currtype]['samples'][x]['genes_up'])
-			samplelist.append(x)
-			ctlist.append('shared')
-			signlist.append('up')
-			ngeneslist.append(len(shared_up))
-			genelist.append( ','.join(shared_up))
+			
+		samplelist.append(x)
+		ctlist.append('shared')
+		signlist.append('down')
+		ngeneslist.append(len(shared_down))
+		genelist.append( ','.join(shared_down))
+
+		samplelist.append(x)
+		ctlist.append('shared')
+		signlist.append('up')
+		ngeneslist.append(len(shared_up))
+		genelist.append( ','.join(shared_up))
 
 	d = {'sample': samplelist, 'celltype': ctlist, 'sign' : signlist, 'ngenes': ngeneslist, 'genes': genelist}
 	de_df = pd.DataFrame(data=d)
