@@ -3441,6 +3441,11 @@ def plot_L1_heatmap(pop, sample, dname,cmap='RdBu'):
 	----------
 	pop : dict
 		Popalign object
+	sample : str
+		sample name
+	dname : str
+		directory name
+
 	'''
 	if 'diffexp' not in pop: 
 		raise Exception ('Differential expression analysis has not been run yet')
@@ -3495,7 +3500,8 @@ def plot_L1_heatmap(pop, sample, dname,cmap='RdBu'):
 		if i==1:
 			comboM = currM;
 		else:
-			comboM = np.stack((comboM,currM),axis=1)
+			comboM = np.vstack((comboM,currM))
+		comboM = comboM.T # transpose to get the matrix oriented correctly
 
 	fig=plt.figure(figsize=(5, 6), dpi= 80)
 	plt.imshow(comboM [ri,:], aspect='auto', interpolation='none', cmap=cmap,vmin=-1,vmax=1) # plot heatmap
@@ -3506,7 +3512,7 @@ def plot_L1_heatmap(pop, sample, dname,cmap='RdBu'):
 	plt.title(sample)
 	plt.ylabel('ngenes')
 	plt.tight_layout()
-	plt.savefig(os.path.join(pop['output'], dname, '%s_degenes_heatmap.pdf' % sample))
+	plt.savefig(os.path.join(pop['output'], dname, '%s_degenes_L1_heatmap.pdf' % sample))
 	plt.close()
 
 def plot_violins(pop, refcomp, samples, plotgenes, prefix, **kwargs):
