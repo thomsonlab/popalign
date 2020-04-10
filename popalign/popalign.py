@@ -2419,16 +2419,17 @@ def align(pop, ref=None, method='conservative', figsizedeltas=(10,10), figsizeen
 				pop['samples'][x]['replicates'][j]['alignments'] = alignments
 				pop['samples'][x]['replicates'][j]['fullalignments'] = arr
 
-		if x != ref: # if sample is not ref
-			testgmm = pop['samples'][x]['gmm'] # get test gmm
-			alignments, arr = aligner(refgmm, testgmm, method) # align gmm to reference
-			pop['samples'][x]['alignments'] = alignments
-			pop['samples'][x]['fullalignments'] = arr
-			try:
-				pop['samples'][x]['test2ref'] = np.zeros(testgmm.n_components, dtype=int)
-				pop['samples'][x]['ref2test'] = np.zeros(testgmm.n_components, dtype=int)
-			except:
-				pass
+		# if x != ref: # if sample is not ref
+		# for all samples, re-align the 'main' gmm at the upper level
+		testgmm = pop['samples'][x]['gmm'] # get test gmm
+		alignments, arr = aligner(refgmm, testgmm, method) # align gmm to reference
+		pop['samples'][x]['alignments'] = alignments
+		pop['samples'][x]['fullalignments'] = arr
+		try:
+			pop['samples'][x]['test2ref'] = np.zeros(testgmm.n_components, dtype=int)
+			pop['samples'][x]['ref2test'] = np.zeros(testgmm.n_components, dtype=int)
+		except:
+			pass
 
 	plot_deltas(pop, figsizedeltas) # generate plot mu and delta w plots
 	entropy(pop, figsizeentropy)
@@ -3569,7 +3570,7 @@ def plot_violins(pop, refcomp, samples, plotgenes, prefix, **kwargs):
 
 			currarray = subtest[gidx,:]
 			currarray = currarray.tolist()
-			labels = [xtest[0:10]] * np.shape(currarray)[1]
+			labels = [xtest] * np.shape(currarray)[1]
 			arrlist.append(currarray)
 			lblslist.append(labels)
 
@@ -3583,6 +3584,8 @@ def plot_violins(pop, refcomp, samples, plotgenes, prefix, **kwargs):
 		arrdf.rename(columns = {0:'values',1:'sample'},inplace=True)
 		arrdf['values']=arrdf['values'].astype('float64')
 		arrdf['sample']=arrdf['sample'].astype('category')
+		print(arrdf['sample'])
+		print(samples)
 		arrdf['sample'].cat.categories = samples  # enforces original ordering in plots
 		arrdf['y'] = fakey
 		arrdf['y'] = arrdf['y'].astype('float64')
