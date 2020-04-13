@@ -3584,12 +3584,9 @@ def plot_violins(pop, refcomp, samples, plotgenes, prefix, **kwargs):
 		arrdf.rename(columns = {0:'values',1:'sample'},inplace=True)
 		arrdf['values']=arrdf['values'].astype('float64')
 		arrdf['sample']=arrdf['sample'].astype('category')
-		print(arrdf['sample'])
-		print(samples)
 		arrdf['sample'].cat.categories = samples  # enforces original ordering in plots
 		arrdf['y'] = fakey
 		arrdf['y'] = arrdf['y'].astype('float64')
-
 
 		# Determine number of columns 
 		if len(samples)>3:
@@ -4300,7 +4297,9 @@ def all_samples_diffexp(pop, nbins=20, cutoff=[], renderhists=True, usefiltered=
 		currtype = celltypes[y];
 
 		# Determine cutoff from control samples if it is not supplied
-		if not cutoff : 
+		if np.isscalar(cutoff) and cutoff >= 0 and cutoff <= 2: 
+			currcutoff = cutoff
+		elif not cutoff : 
 			# First calculate control values
 			print('******************************************************')
 			print('Using controls to determine an L1 cutoff for '+currtype)
@@ -4337,6 +4336,8 @@ def all_samples_diffexp(pop, nbins=20, cutoff=[], renderhists=True, usefiltered=
 			print('******************************************************')
 			print('Now calculating for the remaining samples...')
 			print('******************************************************')
+		else: 
+			raise Exception ("You must supply a cutoff between 0 and 2 or leave it blank: cutoff=[]")
 
 		# Run over rest of samples with cutoff (either supplied or cell-type specific)
 		deobj[currtype] = {}
