@@ -3785,9 +3785,11 @@ def diffexp(pop, refcomp=0, testcomp=0, sample='', nbins=20, cutoff=.5, renderhi
 		Mtest = pop['samples'][xtest]['M_norm'] # get filtered test sample matrix
 		genes = np.array(pop['filtered_genes']) # get filtered gene labels
 	elif usefiltered == False:
-		Mref = pop['samples'][xref]['M'] # get reference sample matrix
-		Mtest = pop['samples'][xtest]['M'] # get test sample matrix
+		nzidx = pop['nzidx']
+		Mref = pop['samples'][xref]['M'][nzidx,:] # get reference sample matrix
+		Mtest = pop['samples'][xtest]['M'][nzidx,:]  # get test sample matrix
 		genes = np.array(pop['genes']) # get gene labels
+		genes = genes[nzidx] 
 
 	predictionref = pop['samples'][xref]['gmm'].predict(pop['samples'][xref]['C']) # get ref cell assignments
 	predictiontest = pop['samples'][xtest]['gmm'].predict(pop['samples'][xtest]['C']) # get test cell assignments
@@ -3942,9 +3944,11 @@ def diffexp_testcomp(pop, testcomp=0, sample='', nbins=20, cutoff=.5, renderhist
 		Mtest = pop['samples'][xtest]['M_norm'] # get filtered test sample matrix
 		genes = np.array(pop['filtered_genes']) # get filtered gene labels
 	elif usefiltered == False:
-		Mref = pop['samples'][xref]['M'] # get reference sample matrix
-		Mtest = pop['samples'][xtest]['M'] # get test sample matrix
+		nzidx = pop['nzidx']
+		Mref = pop['samples'][xref]['M'][nzidx,:] # get reference sample matrix
+		Mtest = pop['samples'][xtest]['M'][nzidx,:]  # get test sample matrix
 		genes = np.array(pop['genes']) # get gene labels
+		genes = genes[nzidx] 
 
 	predictionref = pop['samples'][xref]['gmm'].predict(pop['samples'][xref]['C']) # get ref cell assignments
 	predictiontest = pop['samples'][xtest]['gmm'].predict(pop['samples'][xtest]['C']) # get test cell assignments
@@ -4099,9 +4103,11 @@ def all_diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True
 		Mtest = pop['samples'][xtest]['M_norm'] # get filtered test sample matrix
 		genes = np.array(pop['filtered_genes']) # get filtered gene labels
 	elif usefiltered == False:
-		Mref = pop['samples'][xref]['M'] # get reference sample matrix
-		Mtest = pop['samples'][xtest]['M'] # get test sample matrix
+		nzidx = pop['nzidx']
+		Mref = pop['samples'][xref]['M'][nzidx,:] # get reference sample matrix
+		Mtest = pop['samples'][xtest]['M'][nzidx,:]  # get test sample matrix
 		genes = np.array(pop['genes']) # get gene labels
+		genes = genes[nzidx] 
 
 	predictionref = pop['samples'][xref]['gmm'].predict(pop['samples'][xref]['C']) # get ref cell assignments
 	predictiontest = pop['samples'][xtest]['gmm'].predict(pop['samples'][xtest]['C']) # get test cell assignments
