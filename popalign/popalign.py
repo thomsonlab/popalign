@@ -3480,6 +3480,11 @@ def plot_L1_heatmap(pop, sample, dname,cmap='RdBu'):
 		combogenes = combogenes+currgenes
 
 	combogenes = list(dict.fromkeys(combogenes)) # Remove duplicates
+	print(combogenes)
+	print(type(combogenes))
+	print(genes)
+	print(type(genes))
+	print(genes==combogenes[0])
 
 	ri = [] # row (gene) indexes 
 	for i in range(len(combogenes)) :
