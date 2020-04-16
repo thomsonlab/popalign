@@ -3759,7 +3759,7 @@ def diffexp(pop, refcomp=0, testcomp=0, sample='', nbins=20, cutoff=.5, renderhi
 	renderhists : bool
 		Render histograms or not for the top differentially expressed genes
 	usefiltered : str
-		Either 'filtered', 'unfiltered', or 'refilter'. default: 'filtered'	
+		Either 'filtered', 'unfiltered', or 'refilter'. Default: 'filtered'	
 	'''
 	xref = pop['ref'] # get reference sample label
 	reftype = pop['samples'][xref]['gmm_types'][refcomp]
@@ -3948,7 +3948,7 @@ def diffexp_testcomp(pop, testcomp=0, sample='', nbins=20, cutoff=.5, renderhist
 	renderhists : bool
 		Render histograms or not for the top differentially expressed genes
 	usefiltered : str
-		Either 'filtered', 'unfiltered', or 'refilter': default: 'filtered'	
+		Either 'filtered', 'unfiltered', or 'refilter'. default: 'filtered'	
 	'''
 	xref = pop['ref'] # get reference sample label	
 	reftype = pop['samples'][xref]['gmm_types'][refcomp]
@@ -4131,7 +4131,7 @@ def all_diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True
 	renderhists : bool
 		Render histograms or not for the top differentially expressed genes
 	usefiltered : str
-		Either 'filtered', 'unfiltered', or 'refilter': default: 'filtered'	
+		Either 'filtered', 'unfiltered', or 'refilter'. Default: 'filtered'	
 
 	'''
 	xref = pop['ref'] # get reference sample label
@@ -4191,7 +4191,6 @@ def all_diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True
 		subtest = subtest[gidx,:]
 		genes = np.array(pop['genes']) # get original gene labels
 		genes = genes[nzidx[gidx]] 
-		print(len(genes))
 
 
 	subref = subref.toarray() # from sparse matrix to numpy array for slicing efficiency
