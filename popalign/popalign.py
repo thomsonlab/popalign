@@ -3480,17 +3480,12 @@ def plot_L1_heatmap(pop, sample, dname,cmap='RdBu'):
 		combogenes = combogenes+currgenes
 
 	combogenes = list(dict.fromkeys(combogenes)) # Remove duplicates
-	print(combogenes)
-	print(type(combogenes))
-	print(genes)
-	print(type(genes))
-	print(genes==combogenes[0])
 
 	ri = [] # row (gene) indexes 
 	for i in range(len(combogenes)) :
 		curridx = np.where(genes==combogenes[i])[0]
-		if curridx:
-			ri.append(np.asscalar(curridx))
+		if len(curridx)>1:
+			ri.append(np.asscalar(curridx[0])) # only keep the first gene
 
 	ri = np.asarray(ri)
 	ri = ri.astype(int) # convert to integer
@@ -3735,7 +3730,7 @@ def l1norm(ig, arr1, arr2, nbins):
 		else:
 			return np.linalg.norm(b1-b2, ord=1)
 
-def diffexp(pop, refcomp=0, testcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True, usefiltered=True, equalncells=True, figsize=(20,20)):
+def diffexp(pop, refcomp=0, testcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True, usefiltered='filtered', equalncells=True, figsize=(20,20)):
 	'''
 	Find  differentially expressed genes between a reference subpopulation
 	and the subpopulation of a sample that aligned to it
@@ -3753,13 +3748,13 @@ def diffexp(pop, refcomp=0, testcomp=0, sample='', nbins=20, cutoff=.5, renderhi
 	nbins : int, optional
 		Number of histogram bins to use
 	nleft : int
-		Number of underexpressed genes to retrieve
+		Number  of underexpressed genes to retrieve
 	nright : int
 		Number of overexpressed genes to retrieve
 	renderhists : bool
 		Render histograms or not for the top differentially expressed genes
-	usefiltered : bool
-		Whether to use filtered genes or not. If False, all genes will be used to run the differential expression
+	usefiltered : str
+		Either 'filtered', 'unfiltered', or 'refilter'. Default: 'filtered'	
 	'''
 	xref = pop['ref'] # get reference sample label
 	reftype = pop['samples'][xref]['gmm_types'][refcomp]
@@ -3785,24 +3780,48 @@ def diffexp(pop, refcomp=0, testcomp=0, sample='', nbins=20, cutoff=.5, renderhi
 	except:
 		raise Exception('Could not retrieve a matching alignment between sample %s and reference component %d' % (sample, refcomp))
 	'''
-	if usefiltered == True:
-		Mref = pop['samples'][xref]['M_norm'] # get filtered reference sample matrix
-		Mtest = pop['samples'][xtest]['M_norm'] # get filtered test sample matrix
-		genes = np.array(pop['filtered_genes']) # get filtered gene labels
-	elif usefiltered == False:
-		nzidx = pop['nzidx']
-		Mref = pop['samples'][xref]['M'][nzidx,:] # get reference sample matrix
-		Mtest = pop['samples'][xtest]['M'][nzidx,:]  # get test sample matrix
-		genes = np.array(pop['genes']) # get gene labels
-		genes = genes[nzidx] 
 
 	predictionref = pop['samples'][xref]['gmm'].predict(pop['samples'][xref]['C']) # get ref cell assignments
 	predictiontest = pop['samples'][xtest]['gmm'].predict(pop['samples'][xtest]['C']) # get test cell assignments
 
 	idxref = np.where(predictionref==refcomp)[0] # get matching indices
 	idxtest = np.where(predictiontest==testcomp)[0] # get matching indices
-	subref = Mref[:,idxref] # subset cells that match subpopulation refcomp
-	subtest = Mtest[:,idxtest] # subset cells that match subpopulation testcomp
+
+	if usefiltered == 'filtered':
+		Mref = pop['samples'][xref]['M_norm'] # get filtered reference sample matrix
+		Mtest = pop['samples'][xtest]['M_norm'] # get filtered test sample matrix
+		genes = np.array(pop['filtered_genes']) # get filtered gene labels
+		subref = Mref[:,idxref] # subset cells that match subpopulation refcomp
+		subtest = Mtest[:,idxtest] # subset cells that match subpopulation itest
+
+	elif usefiltered == 'unfiltered': # Use just nonzero genes
+		nzidx = pop['nzidx']
+		Mref = pop['samples'][xref]['M'][nzidx,:] # get reference sample matrix
+		Mtest = pop['samples'][xtest]['M'][nzidx,:]  # get test sample matrix
+		genes = np.array(pop['genes']) # get gene labels
+		genes = genes[nzidx] 
+		subref = Mref[:,idxref] # subset cells that match subpopulation refcomp
+		subtest = Mtest[:,idxtest] # subset cells that match subpopulation itest
+
+	elif usefiltered =='refilter':
+		# Only keep the genes that are present in >10% of cells
+		nzidx = pop['nzidx']
+		Mref = pop['samples'][xref]['M'][nzidx,:] # get reference sample matrix
+		Mtest = pop['samples'][xtest]['M'][nzidx,:]  # get test sample matrix
+		# Calculate the best set of genes for the current subset
+		subref = Mref[:,idxref] # subset cells that match subpopulation refcomp
+		subtest = Mtest[:,idxtest] # subset cells that match subpopulation itest
+		Mtot = ss.hstack((subref,subtest))
+		numexpr=np.sum(Mtot>0,axis=1)
+		percexpr = numexpr/np.size(Mtot,1)
+		gidx = np.where(percexpr>0.10)[0]
+		subref = subref[gidx,:]
+		subtest = subtest[gidx,:]
+		genes = np.array(pop['genes']) # get original gene labels
+		genes = genes[nzidx[gidx]] 
+		print(len(genes))
+
+
 	subref = subref.toarray() # from sparse matrix to numpy array for slicing efficiency
 	subtest = subtest.toarray() # from sparse matrix to numpy array for slicing efficiency
 	
@@ -3904,7 +3923,7 @@ def diffexp(pop, refcomp=0, testcomp=0, sample='', nbins=20, cutoff=.5, renderhi
 	plot_heatmap(pop, refcomp, lidx, clustersamples=False, clustercells=True, savename='refcomp%d_%s_%s' % (refcomp, reftype, sample), figsize=figsize, cmap='Purples', samplelimits=False, scalegenes=True, only=sample, equalncells=equalncells)
 	return lidx
 
-def diffexp_testcomp(pop, testcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True, usefiltered=True):
+def diffexp_testcomp(pop, testcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True, usefiltered='filtered'):
 	'''
 	Find differentially expressed genes between a reference subpopulation
 	and the subpopulation of a sample that aligned to it
@@ -3923,8 +3942,8 @@ def diffexp_testcomp(pop, testcomp=0, sample='', nbins=20, cutoff=.5, renderhist
 		Number of overexpressed genes to retrieve
 	renderhists : bool
 		Render histograms or not for the top differentially expressed genes
-	usefiltered : bool
-		Whether to use filtered genes or not. If False, all genes will be used to run the differential expression
+	usefiltered : str
+		Either 'filtered', 'unfiltered', or 'refilter'. default: 'filtered'	
 	'''
 	xref = pop['ref'] # get reference sample label	
 	reftype = pop['samples'][xref]['gmm_types'][refcomp]
@@ -3944,17 +3963,6 @@ def diffexp_testcomp(pop, testcomp=0, sample='', nbins=20, cutoff=.5, renderhist
 	except:
 		raise Exception('Could not retrieve a matching alignment for sample %s, component %d' % (sample, refcomp))
 
-	if usefiltered == True:
-		Mref = pop['samples'][xref]['M_norm'] # get filtered reference sample matrix
-		Mtest = pop['samples'][xtest]['M_norm'] # get filtered test sample matrix
-		genes = np.array(pop['filtered_genes']) # get filtered gene labels
-	elif usefiltered == False:
-		nzidx = pop['nzidx']
-		Mref = pop['samples'][xref]['M'][nzidx,:] # get reference sample matrix
-		Mtest = pop['samples'][xtest]['M'][nzidx,:]  # get test sample matrix
-		genes = np.array(pop['genes']) # get gene labels
-		genes = genes[nzidx] 
-
 	predictionref = pop['samples'][xref]['gmm'].predict(pop['samples'][xref]['C']) # get ref cell assignments
 	predictiontest = pop['samples'][xtest]['gmm'].predict(pop['samples'][xtest]['C']) # get test cell assignments
 
@@ -3962,6 +3970,42 @@ def diffexp_testcomp(pop, testcomp=0, sample='', nbins=20, cutoff=.5, renderhist
 	idxtest = np.where(predictiontest==testcomp)[0] # get matching indices
 	subref = Mref[:,idxref] # subset cells that match subpopulation refcomp
 	subtest = Mtest[:,idxtest] # subset cells that match subpopulation testcomp
+	
+
+	if usefiltered == 'filtered':
+		Mref = pop['samples'][xref]['M_norm'] # get filtered reference sample matrix
+		Mtest = pop['samples'][xtest]['M_norm'] # get filtered test sample matrix
+		genes = np.array(pop['filtered_genes']) # get filtered gene labels
+		subref = Mref[:,idxref] # subset cells that match subpopulation refcomp
+		subtest = Mtest[:,idxtest] # subset cells that match subpopulation itest
+
+	elif usefiltered == 'unfiltered': # Use just nonzero genes
+		nzidx = pop['nzidx']
+		Mref = pop['samples'][xref]['M'][nzidx,:] # get reference sample matrix
+		Mtest = pop['samples'][xtest]['M'][nzidx,:]  # get test sample matrix
+		genes = np.array(pop['genes']) # get gene labels
+		genes = genes[nzidx] 
+		subref = Mref[:,idxref] # subset cells that match subpopulation refcomp
+		subtest = Mtest[:,idxtest] # subset cells that match subpopulation itest
+
+	elif usefiltered =='refilter':
+		# Only keep the genes that are present in >10% of cells
+		nzidx = pop['nzidx']
+		Mref = pop['samples'][xref]['M'][nzidx,:] # get reference sample matrix
+		Mtest = pop['samples'][xtest]['M'][nzidx,:]  # get test sample matrix
+		# Calculate the best set of genes for the current subset
+		subref = Mref[:,idxref] # subset cells that match subpopulation refcomp
+		subtest = Mtest[:,idxtest] # subset cells that match subpopulation itest
+		Mtot = ss.hstack((subref,subtest))
+		numexpr=np.sum(Mtot>0,axis=1)
+		percexpr = numexpr/np.size(Mtot,1)
+		gidx = np.where(percexpr>0.10)[0]
+		subref = subref[gidx,:]
+		subtest = subtest[gidx,:]
+		genes = np.array(pop['genes']) # get original gene labels
+		genes = genes[nzidx[gidx]] 
+		print(len(genes))
+
 	subref = subref.toarray() # from sparse matrix to numpy array for slicing efficiency
 	subtest = subtest.toarray() # from sparse matrix to numpy array for slicing efficiency
 	
@@ -4062,7 +4106,7 @@ def diffexp_testcomp(pop, testcomp=0, sample='', nbins=20, cutoff=.5, renderhist
 	plot_heatmap(pop, refcomp, lidx, clustersamples=False, clustercells=True,savename='refpop%d_%s_%s_heatmap' % (refcomp,reftype, sample),figsize=(15,15), cmap='Purples', samplelimits=False, scalegenes=True, only=sample, equalncells=True)
 	return lidx
 
-def all_diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True, usefiltered=True):
+def all_diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True, usefiltered='filtered'):
 	'''
 	Find differentially expressed genes between a reference subpopulation
 	and all subpopulations within a sample that align to it
@@ -4081,8 +4125,9 @@ def all_diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True
 		Number of overexpressed genes to retrieve
 	renderhists : bool
 		Render histograms or not for the top differentially expressed genes
-	usefiltered : bool
-		Whether to use filtered genes or not. If False, all genes will be used to run the differential expression
+	usefiltered : str
+		Either 'filtered', 'unfiltered', or 'refilter'. Default: 'filtered'	
+
 	'''
 	xref = pop['ref'] # get reference sample label
 	celltypes = pop['samples'][xref]['gmm_types']
@@ -4103,24 +4148,46 @@ def all_diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True
 	except:
 		raise Exception('Could not retrieve a matching alignment between sample %s and reference component %d' % (sample, refcomp))
 
-	if usefiltered == True:
-		Mref = pop['samples'][xref]['M_norm'] # get filtered reference sample matrix
-		Mtest = pop['samples'][xtest]['M_norm'] # get filtered test sample matrix
-		genes = np.array(pop['filtered_genes']) # get filtered gene labels
-	elif usefiltered == False:
-		nzidx = pop['nzidx']
-		Mref = pop['samples'][xref]['M'][nzidx,:] # get reference sample matrix
-		Mtest = pop['samples'][xtest]['M'][nzidx,:]  # get test sample matrix
-		genes = np.array(pop['genes']) # get gene labels
-		genes = genes[nzidx] 
-
 	predictionref = pop['samples'][xref]['gmm'].predict(pop['samples'][xref]['C']) # get ref cell assignments
 	predictiontest = pop['samples'][xtest]['gmm'].predict(pop['samples'][xtest]['C']) # get test cell assignments
 
 	idxref = np.where(predictionref==refcomp)[0] # get matching indices
 	idxtest = np.where(predictiontest==itest)[0] # get matching indices
-	subref = Mref[:,idxref] # subset cells that match subpopulation refcomp
-	subtest = Mtest[:,idxtest] # subset cells that match subpopulation itest
+
+	if usefiltered == 'filtered':
+		Mref = pop['samples'][xref]['M_norm'] # get filtered reference sample matrix
+		Mtest = pop['samples'][xtest]['M_norm'] # get filtered test sample matrix
+		genes = np.array(pop['filtered_genes']) # get filtered gene labels
+		subref = Mref[:,idxref] # subset cells that match subpopulation refcomp
+		subtest = Mtest[:,idxtest] # subset cells that match subpopulation itest
+
+	elif usefiltered == 'unfiltered': # Use just nonzero genes
+		nzidx = pop['nzidx']
+		Mref = pop['samples'][xref]['M'][nzidx,:] # get reference sample matrix
+		Mtest = pop['samples'][xtest]['M'][nzidx,:]  # get test sample matrix
+		genes = np.array(pop['genes']) # get gene labels
+		genes = genes[nzidx] 
+		subref = Mref[:,idxref] # subset cells that match subpopulation refcomp
+		subtest = Mtest[:,idxtest] # subset cells that match subpopulation itest
+
+	elif usefiltered =='refilter':
+		# Only keep the genes that are present in >10% of cells
+		nzidx = pop['nzidx']
+		Mref = pop['samples'][xref]['M'][nzidx,:] # get reference sample matrix
+		Mtest = pop['samples'][xtest]['M'][nzidx,:]  # get test sample matrix
+		# Calculate the best set of genes for the current subset
+		subref = Mref[:,idxref] # subset cells that match subpopulation refcomp
+		subtest = Mtest[:,idxtest] # subset cells that match subpopulation itest
+		Mtot = ss.hstack((subref,subtest))
+		numexpr=np.sum(Mtot>0,axis=1)
+		percexpr = numexpr/np.size(Mtot,1)
+		gidx = np.where(percexpr>0.10)[0]
+		subref = subref[gidx,:]
+		subtest = subtest[gidx,:]
+		genes = np.array(pop['genes']) # get original gene labels
+		genes = genes[nzidx[gidx]] 
+
+
 	subref = subref.toarray() # from sparse matrix to numpy array for slicing efficiency
 	subtest = subtest.toarray() # from sparse matrix to numpy array for slicing efficiency
 	
@@ -4250,7 +4317,7 @@ def all_diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True
 	plot_heatmap(pop, refcomp, lidx, clustersamples=False, clustercells=True, savename='refpop%d_%s_%s_heatmap' % (refcomp,reftype, sample), figsize=(15,15), cmap='Purples', samplelimits=False, scalegenes=True, only=sample, equalncells=True)
 	return q_raw, genes_raw, lidx, upregulated, downregulated
 
-def all_samples_diffexp(pop, nbins=20, cutoff=[], renderhists=True, usefiltered=True, tailthresh=0.001):
+def all_samples_diffexp(pop, nbins=20, cutoff=[], renderhists=True, usefiltered='filtered', tailthresh=0.001):
 	'''
 	Compute differentially expressed genes for all cell types and all samples. 
 
@@ -4268,8 +4335,8 @@ def all_samples_diffexp(pop, nbins=20, cutoff=[], renderhists=True, usefiltered=
 		L1 norm cutoff. If this is empty, we recalculate it empirically from the control samples. 
 	renderhists : bool
 		Render histograms or not for the top differentially expressed genes. Default: True
-	usefiltered : bool
-		Whether to use filtered genes or all genes. Default: True. 
+	usefiltered : str
+		Either 'filtered', 'unfiltered', or 'refilter'. Default: 'filtered'	
 	tailthresh : float
 		P-value threshold for total density "weight" within the distribution of L1 norm values for all control samples. 
 		This number is used to generate a L1norm threshold to determine which differentially expressed genes are significant
