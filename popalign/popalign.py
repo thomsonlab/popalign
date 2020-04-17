@@ -3966,9 +3966,6 @@ def diffexp_testcomp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists
 
 	idxref = np.where(predictionref==refcomp)[0] # get matching indices
 	idxtest = np.where(predictiontest==testcomp)[0] # get matching indices
-	subref = Mref[:,idxref] # subset cells that match subpopulation refcomp
-	subtest = Mtest[:,idxtest] # subset cells that match subpopulation testcomp
-	
 
 	if usefiltered == 'filtered':
 		Mref = pop['samples'][xref]['M_norm'] # get filtered reference sample matrix
