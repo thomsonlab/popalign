@@ -3480,12 +3480,7 @@ def plot_L1_heatmap(pop, sample, dname,cmap='RdBu'):
 		combogenes = combogenes+currgenes
 
 	combogenes = list(dict.fromkeys(combogenes)) # Remove duplicates
-	print(combogenes)
-	print(type(combogenes))
-	print(genes)
-	print(type(genes))
-	print(genes==combogenes[0])
-
+	
 	ri = [] # row (gene) indexes 
 	for i in range(len(combogenes)) :
 		curridx = np.where(genes==combogenes[i])[0]
@@ -3824,8 +3819,6 @@ def diffexp(pop, refcomp=0, testcomp=0, sample='', nbins=20, cutoff=.5, renderhi
 		subtest = subtest[gidx,:]
 		genes = np.array(pop['genes']) # get original gene labels
 		genes = genes[nzidx[gidx]] 
-		print(len(genes))
-
 
 	subref = subref.toarray() # from sparse matrix to numpy array for slicing efficiency
 	subtest = subtest.toarray() # from sparse matrix to numpy array for slicing efficiency
