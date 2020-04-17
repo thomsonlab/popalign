@@ -3480,7 +3480,7 @@ def plot_L1_heatmap(pop, sample, dname,cmap='RdBu'):
 		combogenes = combogenes+currgenes
 
 	combogenes = list(dict.fromkeys(combogenes)) # Remove duplicates
-	
+
 	ri = [] # row (gene) indexes 
 	for i in range(len(combogenes)) :
 		curridx = np.where(genes==combogenes[i])[0]
@@ -3921,7 +3921,7 @@ def diffexp(pop, refcomp=0, testcomp=0, sample='', nbins=20, cutoff=.5, renderhi
 	plot_heatmap(pop, refcomp, lidx, clustersamples=False, clustercells=True, savename='refcomp%d_%s_%s' % (refcomp, reftype, sample), figsize=figsize, cmap='Purples', samplelimits=False, scalegenes=True, only=sample, equalncells=equalncells)
 	return lidx
 
-def diffexp_testcomp(pop, testcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True, usefiltered='filtered'):
+def diffexp_testcomp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True, usefiltered='filtered'):
 	'''
 	Find differentially expressed genes between a reference subpopulation
 	and the subpopulation of a sample that aligned to it
@@ -4107,7 +4107,7 @@ def diffexp_testcomp(pop, testcomp=0, sample='', nbins=20, cutoff=.5, renderhist
 def all_diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True, usefiltered='filtered'):
 	'''
 	Find differentially expressed genes between a reference subpopulation
-	and all subpopulations within a sample that align to it
+	and ALL subpopulations within a sample that align to it
 
 	Parameters
 	----------
@@ -4184,7 +4184,6 @@ def all_diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True
 		subtest = subtest[gidx,:]
 		genes = np.array(pop['genes']) # get original gene labels
 		genes = genes[nzidx[gidx]] 
-
 
 	subref = subref.toarray() # from sparse matrix to numpy array for slicing efficiency
 	subtest = subtest.toarray() # from sparse matrix to numpy array for slicing efficiency
@@ -4315,7 +4314,7 @@ def all_diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True
 	plot_heatmap(pop, refcomp, lidx, clustersamples=False, clustercells=True, savename='refpop%d_%s_%s_heatmap' % (refcomp,reftype, sample), figsize=(15,15), cmap='Purples', samplelimits=False, scalegenes=True, only=sample, equalncells=True)
 	return q_raw, genes_raw, lidx, upregulated, downregulated
 
-def all_samples_diffexp(pop, nbins=20, cutoff=[], renderhists=True, usefiltered='filtered', tailthresh=0.001):
+def all_samples_diffexp(pop, nbins=20, cutoff=[], renderhists=True, usefiltered='filtered', tailthresh=0.001, plotL1 = False, plotRibbon = False):
 	'''
 	Compute differentially expressed genes for all cell types and all samples. 
 
@@ -4501,16 +4500,17 @@ def all_samples_diffexp(pop, nbins=20, cutoff=[], renderhists=True, usefiltered=
 	de_df = pd.DataFrame(data=d)
 	deobj['de_df'] = de_df
 	de_df.to_csv(os.path.join(pop['output'], dname, 'all_degenes_by_celltype.csv')) # save dataframe in a single csv file
-
 	pop['diffexp'] = deobj
 
 	# Now run all samples thorugh L1 heatmap
-	for x in samples:
-		plot_L1_heatmap(pop, x, dname)
+	if plotL1: 
+		for x in samples:
+			plot_L1_heatmap(pop, x, dname)
 
 	# Now plot ribbon plot for numbers of genes that have changed
-	ribboncols = sns.color_palette('muted')
-	plot_ribbon_ngenes(pop, colors = ribboncols)
+	if plotRibbon:
+		ribboncols = sns.color_palette('muted')
+		plot_ribbon_ngenes(pop, colors = ribboncols)
 
 def calc_p_value(controlvals, testvals, tail = 1) : 
 	'''
