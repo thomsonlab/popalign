@@ -3820,7 +3820,8 @@ def diffexp(pop, refcomp=0, testcomp=0, sample='', nbins=20, cutoff=.5, renderhi
 		genes = np.array(pop['genes']) # get original gene labels
 		genes = genes[nzidx[gidx]] 
 		print(len(genes))
-
+	else: 
+		raise Exception('The option usefiltered must be one of three strings: \'filtered\', \'unfiltered\', \'refilter\'')
 
 	subref = subref.toarray() # from sparse matrix to numpy array for slicing efficiency
 	subtest = subtest.toarray() # from sparse matrix to numpy array for slicing efficiency
@@ -4001,7 +4002,8 @@ def diffexp_testcomp(pop, testcomp=0, sample='', nbins=20, cutoff=.5, renderhist
 		subtest = subtest[gidx,:]
 		genes = np.array(pop['genes']) # get original gene labels
 		genes = genes[nzidx[gidx]] 
-		print(len(genes))
+	else: 
+		raise Exception('The option usefiltered must be one of three strings: \'filtered\', \'unfiltered\', \'refilter\'')
 
 	subref = subref.toarray() # from sparse matrix to numpy array for slicing efficiency
 	subtest = subtest.toarray() # from sparse matrix to numpy array for slicing efficiency
@@ -4183,7 +4185,8 @@ def all_diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True
 		subtest = subtest[gidx,:]
 		genes = np.array(pop['genes']) # get original gene labels
 		genes = genes[nzidx[gidx]] 
-
+	else: 
+		raise Exception('The option usefiltered must be one of three strings: \'filtered\', \'unfiltered\', \'refilter\'')
 
 	subref = subref.toarray() # from sparse matrix to numpy array for slicing efficiency
 	subtest = subtest.toarray() # from sparse matrix to numpy array for slicing efficiency
