@@ -3823,7 +3823,7 @@ def diffexp(pop, refcomp=0, testcomp=0, sample='', nbins=20, cutoff=.5, renderhi
 	nbins : int, optional
 		Number of histogram bins to use
 	nleft : int
-		Number of underexpressed genes to retrieve
+		Number  of underexpressed genes to retrieve
 	nright : int
 		Number of overexpressed genes to retrieve
 	renderhists : bool
@@ -4076,7 +4076,6 @@ def diffexp_testcomp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists
 		subtest = subtest[gidx,:]
 		genes = np.array(pop['genes']) # get original gene labels
 		genes = genes[nzidx[gidx]] 
-		print(len(genes))
 	else: 
 		raise Exception('The option usefiltered must be one of three strings: \'filtered\', \'unfiltered\', \'refilter\'')
 
@@ -4243,7 +4242,6 @@ def all_diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True
 		genes = genes[nzidx] 
 		subref = Mref[:,idxref] # subset cells that match subpopulation refcomp
 		subtest = Mtest[:,idxtest] # subset cells that match subpopulation itest
-
 	elif usefiltered =='refilter':
 		# Only keep the genes that are present in >10% of cells
 		nzidx = pop['nzidx']
@@ -4262,7 +4260,6 @@ def all_diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True
 		genes = genes[nzidx[gidx]] 
 	else: 
 		raise Exception('The option usefiltered must be one of three strings: \'filtered\', \'unfiltered\', \'refilter\'')
-
 
 	subref = subref.toarray() # from sparse matrix to numpy array for slicing efficiency
 	subtest = subtest.toarray() # from sparse matrix to numpy array for slicing efficiency
@@ -4393,7 +4390,7 @@ def all_diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True
 	plot_heatmap(pop, refcomp, lidx, clustersamples=False, clustercells=True, savename='refpop%d_%s_%s_heatmap' % (refcomp,reftype, sample), figsize=(15,15), cmap='Purples', samplelimits=False, scalegenes=True, only=sample, equalncells=True)
 	return q_raw, genes_raw, lidx, upregulated, downregulated
 
-def all_samples_diffexp(pop, nbins=20, cutoff=[], renderhists=True, usefiltered='filtered', tailthresh=0.001, plotL1 = False, plotRibbon = False):
+def all_samples_diffexp(pop, nbins=20, cutoff=[], renderhists=True, usefiltered='filtered', tailthresh=0.001,  plotL1 = False, plotRibbon = False):
 	'''
 	Compute differentially expressed genes for all cell types and all samples. 
 
@@ -4587,7 +4584,7 @@ def all_samples_diffexp(pop, nbins=20, cutoff=[], renderhists=True, usefiltered=
 			plot_L1_heatmap(pop, x, dname)
 
 	# Now plot ribbon plot for numbers of genes that have changed
-	if plotRibbon:
+	if plotRibbon: 
 		ribboncols = sns.color_palette('muted')
 		plot_ribbon_ngenes(pop, colors = ribboncols)
 
