@@ -2894,7 +2894,7 @@ def plot_query_heatmap(pop, figsize=(10,10)):
 '''
 Visualization functions
 '''
-def plot_heatmap(pop, refcomp, genelist, clustersamples=True, clustercells=True, savename=None, figsize=(15,15), cmap='Purples', samplelimits=False, scalegenes=False, only=None, equalncells=False):
+def plot_heatmap(pop, refcomp, genelist, samplenames = 'all', clustersamples=True, clustercells=True, clustergenes=True, cmetric='correlation', cmethod='single',savename=None, figsize=(15,15), cmap='Purples', samplelimits=False, scalegenes=False, equalncells=False):
 	'''
 	Plot specific genes for cells of a reference subpopulation S and subpopulations that aligned to S
 	
@@ -2909,7 +2909,15 @@ def plot_heatmap(pop, refcomp, genelist, clustersamples=True, clustercells=True,
 	clustersamples : bool
 		Cluster the samples
 	clustercells : bool
-		Cluster the cells within each sample subpopulation
+		Cluster the cells within each sample subpopulation'
+	cmetric : str
+		distance metric used for clustering. 
+		can be one of: ‘braycurtis’, ‘canberra’, ‘chebyshev’, ‘cityblock’, ‘correlation’, ‘cosine’, 
+		‘dice’, ‘euclidean’, ‘hamming’, ‘jaccard’, ‘jensenshannon’, ‘kulsinski’, ‘mahalanobis’, 
+		‘matching’, ‘minkowski’, ‘rogerstanimoto’, ‘russellrao’, ‘seuclidean’, ‘sokalmichener’, 
+		‘sokalsneath’, ‘sqeuclidean’, ‘yule’.
+	cmethod : str
+		can be one of: 'single','complete','average','weighted','centroid','median','ward'
 	savename : str, optional
 		The user can specify a name for the file to be written. When savename is None, a filename is computed with the reference component number. Default is None
 	figsize : tuple, optional
@@ -2932,8 +2940,6 @@ def plot_heatmap(pop, refcomp, genelist, clustersamples=True, clustercells=True,
 	idx = np.where(prediction == refcomp)[0] # get indices of cells in component #refcomp
 	M = M[:,idx] # get cells from gene space data
 
-	cmetric='correlation' # cluster metric
-	cmethod='single' # cluster method
 	if clustercells == True:
 		cidx = cluster_rows(M.toarray().T, metric=cmetric, method=cmethod) # cluster cells of subpopulation
 		M = M[:,cidx] # reorder matrix
@@ -2943,15 +2949,31 @@ def plot_heatmap(pop, refcomp, genelist, clustersamples=True, clustercells=True,
 	ncols = [M.shape[1]] # create list of sample cell numbers, with the number of reference cells as the first element
 	means = [M.mean(axis=1)]
 
-	if only == None:
-		for x in pop['order']: # for each sample in pop
-			if x != pop['ref']: # if that sample is not the reference sample
-				try: # check if an aligned subpopulation exists for that sample
-					arr = pop['samples'][x]['alignments'] # retrive test sample alignments
-					irow = np.where(arr[:,1] == refcomp)[0] # get row number in alignments where ref subpop is the desired ref subpop
+	if samplenames == 'all':
+		samplenames = pop['order'] # Set this to all samples if we use the flag 'all'
 
-					if len(irow)==1:
-						itest = int(arr[irow, 0]) # get test subpopulation number if exists
+	for x in samplenames: # for each sample in pop
+		if x != pop['ref']: # if that sample is not the reference sample
+			try: # check if an aligned subpopulation exists for that sample
+				arr = pop['samples'][x]['alignments'] # retrive test sample alignments
+				irow = np.where(arr[:,1] == refcomp)[0] # get row number in alignments where ref subpop is the desired ref subpop
+
+				if len(irow)==1:
+					itest = int(arr[irow, 0]) # get test subpopulation number if exists
+					C = pop['samples'][x]['C'] # get test sample feature space data
+					prediction = pop['samples'][x]['gmm'].predict(C) # get the subpopulations assignments
+					idx = np.where(prediction == itest)[0] # get indices of cells that match aligned test subpopulation
+					M = pop['samples'][x]['M'][gidx,:] # get test sample gene space data, subsample
+					M = M[:,idx] # select test subpopulation cells
+					if clustercells == True:
+						cidx = cluster_rows(M.toarray().T, metric=cmetric, method=cmethod) # cluster cells of subpopulation
+						M = M[:,cidx] # reorder matrix
+					ncols.append(M.shape[1])
+					MS.append(M) # append to list
+					means.append(M.mean(axis=1))
+					MSlabels.append('%s (%d)' % (x,itest)) # append matching sample label to list
+				else:
+					for itest in irow:
 						C = pop['samples'][x]['C'] # get test sample feature space data
 						prediction = pop['samples'][x]['gmm'].predict(C) # get the subpopulations assignments
 						idx = np.where(prediction == itest)[0] # get indices of cells that match aligned test subpopulation
@@ -2964,59 +2986,8 @@ def plot_heatmap(pop, refcomp, genelist, clustersamples=True, clustercells=True,
 						MS.append(M) # append to list
 						means.append(M.mean(axis=1))
 						MSlabels.append('%s (%d)' % (x,itest)) # append matching sample label to list
-					else:
-						for itest in irow:
-							C = pop['samples'][x]['C'] # get test sample feature space data
-							prediction = pop['samples'][x]['gmm'].predict(C) # get the subpopulations assignments
-							idx = np.where(prediction == itest)[0] # get indices of cells that match aligned test subpopulation
-							M = pop['samples'][x]['M'][gidx,:] # get test sample gene space data, subsample
-							M = M[:,idx] # select test subpopulation cells
-							if clustercells == True:
-								cidx = cluster_rows(M.toarray().T, metric=cmetric, method=cmethod) # cluster cells of subpopulation
-								M = M[:,cidx] # reorder matrix
-							ncols.append(M.shape[1])
-							MS.append(M) # append to list
-							means.append(M.mean(axis=1))
-							MSlabels.append('%s (%d)' % (x,itest)) # append matching sample label to list
-				except:
-					pass
-	else:
-		try:
-			x = only
-			arr = pop['samples'][x]['alignments'] # retrieve test sample alignments
-			irow = np.where(arr[:,1] == refcomp)[0] # get row number in alignments where ref subpop is the desired ref subpop
-			if len(irow)==1:
-				itest = int(arr[irow, 0]) # get test subpopulation number if exists
-				C = pop['samples'][x]['C'] # get test sample feature space data
-				prediction = pop['samples'][x]['gmm'].predict(C) # get the subpopulations assignments
-				idx = np.where(prediction == itest)[0] # get indices of cells that match aligned test subpopulation
-
-				M = pop['samples'][x]['M'][gidx,:] # get test sample gene space data, subsample
-				M = M[:,idx] # select test subpopulation cells
-				if clustercells == True:
-					cidx = cluster_rows(M.toarray().T, metric=cmetric, method=cmethod) # cluster cells of subpopulation
-					M = M[:,cidx] # reorder matrix
-				ncols.append(M.shape[1])
-				MS.append(M) # append to list
-				means.append(M.mean(axis=1))
-				MSlabels.append('%s (%d)' % (x,itest)) # append matching sample label to list
-			else:
-				for itest in irow:
-					C = pop['samples'][x]['C'] # get test sample feature space data
-					prediction = pop['samples'][x]['gmm'].predict(C) # get the subpopulations assignments
-					idx = np.where(prediction == itest)[0] # get indices of cells that match aligned test subpopulation
-
-					M = pop['samples'][x]['M'][gidx,:] # get test sample gene space data, subsample
-					M = M[:,idx] # select test subpopulation cells
-					if clustercells == True:
-						cidx = cluster_rows(M.toarray().T, metric=cmetric, method=cmethod) # cluster cells of subpopulation
-						M = M[:,cidx] # reorder matrix
-					ncols.append(M.shape[1])
-					MS.append(M) # append to list
-					means.append(M.mean(axis=1))
-					MSlabels.append('%s (%d)' % (x,itest)) # append matching sample label to list	
-		except:
-			pass
+			except:
+				pass
 
 	if equalncells == True:
 		n = np.min(ncols)
@@ -3034,10 +3005,29 @@ def plot_heatmap(pop, refcomp, genelist, clustersamples=True, clustercells=True,
 
 	M = ss.hstack(MS) # create full matrix
 	M = M.toarray() # to dense
+
+	# Only keep genes that are not 0
+	genetots = np.sum(M,axis=1)
+	keepidx = np.flatnonzero(genetots>0)
+	M = M[keepidx,:] # subselect kept genes from M
+	genelist = [genelist[i] for i in keepidx] # keep only the non-zerogenes
+
 	if scalegenes == True:
 		# tmp = (M.T-M.min(axis=1)).T # subtract min
 		tmp = M # Do not subtract the min
 		M = (tmp.T/tmp.max(axis=1)).T # divide by max
+
+	# Create a subsampled matrix
+	if M.shape[1] > 2000: 
+	    idx = np.random.choice(M.shape[1], 2000, replace=False) 
+	    M_small = M[:,idx]
+	else: 
+	    M_small = M
+
+	if clustergenes == True: 
+		gidx2 = cluster_rows(M_small, metric=cmetric, method=cmethod) # cluster genes across entire matrix
+		M = M[gidx2,:] # reorder matrix
+		genelist = [genelist[i] for i in gidx2]
 
 	cols = np.concatenate([[0]*x if i%2==0 else [1]*x for i,x in enumerate(ncols)]) # create binary vector to color columns, length equals to number of cells. Should be: [0,...,0,1,...,1,0,...,0,1...,1,etc]
 	cols = cols.reshape(1,len(cols)) # reshape vector to plot it as a heatmap
@@ -3055,7 +3045,7 @@ def plot_heatmap(pop, refcomp, genelist, clustersamples=True, clustercells=True,
 	# heatmap
 	plt.subplot2grid((nr,nc), (0,0), colspan=nc, rowspan=nr-1) # create subplot for heatmap, leave space for column colors
 	plt.imshow(M, aspect='auto', interpolation='none', cmap=cmap) # plot heatmap
-	plt.yticks(np.arange(len(genelist)),genelist) # display gene names
+	plt.yticks(np.arange(len(genelist)),genelist,fontsize=8) # display gene names
 	plt.xticks([]) # remove x ticks
 	plt.title('Reference sample: %s\nSubpopulation #%d: %s' % (ref, refcomp, pop['samples'][ref]['gmm_types'][refcomp]))
 	
@@ -3067,11 +3057,11 @@ def plot_heatmap(pop, refcomp, genelist, clustersamples=True, clustercells=True,
 	plt.subplot2grid((nr,nc), (nr-1, 0), colspan=nc, rowspan=1) # create subplot for column colors
 	plt.imshow(cols, aspect='auto', cmap='binary') # plot column colors
 	plt.yticks([]) # remove y ticks
-	plt.xticks(xtickscoords, MSlabels, rotation=90) # display sample names
+	plt.xticks(xtickscoords, MSlabels, rotation=90 ) # display sample names
 	
-	if only != None:
+	if len(samplenames)==1:
 		# dname = 'diffexp/%d_%s_%s/' % (refcomp, reftype, only) # define directory name
-		dname = 'diffexp/refpop%d_%s_%s/' % (refcomp, reftype, only)
+		dname = 'diffexp/refpop%d_%s_%s/' % (refcomp, reftype, samplenames[0])
 	else:
 		dname = 'heatmaps' # define directory name
 		mkdir(os.path.join(pop['output'], dname)) # create directory if needed
@@ -3082,6 +3072,8 @@ def plot_heatmap(pop, refcomp, genelist, clustersamples=True, clustercells=True,
 	filename = filename.replace('/','')
 	plt.savefig(os.path.join(pop['output'], dname, '%s.pdf' % filename),bbox_inches='tight')
 	plt.close()
+
+	return genelist
 
 def plot_genes_gmm_cells(pop, sample='', genelist=[], savename='', metric='correlation', method='single', clustergenes=True, clustercells=True, cmap='magma', figsize=(10,15)):
 	'''
@@ -3584,6 +3576,7 @@ def plot_violins(pop, refcomp, samples, plotgenes, prefix, **kwargs):
 		arrdf.rename(columns = {0:'values',1:'sample'},inplace=True)
 		arrdf['values']=arrdf['values'].astype('float64')
 		arrdf['sample']=arrdf['sample'].astype('category')
+		arrdf['sample'].cat.categories = samples  # enforces original ordering in plots
 		arrdf['y'] = fakey
 		arrdf['y'] = arrdf['y'].astype('float64')
 
@@ -3823,7 +3816,7 @@ def diffexp(pop, refcomp=0, testcomp=0, sample='', nbins=20, cutoff=.5, renderhi
 	nbins : int, optional
 		Number of histogram bins to use
 	nleft : int
-		Number of underexpressed genes to retrieve
+		Number  of underexpressed genes to retrieve
 	nright : int
 		Number of overexpressed genes to retrieve
 	renderhists : bool
@@ -3894,6 +3887,7 @@ def diffexp(pop, refcomp=0, testcomp=0, sample='', nbins=20, cutoff=.5, renderhi
 		subtest = subtest[gidx,:]
 		genes = np.array(pop['genes']) # get original gene labels
 		genes = genes[nzidx[gidx]] 
+		print(len(genes))
 	else: 
 		raise Exception('The option usefiltered must be one of three strings: \'filtered\', \'unfiltered\', \'refilter\'')
 
@@ -3998,7 +3992,7 @@ def diffexp(pop, refcomp=0, testcomp=0, sample='', nbins=20, cutoff=.5, renderhi
 	plot_heatmap(pop, refcomp, lidx, clustersamples=False, clustercells=True, savename='refcomp%d_%s_%s' % (refcomp, reftype, sample), figsize=figsize, cmap='Purples', samplelimits=False, scalegenes=True, only=sample, equalncells=equalncells)
 	return lidx
 
-def diffexp_testcomp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True, usefiltered='filtered'):
+def diffexp_testcomp(pop, testcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True, usefiltered='filtered'):
 	'''
 	Find differentially expressed genes between a reference subpopulation
 	and the subpopulation of a sample that aligned to it
@@ -4076,7 +4070,6 @@ def diffexp_testcomp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists
 		subtest = subtest[gidx,:]
 		genes = np.array(pop['genes']) # get original gene labels
 		genes = genes[nzidx[gidx]] 
-		print(len(genes))
 	else: 
 		raise Exception('The option usefiltered must be one of three strings: \'filtered\', \'unfiltered\', \'refilter\'')
 
@@ -4263,7 +4256,6 @@ def all_diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True
 	else: 
 		raise Exception('The option usefiltered must be one of three strings: \'filtered\', \'unfiltered\', \'refilter\'')
 
-
 	subref = subref.toarray() # from sparse matrix to numpy array for slicing efficiency
 	subtest = subtest.toarray() # from sparse matrix to numpy array for slicing efficiency
 	
@@ -4393,7 +4385,7 @@ def all_diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True
 	plot_heatmap(pop, refcomp, lidx, clustersamples=False, clustercells=True, savename='refpop%d_%s_%s_heatmap' % (refcomp,reftype, sample), figsize=(15,15), cmap='Purples', samplelimits=False, scalegenes=True, only=sample, equalncells=True)
 	return q_raw, genes_raw, lidx, upregulated, downregulated
 
-def all_samples_diffexp(pop, nbins=20, cutoff=[], renderhists=True, usefiltered='filtered', tailthresh=0.001, plotL1 = False, plotRibbon = False):
+def all_samples_diffexp(pop, nbins=20, cutoff=[], renderhists=True, usefiltered='filtered', tailthresh=0.001,  plotL1 = False, plotRibbon = False):
 	'''
 	Compute differentially expressed genes for all cell types and all samples. 
 
@@ -4579,6 +4571,7 @@ def all_samples_diffexp(pop, nbins=20, cutoff=[], renderhists=True, usefiltered=
 	de_df = pd.DataFrame(data=d)
 	deobj['de_df'] = de_df
 	de_df.to_csv(os.path.join(pop['output'], dname, 'all_degenes_by_celltype.csv')) # save dataframe in a single csv file
+
 	pop['diffexp'] = deobj
 
 	# Now run all samples thorugh L1 heatmap
@@ -4587,7 +4580,7 @@ def all_samples_diffexp(pop, nbins=20, cutoff=[], renderhists=True, usefiltered=
 			plot_L1_heatmap(pop, x, dname)
 
 	# Now plot ribbon plot for numbers of genes that have changed
-	if plotRibbon:
+	if plotRibbon: 
 		ribboncols = sns.color_palette('muted')
 		plot_ribbon_ngenes(pop, colors = ribboncols)
 
