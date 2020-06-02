@@ -3189,7 +3189,7 @@ def plot_genes_gmm_cells(pop, sample='', genelist=[], savename='', metric='corre
 	plt.savefig(os.path.join(pop['output'], dname, '%s_cells.pdf' % savename), dpi=200, bbox_inches='tight')
 	plt.close()
 
-def scatter(pop, method='tsne', sample=None, compnumber=None, marker=None, size=.1):
+def scatter(pop, method='tsne', sample=None, compnumber=None, marker=None, size=.1, extension='pdf'):	
 	'''
 	Run an embedding algorithm and plot the data in a scatter plot
 
@@ -3201,6 +3201,8 @@ def scatter(pop, method='tsne', sample=None, compnumber=None, marker=None, size=
 		Either `samples` or a valid gene symbol. Defaults to None
 	size : float or int
 		Point size. Defaults to .1
+	extension: string
+		File extension like 'png' or 'pdf' to designate how to save the plot
 	'''
 
 	if method not in pop: # if method not run before
@@ -3279,7 +3281,7 @@ def scatter(pop, method='tsne', sample=None, compnumber=None, marker=None, size=
 	
 	dname = 'embedding/markers/' # directory name
 	mkdir(os.path.join(pop['output'], dname)) # create directory if needed
-	plt.savefig(os.path.join(pop['output'], dname, '%s.pdf' % filename), dpi=200, bbox_inches='tight') # save figure
+	plt.savefig(os.path.join(pop['output'], dname, '%s.%s' % (filename, extension)), dpi=200, bbox_inches='tight') # save figure
 	plt.close()
 
 def samples_grid(pop, method='tsne', figsize=(20,20), size_background=.1, size_samples=.1):
