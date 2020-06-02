@@ -77,7 +77,7 @@ def cat_data(pop, name):
 		raise Exception('name must be one of M, M_norm or C')
 	if name in ['M', 'M_norm']:
 		tmp = ss.hstack([pop['samples'][x][name] for x in pop['order']])
-	elif name in ['C']:
+	elif name in ['C','pcaproj']:
 		tmp = np.vstack([pop['samples'][x][name] for x in pop['order']])
 	return tmp
 
@@ -4652,5 +4652,98 @@ import sys
 if not sys.warnoptions:
 	import warnings
 	warnings.simplefilter("ignore")
+
+'''
+Universal model method
+'''
+def build_unique_gmm(pop, ks=(5,20), niters=3, training=0.2, reg_covar=True, types=None, figsize=(6,5)):
+	'''
+	Build a unique Gaussian Mixture Model on the feature projected data
+
+	Parameters
+	----------
+	pop : dict
+		Popalign object
+	ks : int or tuple
+		Number or range of components to use
+	niters : int
+		number of replicates to build for each k in `ks`
+	training : int or float
+		If training is float, the value will be used a percentage to select cells for the training set. Must follow 0<value<1
+		If training is int, that number of cells will be used for the training set.
+	reg_covar : boolean or float
+		If True, the regularization value will be computed from the feature data
+		If False, 1e-6 default value is used
+		If float, value will be used as reg_covar parameter to build GMMs
+	types : dict, str or None
+		Dictionary of cell types.
+		If None, a default PBMC cell types dictionary is provided
+	'''
+	if 'pca' not in pop:
+		pca(pop) # build pca space if necessary
+
+	if isinstance(ks, tuple): # if ks is tuple
+		ks = np.arange(ks[0], ks[1]) # create array of ks
+	if isinstance(ks, int): # if int
+		ks = [ks] # # make it a list
+
+	C = cat_data(pop, 'C') # get feature data
+	M = cat_data(pop, 'M') # get gene data
+	m = C.shape[0] # get training and validation sets ready
+	
+	if (isinstance(training, int)) & (training<m) & (training > 1): # if training is int and smaller than number of cells
+		n = training
+	elif (isinstance(training, int)) & (training>=m): # if training is int and bigger than number of cells
+		n = int(m*0.8) # since the number of training cells was larger than the number of cells in the sample, take 80%
+	elif (isinstance(training, float)) & (0<training) & (training<1):
+		n = int(m*training) # number of cells for the training set
+	else:
+		raise Exception('Value passed to training argument is invalid. Must be an int or a float between 0 and 1.')
+
+	idx = np.random.choice(m, n, replace=False) # get n random cell indices
+	not_idx = np.setdiff1d(range(m), idx) # get the validation set indices
+
+	Ctrain = C[idx,:]
+	Cvalid = C[not_idx,:]
+
+	if reg_covar == True:
+		reg_covar_param = pop['reg_covar'] # retrieve reg value from pop object that was computed from projection data
+	elif reg_covar == False:
+		reg_covar_param = 0 # default value is 0 (no assumption on the data)
+	else:
+		reg_covar_param = reg_covar
+	with Pool(pop['ncores']) as p:
+			q = p.starmap(build_single_GMM, [(k, Ctrain, reg_covar_param) for k in np.repeat(ks, niters)])
+	
+	# We minimize the BIC score of the validation set
+	# to pick the best fitted gmm
+	BIC = [gmm.bic(Cvalid) for gmm in q]
+	gmm = q[np.argmin(BIC)]
+	pop['gmm'] = gmm
+
+	if types != None:
+		pop['gmm_types'] = typer_func(gmm=gmm, prediction=gmm.predict(C), M=M, genes=pop['genes'], types=types)
+	else:
+		pop['gmm_types'] = [str(ii) for ii in range(gmm.n_components)]
+	sd = render_model(pop, 'unique_gmm', figsize)
+
+def score_cells_global_gmm(pop)
+'''
+	Scores cells using a global model and then 
+
+	Parameters
+	----------
+	pop: obj
+		pop object containing all data, must have unique gmm 
+
+'''
+
+# concatenate all coefficient matrices together
+allC = cat_data(pop, 'C')
+
+# use the gmm to classify all of the data
+classes = pop['gmm'].predict(allC)
+
+# save the cell type labels into the meta file and re-save the meta file
 
 
