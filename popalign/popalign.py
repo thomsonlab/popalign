@@ -1051,7 +1051,8 @@ def plot_reconstruction(pop):
 	"""
 	M_norm = cat_data(pop, 'M_norm') # grab normalized data
 	W = pop['W'] # grab feature space
-	proj = cat_data(pop, 'C') # grab projected data
+	# proj = cat_data(pop, 'C') # grab projected data
+	proj = get_cat_coeff(pop)
 	max_ = np.max(M_norm)
 	idx = np.random.choice(M_norm.shape[1], 200, replace=False) # select 200 cells randomly
 	mtx = M_norm[:,idx].toarray() # subset original data
@@ -1215,7 +1216,7 @@ def pca(pop, n_components=2, fromspace='genes'):
 	if fromspace == 'genes':
 		M_norm = cat_data(pop, 'M_norm')
 		pcaproj = pca.fit_transform(M_norm.toarray().T) # fit PCA model with all the cells
-	elif fromspace == 'features':
+	elif fromspace == 'onmf':
 		C = cat_data(pop, 'C') # use onmf features 
 		pcaproj = pca.fit_transform(C) # fit PCA model with all the cells
 
@@ -1468,7 +1469,8 @@ def plotfeatures(pop):
 		readout_format='.1f',
 	)
 
-	C = cat_data(pop, 'C')
+	# C = cat_data(pop, 'C')
+	C = get_cat_coeff(pop)
 	samplenums = np.concatenate([[i]*pop['samples'][x]['C'].shape[0] for i,x in enumerate(pop['order'])])
 	samplelbls = np.concatenate([[x]*pop['samples'][x]['C'].shape[0] for x in pop['order']])
 
@@ -3375,7 +3377,8 @@ def scatter(pop, method='tsne', sample=None, compnumber=None, marker=None, size=
 	'''
 
 	if method not in pop: # if method not run before
-		X = cat_data(pop, 'C') # retrieve feature space data
+		# X = cat_data(pop, 'C') # retrieve feature space data
+		X = get_cat_coeff(pop)
 		if method == 'umap': # if method is umap
 			X = umap.UMAP().fit_transform(X) # run umap
 		elif method == 'tsne': # if method is tsne
@@ -3545,7 +3548,8 @@ def subpopulations_grid(pop, method='tsne', figsize=(20,20), size_background=.1,
 
 def subpopulations_grid_global(pop, method='tsne', figsize=(20,20), size_background=.1, size_subpops=1):
 	if method not in pop: # if method not run before
-		X = cat_data(pop, 'C') # retrieve feature space data
+		# X = cat_data(pop, 'C') # retrieve feature space data
+		X = get_cat_coeff(pop) # retrieve feature space data
 		if method == 'umap': # if method is umap
 			X = umap.UMAP().fit_transform(X) # run umap
 		elif method == 'tsne': # if method is tsne
