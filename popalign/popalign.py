@@ -1,6 +1,8 @@
 # Paul Rivaud
-# Caltech
 # paulrivaud.info@gmail.com
+# Sisi Chen
+# sisichen@caltech.edu
+# Caltech
 
 import os
 import csv
@@ -73,7 +75,7 @@ def cat_data(pop, name):
 	name : str
 		Name of the attribute. Can be M, M_norm or C
 	'''
-	if name not in ['M', 'M_norm', 'C']:
+	if name not in ['M', 'M_norm', 'C', 'pcaproj']:
 		raise Exception('name must be one of M, M_norm or C')
 	if name in ['M', 'M_norm']:
 		tmp = ss.hstack([pop['samples'][x][name] for x in pop['order']])
@@ -1111,7 +1113,8 @@ def plot_H(pop, method='complete', n=None):
 	n : int or None
 		Number of cells to randomly sample.
 	'''
-	C = cat_data(pop, 'C') # get feature data
+	#C = cat_data(pop, 'C') # get feature data
+	C = get_cat_coeff(pop)
 
 	if n != None:
 		if not isinstance(n, int): # check that n is an int
@@ -1213,7 +1216,7 @@ def pca(pop, n_components=2, fromspace='genes'):
 		M_norm = cat_data(pop, 'M_norm')
 		pcaproj = pca.fit_transform(M_norm.toarray().T) # fit PCA model with all the cells
 	elif fromspace == 'features':
-		C = cat_data(pop, 'C')
+		C = cat_data(pop, 'C') # use onmf features 
 		pcaproj = pca.fit_transform(C) # fit PCA model with all the cells
 
 	start = 0
@@ -1232,6 +1235,74 @@ def pca(pop, n_components=2, fromspace='genes'):
 	pop['pca']['mines'] = pcaproj.min(axis=0) # store PCA projection space limits
 	pop['pca']['lims_ext'] = 0.25
 	pop['pca']['fromspace'] = fromspace
+	pop['pca']['mean'] = pca.mean_
+	pop['pca']['explained_variance'] = pca.explained_variance_
+
+def get_cat_coeff(pop):
+	'''
+	Get concatenated coefficients; either oNMF or pca as specified in pop
+	Parameters
+	----------
+	pop : dict
+		Popalign object
+
+	'''
+	if 'featuretype' not in pop.keys():
+		raise Exception('pop[\'featuretype\'] was not found. Run build_gmms which sets the featuretype for the pop object')
+
+	featuretype = pop['featuretype']
+	if featuretype == 'pca':
+		coeff = cat_data(pop,'pcaproj')
+	elif featuretype == 'onmf': 
+		coeff = cat_data(pop, 'C') # get feature data
+	else:
+		raise Exception('featuretype variable must be: \'pca\' or \'onmf\'')
+	return coeff
+
+def get_coeff(pop, name):
+	'''
+	Get coefficients for a specific sample; either oNMF or pca as specified in pop
+
+	Parameters
+	----------
+	pop : dict
+		Popalign object
+	name : str
+		name of sample
+	'''
+	if 'featuretype' not in pop.keys():
+		raise Exception('pop[\'featuretype\'] was not found. Run build_gmms which sets the featuretype for the pop object')
+
+	featuretype = pop['featuretype']
+	if featuretype == 'pca':
+		coeff = pop['samples'][name]['pcaproj']
+	elif featuretype == 'onmf': 
+		coeff = pop['samples'][name]['C']
+	else:
+		raise Exception('featuretype variable must be: \'pca\' or \'onmf\'')
+	return coeff
+
+def get_features(pop):
+	'''
+	Get feature vectors for pop object; either oNMF or pca as specified in pop
+
+	Parameters
+	----------
+	pop : dict
+		Popalign object
+	'''
+
+	if 'featuretype' not in pop.keys():
+		raise Exception('pop[\'featuretype\'] was not found. Run build_gmms which sets the featuretype for the pop object')
+
+	featuretype = pop['featuretype']
+	if featuretype == 'pca':
+		features = pop['pca']['components']
+	elif featuretype == 'onmf': 
+		features = pop['W']
+	else:
+		raise Exception('featuretype variable must be: \'pca\' or \'onmf\'')
+	return features
 
 def matplotlib_to_plotly(cmap, pl_entries):
 	'''
@@ -1535,15 +1606,22 @@ def render_model(pop, name, figsizesingle):
 		Popalign object
 	name : str
 		Sample name
+	featuretype : str
+		either 'pca' or 'NMF'
+	figsizesingle : int
+		size of figure
 	'''
-	if name == 'unique_gmm':
+	# if name == 'unique_gmm':
+	if name == 'global_gmm':
 		gmm = pop['gmm']
-		C = cat_data(pop,'C')
+		# C = cat_data(pop,'C')
+		C = get_cat_coeff(pop)
 		pcaproj = pop['pca']['proj']
 		mean_labels = pop['gmm_types']
 	else:
 		gmm = pop['samples'][name]['gmm']
-		C = pop['samples'][name]['C']
+		# C = pop['samples'][name]['C']
+		C = get_coeff(pop, name)
 		pcaproj = pop['samples'][name]['pcaproj']
 		mean_labels = pop['samples'][name]['gmm_types']
 
@@ -1583,16 +1661,16 @@ def render_model(pop, name, figsizesingle):
 
 	prediction = gmm.predict(C) # get the cells component assignments
 	for k in range(gmm.n_components):
-		try:
-			idx = np.where(prediction == k)[0] # get the cell indices for component k
-			sub = pcaproj[idx,:] # get the pca projected data for these cells
+		idx = np.where(prediction == k)[0] # get the cell indices for component k
+		if len(idx)==1:
+			print('Sample %s: Component %d only contains one cell.' % (name, k))
+		else: 
+			sub = pcaproj[idx,0:2] # get the pca projected data for these cells
 			mean = sub.mean(axis=0) # compute the mean
 			cov = np.cov(sub.T) # compute the covariance matrix
 			mean_proj[k,:] = mean # get the mean projected coordinates
 			sample_density += w[k]*(np.reshape(mvn.pdf(pos,mean=mean_proj[k].T,cov=cov),X.shape)) # compute the density
-		except:
-			print('Sample %s: Component %d only contains one cell.' % (name, k))
-
+	
 	sample_density = np.log(sample_density) # log density
 	
 	pp = plt.pcolor(x1, x2, sample_density, cmap=cmap, vmin=cbarmin, vmax=cbarmax) # plot density
@@ -1720,13 +1798,15 @@ def render_models(pop, figsizegrouped, figsizesingle, samples, mode='grouped'):
 	figsizesingle : tuple
 		Figure size of an individual sample rendering plot
 	mode : str
-		One of grouped, individual or unique.
+		One of 'grouped', 'individual' or 'global'.
 		Grouped will render the models individually and together in a separate grid
 		Individual will only render the models individually
-		Unique will render the data's unique model
+		Global will render the entire dataset's global model
 	'''
-	if mode == 'unique':
-		sd = render_model(pop, 'unique_gmm', figsizesingle)
+	#if mode == 'unique':
+		#sd = render_model(pop, 'unique_gmm', figsizesingle)
+	if mode == 'global':
+		sd = render_model(pop, 'global_gmm', figsizesingle)
 	else:
 		'''
 		with Pool(pop['ncores']) as p:
@@ -1769,7 +1849,7 @@ def build_single_GMM(k, C, reg_covar):
 		verbose_interval=10) # create model
 	return gmm.fit(C) # Fit the data
 
-def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar='auto', rendering='grouped', types=None, figsizegrouped=(20,20), figsizesingle=(5,5), only=None):
+def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar='auto', rendering='grouped', types=None, figsizegrouped=(20,20), figsizesingle=(5,5), only=None, featuretype='onmf'):
 	'''
 	Build a Gaussian Mixture Model on feature projected data for each sample
 
@@ -1790,7 +1870,7 @@ def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar=
 		If 'auto', the regularization value will be computed from the feature data
 		If float, value will be used as reg_covar parameter to build GMMs
 	rendering : str
-		Either 'grouped', 'individual' or 'unique'
+		Either 'grouped', 'individual' or 'global'
 	types : dict, str or None
 		Dictionary of cell types.
 		If None, a default PBMC cell types dictionary is provided
@@ -1801,6 +1881,13 @@ def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar=
 	only: list or str, optional
 		Sample label or list of sample labels. Will force GMM construction for specified samples only. Defaults to None
 	'''
+
+	if 'featuretype' in pop.keys():
+		if featuretype != pop['featuretype']:
+			raise Exception('featuretype supplied is not consistent with existing featuretype. Please reset stored gmms (reset_gmms) and try again.')
+	else: 
+		pop['featuretype'] = featuretype
+
 	if isinstance(ks, tuple): # if ks is tuple
 		ks = np.arange(ks[0], ks[1]) # create array of ks
 	if isinstance(ks, int): # if int
@@ -1819,7 +1906,8 @@ def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar=
 
 	for i,x in enumerate(samples): # for each sample x
 		print('Building model for %s (%d of %d)' % (x, (i+1), len(samples)))
-		C = pop['samples'][x]['C'] # get sample feature data
+		# C = pop['samples'][x]['C'] # get sample feature data
+		C = get_coeff(pop,x)
 		M = pop['samples'][x]['M'] # get sample gene data
 		m = C.shape[0] # number of cells
 
@@ -1850,7 +1938,8 @@ def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar=
 		BIC = [gmm.bic(Cvalid) for gmm in q] # compute the BIC for each model with the validation set
 		gmm = q[np.argmin(BIC)] # best gmm is the one that minimizes the BIC
 		pop['samples'][x]['gmm'] = gmm # store gmm
-		pop['samples'][x]['means_genes'] = np.array(gmm.means_.dot(pop['W'].T))
+		# pop['samples'][x]['gmm_means'] = np.array(gmm.means_.dot(pop['W'].T))
+		pop['samples'][x]['gmm_means'] = get_gmm_means(pop,x,None)
 
 		if types != None:
 			try:
@@ -1865,7 +1954,8 @@ def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar=
 		pop['samples'][x]['replicates'] = {}
 		pop['samples'][x]['replicates'][0] = {}
 		pop['samples'][x]['replicates'][0]['gmm'] = gmm # store gmm
-		pop['samples'][x]['replicates'][0]['means_genes'] = np.array(gmm.means_.dot(pop['W'].T))
+		# pop['samples'][x]['replicates'][0]['gmm_means'] = np.array(gmm.means_.dot(pop['W'].T))
+		pop['samples'][x]['replicates'][0]['gmm_means'] = get_gmm_means(pop, x, 0)
 
 		# Create replicates
 		pop['nreplicates'] = nreplicates # store number of replicates in pop object
@@ -1884,7 +1974,8 @@ def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar=
 				gmm = q[np.argmin(BIC)] # best gmm is the one that minimizes the BIC
 				pop['samples'][x]['replicates'][j] = {}
 				pop['samples'][x]['replicates'][j]['gmm'] = gmm # store replicate number j
-				pop['samples'][x]['replicates'][j]['means_genes'] = gmm.means_.dot(pop['W'].T)
+				# pop['samples'][x]['replicates'][j]['gmm_means'] = gmm.means_.dot(pop['W'].T)
+				pop['samples'][x]['replicates'][j]['gmm_means'] = get_gmm_means(pop, x, j)
 				if types != None:
 					pop['samples'][x]['replicates'][j]['gmm_types'] = typer_func(gmm=gmm, prediction=gmm.predict(C), M=M, genes=pop['genes'], types=types)
 				else:
@@ -1893,9 +1984,10 @@ def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar=
 	print('Rendering models')
 	render_models(pop, figsizegrouped=figsizegrouped, figsizesingle=figsizesingle, samples=samples, mode=rendering) # render the models
 
-def build_unique_gmm(pop, ks=(5,20), niters=3, training=0.2, reg_covar=True, types=None, figsize=(6,5)):
+#def build_unique_gmm(pop, ks=(5,20), niters=3, training=0.2, reg_covar=True, types=None, figsize=(6,5), featuretype='onmf'):
+def build_global_gmm(pop, ks=(5,20), niters=3, training=0.2, reg_covar=True, types=None, figsize=(6,5), featuretype='onmf'):
 	'''
-	Build a unique Gaussian Mixture Model on the feature projected data
+	Build a global Gaussian Mixture Model on the feature projected data for all samples
 
 	Parameters
 	----------
@@ -1915,7 +2007,17 @@ def build_unique_gmm(pop, ks=(5,20), niters=3, training=0.2, reg_covar=True, typ
 	types : dict, str or None
 		Dictionary of cell types.
 		If None, a default PBMC cell types dictionary is provided
+	featuretype: str
+		either 'pca' or 'nmf'
 	'''
+	# Set featuretype to supplied featuretype but first check the variable
+
+	if 'featuretype' in pop.keys():
+		if featuretype != pop['featuretype']:
+			raise Exception('featuretype supplied is not consistent with existing featuretype. Please reset stored gmms (reset_gmms) and try again.')
+	else: 
+		pop['featuretype'] = featuretype
+
 	if 'pca' not in pop:
 		pca(pop) # build pca space if necessary
 
@@ -1924,8 +2026,8 @@ def build_unique_gmm(pop, ks=(5,20), niters=3, training=0.2, reg_covar=True, typ
 	if isinstance(ks, int): # if int
 		ks = [ks] # # make it a list
 
-	C = cat_data(pop, 'C') # get feature data
 	M = cat_data(pop, 'M') # get gene data
+	C = get_cat_coeff(pop) # get coefficient data depending on the featuretype
 	m = C.shape[0] # get training and validation sets ready
 	
 	if (isinstance(training, int)) & (training<m) & (training > 1): # if training is int and smaller than number of cells
@@ -1962,7 +2064,64 @@ def build_unique_gmm(pop, ks=(5,20), niters=3, training=0.2, reg_covar=True, typ
 		pop['gmm_types'] = typer_func(gmm=gmm, prediction=gmm.predict(C), M=M, genes=pop['genes'], types=types)
 	else:
 		pop['gmm_types'] = [str(ii) for ii in range(gmm.n_components)]
-	sd = render_model(pop, 'unique_gmm', figsize)
+	# sd = render_model(pop, 'unique_gmm', figsize)
+	sd = render_model(pop, 'global_gmm', figsize)
+
+def get_gmm_means(pop, sample, rep = None): 
+	'''
+	Get the value of the mean for a particular sample or replicate
+
+	Parameters
+	----------
+	pop : dict
+		Popalign object
+	figsize : tuple, optional
+		Size of the figure. Default is (10,10)
+	'''
+	if 'featuretype' not in pop.keys():
+		raise Exception('pop[\'featuretype\'] was not found. Run build_gmms which sets the featuretype for the pop object')
+	featuretype = pop['featuretype']
+
+	if featuretype == 'pca':
+		W = pop['pca']['components']
+	elif featuretype == 'onmf': 
+		W = pop['W']
+	else:
+		raise Exception('featuretype variable must be: \'pca\' or \'onmf\'')
+
+	if sample == 'global': 
+		gmm = pop['gmm']
+	elif rep == None: 
+		gmm = pop['samples'][sample]['gmm']
+	else: 
+		gmm = pop['samples'][sample]['replicates'][rep]['gmm']
+
+	# gmm_means = np.array(gmm.means_.dot(W.T)) # original
+	gmm_means = np.array(gmm.means_)
+
+	return gmm_means
+
+# def get_cat_coeff(pop):
+# 	'''
+# 	Get concatenated coefficients; either oNMF or pca as specified in pop
+# 	Parameters
+# 	----------
+# 	pop : dict
+# 		Popalign object
+
+# 	'''
+# 	if 'featuretype' not in pop.keys():
+# 		raise Exception('pop[\'featuretype\'] was not found. Run build_gmms which sets the featuretype for the pop object')
+
+# 	featuretype = pop['featuretype']
+# 	if featuretype == 'pca':
+# 		coeff = cat_data(pop,'pcaproj')
+# 	elif featuretype == 'onmf': 
+# 		coeff = cat_data(pop, 'C') # get feature data
+# 	else:
+# 		raise Exception('featuretype variable must be: \'pca\' or \'onmf\'')
+# 	return coeff
+
 
 '''
 Entropy functions
@@ -2166,7 +2325,8 @@ def plot_deltas(pop, figsize=(10,10), sortby='mu', pthresh = 0.05): # generate p
 		mean_ws = []
 		stds_mus = []
 		stds_ws = []
-		mu_ref = pop['samples'][ref]['means_genes'][i] # get the mean i value
+		# mu_ref = pop['samples'][ref]['gmm_means'][i] # get the mean i value
+		mu_ref = get_gmm_means(pop, ref, None)
 		w_ref = pop['samples'][ref]['gmm'].weights_[i] # get the weight i value
 
 		k = 0
@@ -2180,7 +2340,8 @@ def plot_deltas(pop, figsize=(10,10), sortby='mu', pthresh = 0.05): # generate p
 					try:
 						irow = np.where(arr[:,1] == i) # try to get the row where the ref comp number matches i
 						itest = int(arr[irow, 0]) # get test comp number from row
-						mu_test = pop['samples'][x]['replicates'][j]['means_genes'][itest] # get the test comp mean value
+						# mu_test = pop['samples'][x]['replicates'][j]['gmm_means'][itest] # get the test comp mean value
+						mu_test = get_gmm_means(pop, x, j)[itest]
 						w_test = pop['samples'][x]['replicates'][j]['gmm'].weights_[itest] # get the test comp weight value
 						samplelbls.append(x)
 						tmp_delta_mus.append(np.linalg.norm([np.array(mu_test).flatten() - np.array(mu_ref).flatten()], ord='fro')) # store delta mu
@@ -2195,7 +2356,8 @@ def plot_deltas(pop, figsize=(10,10), sortby='mu', pthresh = 0.05): # generate p
 				try:
 					irow = np.where(arr[:,1] == i) # try to get the row where the ref comp number matches i
 					itest = int(arr[irow, 0]) # get test comp number from row
-					mu_test = pop['samples'][x]['means_genes'][itest] # get the test comp mean value
+					# mu_test = pop['samples'][x]['gmm_means'][itest] # get the test comp mean value
+					mu_test = get_gmm_means(pop, ref, None)[itest]
 					w_test = pop['samples'][x]['gmm'].weights_[itest] # get the test comp weight value
 					samplelbls.append(x) # store test sample label x
 					tmp_delta_mus.append(np.linalg.norm([np.array(mu_test).flatten() - np.array(mu_ref).flatten()], ord='fro')) # store delta mu
@@ -2435,82 +2597,87 @@ def align(pop, ref=None, method='conservative', figsizedeltas=(10,10), figsizeen
 	entropy(pop, figsizeentropy)
 
 
-# Assign sample cells to reference gmm components and compute deltas
+# Assign sample cells to reference gmm components and compute deltas - This section needs work
 '''
 Parameters
 ----------
 '''
 
-def plot_deltas_aa(pop, ref, deltamus, deltaws, figsize, pointsize): 
-    labels = pop['order'] # get sample labels
-    complbls = pop['samples'][ref]['gmm_types'] # get reference component labels
+# def plot_deltas_aa(pop, ref, deltamus, deltaws, figsize, pointsize): 
+#     labels = pop['order'] # get sample labels
+#     complbls = pop['samples'][ref]['gmm_types'] # get reference component labels
     
-    dname = 'deltas_assign_align'
-    mkdir(os.path.join(pop['output'], dname))
+#     dname = 'deltas_assign_align'
+#     mkdir(os.path.join(pop['output'], dname))
     
-    for i,lbl in enumerate(complbls): # for each component i
-        ydmus = deltamus[i,:] # get the delta mu values for component i
-        ydws = deltaws[i,:] # get the delta w values for component i
-        idx = np.where(ydmus==0)[0] # get indices of deltas mus with a value of 0
-        ydmus = np.delete(ydmus, idx) # remove values by index
-        ydws = np.delete(ydws, idx) # remove values by index
-        xlabels = [labels[ii] for ii in range(pop['nsamples']) if ii not in idx] # remove labels by index
-        x = np.arange(len(ydmus)) # create x coordinates vector
-        idx = np.argsort(ydmus) # get indices of sorted delta mu values
-        ydmus = ydmus[idx] # reorder delta mu values
-        ydws = ydws[idx] # reorder delta w values
-        xlabels = [labels[ii] for ii in idx] # reorder label values
+#     for i,lbl in enumerate(complbls): # for each component i
+#         ydmus = deltamus[i,:] # get the delta mu values for component i
+#         ydws = deltaws[i,:] # get the delta w values for component i
+#         idx = np.where(ydmus==0)[0] # get indices of deltas mus with a value of 0
+#         ydmus = np.delete(ydmus, idx) # remove values by index
+#         ydws = np.delete(ydws, idx) # remove values by index
+#         xlabels = [labels[ii] for ii in range(pop['nsamples']) if ii not in idx] # remove labels by index
+#         x = np.arange(len(ydmus)) # create x coordinates vector
+#         idx = np.argsort(ydmus) # get indices of sorted delta mu values
+#         ydmus = ydmus[idx] # reorder delta mu values
+#         ydws = ydws[idx] # reorder delta w values
+#         xlabels = [labels[ii] for ii in idx] # reorder label values
         
-        plt.figure(figsize=figsize)
-        ax1 = plt.subplot(2,1,1)
-        plt.title('Reference sample %s\nComponent %d: %s' %(ref, i, lbl))
-        plt.scatter(x, ydws, s=pointsize, c='k')
-        plt.xticks([])
-        plt.ylabel('Δ\u03C9 (%)')
+#         plt.figure(figsize=figsize)
+#         ax1 = plt.subplot(2,1,1)
+#         plt.title('Reference sample %s\nComponent %d: %s' %(ref, i, lbl))
+#         plt.scatter(x, ydws, s=pointsize, c='k')
+#         plt.xticks([])
+#         plt.ylabel('Δ\u03C9 (%)')
 
-        plt.subplot(2,1,2)
-        plt.scatter(x, ydmus, s=pointsize, c='k')
-        plt.xticks(x, xlabels, rotation=90)
-        plt.ylabel('Δ\u03BC')
+#         plt.subplot(2,1,2)
+#         plt.scatter(x, ydmus, s=pointsize, c='k')
+#         plt.xticks(x, xlabels, rotation=90)
+#         plt.ylabel('Δ\u03BC')
 
-        plt.tight_layout()
-        lbl = lbl.replace('/','')
-        plt.savefig(os.path.join(pop['output'], dname, 'deltas_comp%d_%s.pdf' % (i,lbl)), dpi=200, bbox_inches='tight')
-        plt.close()
+#         plt.tight_layout()
+#         lbl = lbl.replace('/','')
+#         plt.savefig(os.path.join(pop['output'], dname, 'deltas_comp%d_%s.pdf' % (i,lbl)), dpi=200, bbox_inches='tight')
+#         plt.close()
 
-def assign_align(pop, ref=None, figsize=(15,15), pointsize=10):
-    if ref == None:
-        raise Exception('Please provide sample id of reference')
-    elif ref not in pop['samples']:
-        raise Exception('Provided reference not in sample list.\nYou can print the list of available samples with show_samples()')
-    pop['ref'] = ref # assign reference
-    gmm = pop['samples'][ref]['gmm'] # retrieve reference gmm
-    deltamus = np.zeros((gmm.n_components,pop['nsamples']), dtype=float) # array to store delta mu values
-    deltaws = np.zeros((gmm.n_components,pop['nsamples']), dtype=float) # array to store delta w values
-    W = pop['W'] # retrieve W matrix to project feature means later
+# def assign_align(pop, ref=None, figsize=(15,15), pointsize=10):
+#     if ref == None:
+#         raise Exception('Please provide sample id of reference')
+#     elif ref not in pop['samples']:
+#         raise Exception('Provided reference not in sample list.\nYou can print the list of available samples with show_samples()')
+#     pop['ref'] = ref # assign reference
+#     gmm = pop['samples'][ref]['gmm'] # retrieve reference gmm
+#     deltamus = np.zeros((gmm.n_components,pop['nsamples']), dtype=float) # array to store delta mu values
+#     deltaws = np.zeros((gmm.n_components,pop['nsamples']), dtype=float) # array to store delta w values
+#     # W = pop['W'] # retrieve W matrix to project feature means later
+#     W = get_features(pop) #retrieve W matrix to project feature means later
 
-    for j,x in enumerate(pop['order']): # for each sample
-        if x != ref: # if sample x is different from reference sample
-            C = pop['samples'][x]['C'] # retrieve feature data for sample x
-            prediction = gmm.predict(C) # get cells assignments 
-            pop['samples'][x]['prediction'] = prediction # save cell assignments
-            ntestcells = C.shape[0] # get total number of cells for sample x
-            for i in range(gmm.n_components): # for each reference component i
-                try:
-                    idx = np.where(prediction==i)[0] # get test cells indices that match reference component #i
-                    sub = C[idx,:] # subset test feature data with above indices
-                    mean = sub.mean(axis=0) # get cloud mean
-                    mu_test = np.array(mean.dot(W.T)).flatten() # compute test component mu in filtered gene space
-                    mu_ref = pop['samples'][ref]['means_genes'][i] # get ref component mu in filtered gene space
-                    w_test = len(idx)/ntestcells # compute test cloud w
-                    w_ref = gmm.weights_[i] # get reference component i's w
-                    deltamu = np.linalg.norm([np.array(mu_test).flatten() - np.array(mu_ref).flatten()], ord='fro') # compute delta mu between ref component and test cloud
-                    deltaw = (w_test - w_ref)*100 # compute delta w
-                    deltamus[i,j] = deltamu # store delta mu value
-                    deltaws[i,j] = deltaw # store delta w value
-                except:
-                    pass
-    plot_deltas_aa(pop, ref, deltamus, deltaws, figsize, pointsize) # plot deltas
+#     for j,x in enumerate(pop['order']): # for each sample
+#         if x != ref: # if sample x is different from reference sample
+#             # C = pop['samples'][x]['C'] # retrieve feature data for sample x
+#             C = get_coeff(pop,sample)
+#             prediction = gmm.predict(C) # get cells assignments 
+#             pop['samples'][x]['prediction'] = prediction # save cell assignments
+#             ntestcells = C.shape[0] # get total number of cells for sample x
+#             for i in range(gmm.n_components): # for each reference component i
+#                 try:
+#                     idx = np.where(prediction==i)[0] # get test cells indices that match reference component #i
+#                     sub = C[idx,:] # subset test feature data with above indices
+#                     mean = sub.mean(axis=0) # get cloud mean
+#                     # mu_test = np.array(mean.dot(W.T)).flatten() # compute test component mu in filtered gene space
+#                     # mu_ref = pop['samples'][ref]['gmm_means'][i] # get ref component mu in filtered gene space
+#                     mu_ref = get_gmm_means(pop, ref, None)[i]
+#                     mu_test = mean[i]
+
+#                     w_test = len(idx)/ntestcells # compute test cloud w
+#                     w_ref = gmm.weights_[i] # get reference component i's w
+#                     deltamu = np.linalg.norm([np.array(mu_test).flatten() - np.array(mu_ref).flatten()], ord='fro') # compute delta mu between ref component and test cloud
+#                     deltaw = (w_test - w_ref)*100 # compute delta w
+#                     deltamus[i,j] = deltamu # store delta mu value
+#                     deltaws[i,j] = deltaw # store delta w value
+#                 except:
+#                     pass
+#     plot_deltas_aa(pop, ref, deltamus, deltaws, figsize, pointsize) # plot deltas
 
 '''
 Rank functions
@@ -2767,7 +2934,7 @@ def plot_query(pop, pcells=.2, nreps=10, figsize=(10,20), sharey=True):
 
 	#ncells = 1000
 
-	gmm = pop['gmm'] # get unique gmm
+	gmm = pop['gmm'] # get global gmm
 	N = len(pop['order']) # get number of samples
 	arrmus = np.zeros((N, gmm.n_components)) # empty array to store the proportion means of each sample for all components
 	arrstds = np.zeros((N, gmm.n_components)) # matching array to store the matching standard deviations
@@ -3113,18 +3280,20 @@ def plot_genes_gmm_cells(pop, sample='', genelist=[], savename='', metric='corre
 	else:
 		datatype = 'M' # if gene list, use non filtered data to extract genes
 
-	if sample == 'unique': # if the user wants to access the unique model
-		gmm = pop['gmm'] # get unique gmm
+	if sample == 'global': # if the user wants to access the global model
+		gmm = pop['gmm'] # get global gmm
 		M = cat_data(pop,datatype) # get data in gene space from all samples
-		C = cat_data(pop,'C') # get data in feat space from all samples
+		# C = cat_data(pop,'C') # get data in feat space from all samples
+		C = get_cat_coeff(pop)
 		columns = pop['gmm_types'] # get the GMM subpopulation labels
 	elif sample in pop['order']: # if the user wants to access the gmm of a given sample
 		gmm = pop['samples'][sample]['gmm'] # get sample's gmm
 		M = pop['samples'][sample][datatype] # get sample data in gene space
-		C = pop['samples'][sample]['C'] # get sample data in feat space
+		# C = pop['samples'][sample]['C'] # get sample data in feat space
+		C = get_coeff(pop, sample)
 		columns = pop['samples'][sample]['gmm_types'] # get the GMM subpopulation labels
 	else: 
-		raise Exception('sample should be `unique` or a valid sample name.')
+		raise Exception('sample should be `global` or a valid sample name.')
 	columns = ['%d: %s' % (i,lbl) for i,lbl in enumerate(columns)]
 	genes = pop['genes'] # get gene names
 
@@ -3232,7 +3401,8 @@ def scatter(pop, method='tsne', sample=None, compnumber=None, marker=None, size=
 		
 		if compnumber != None:
 			gmm = pop['samples'][sample]['gmm']
-			C = pop['samples'][sample]['C']
+			# C = pop['samples'][sample]['C']
+			C = get_coeff(pop, sample)
 			prediction = gmm.predict(C)
 			idx = np.where(prediction==compnumber)[0]
 			M = M[:,idx] # only keep cells from component
@@ -3373,7 +3543,7 @@ def subpopulations_grid(pop, method='tsne', figsize=(20,20), size_background=.1,
 		Point size for the highlighted subpopulations
 	'''
 
-def subpopulations_grid_unique(pop, method='tsne', figsize=(20,20), size_background=.1, size_subpops=1):
+def subpopulations_grid_global(pop, method='tsne', figsize=(20,20), size_background=.1, size_subpops=1):
 	if method not in pop: # if method not run before
 		X = cat_data(pop, 'C') # retrieve feature space data
 		if method == 'umap': # if method is umap
@@ -3397,7 +3567,8 @@ def subpopulations_grid_unique(pop, method='tsne', figsize=(20,20), size_backgro
 	start = 0 # start index to subset sample cells
 	end = 0 # end index to subset sample cells
 
-	C = cat_data(pop, 'C')
+#	C = cat_data(pop, 'C')
+	C = get_cat_coeff(pop)
 	gmm = pop['gmm']
 	poplabels = pop['gmm_types']
 	prediction = gmm.predict(C) # get subpopulation assignments for the cells
@@ -3428,8 +3599,54 @@ def subpopulations_grid_unique(pop, method='tsne', figsize=(20,20), size_backgro
 
 	dname = 'embedding/subpopulations/' # folder name
 	mkdir(os.path.join(pop['output'], dname)) # create folder if does not exist
-	plt.savefig(os.path.join(pop['output'], dname, 'unique_subpopulations_%s.png' % method), dpi=200) # save plot
+	plt.savefig(os.path.join(pop['output'], dname, 'global_subpopulations_%s.png' % method), dpi=200) # save plot
 	plt.close() # close plot
+
+def reset_gmms(pop):
+	'''
+	This function deletes the following keys from the pop dictionary:
+
+	pop['gmm']
+	pop['gmmtypes']
+	pop['featuretype']
+	pop['samples'][sample]['gmm']
+
+	Parameters
+	----------
+	pop : dict
+		Popalign object
+	sample : str
+		sample name
+	dname : str
+		directory name
+
+	'''
+	try: 
+		del pop['gmm']
+		print('deleted: pop[\'gmm\']')
+	except: 
+		print('not present: pop[\'gmm\']')
+
+	try: 
+		del pop['gmmtypes']
+		print('deleted: pop[\'gmmtypes\']')
+	except: 
+		print('not present: pop[\'gmmtypes\']')
+
+	try: 
+		del pop['featuretype']
+		print('deleted: pop[\'featuretype\']')
+	except: 
+		print('not present: pop[\'featuretype\']')
+
+	for i in range(0, len(pop['samples'].keys())):
+		sample = pop['order'][i]
+
+		try: 
+			del pop['samples'][sample]['gmm']
+			print('deleted gmm for sample: ' + sample)			
+		except: 
+			print('no gmm for sample: ' + sample)
 
 
 def plot_L1_heatmap(pop, sample, dname,cmap='RdBu'):
@@ -4656,94 +4873,24 @@ if not sys.warnoptions:
 '''
 Universal model method
 '''
-def build_unique_gmm(pop, ks=(5,20), niters=3, training=0.2, reg_covar=True, types=None, figsize=(6,5)):
-	'''
-	Build a unique Gaussian Mixture Model on the feature projected data
 
-	Parameters
-	----------
-	pop : dict
-		Popalign object
-	ks : int or tuple
-		Number or range of components to use
-	niters : int
-		number of replicates to build for each k in `ks`
-	training : int or float
-		If training is float, the value will be used a percentage to select cells for the training set. Must follow 0<value<1
-		If training is int, that number of cells will be used for the training set.
-	reg_covar : boolean or float
-		If True, the regularization value will be computed from the feature data
-		If False, 1e-6 default value is used
-		If float, value will be used as reg_covar parameter to build GMMs
-	types : dict, str or None
-		Dictionary of cell types.
-		If None, a default PBMC cell types dictionary is provided
-	'''
-	if 'pca' not in pop:
-		pca(pop) # build pca space if necessary
+# def score_cells_global_gmm(pop)
+# '''
+# 	Scores cells using a global model and then 
 
-	if isinstance(ks, tuple): # if ks is tuple
-		ks = np.arange(ks[0], ks[1]) # create array of ks
-	if isinstance(ks, int): # if int
-		ks = [ks] # # make it a list
+# 	Parameters
+# 	----------
+# 	pop: obj
+# 		pop object containing all data, must have global gmm 
 
-	C = cat_data(pop, 'C') # get feature data
-	M = cat_data(pop, 'M') # get gene data
-	m = C.shape[0] # get training and validation sets ready
-	
-	if (isinstance(training, int)) & (training<m) & (training > 1): # if training is int and smaller than number of cells
-		n = training
-	elif (isinstance(training, int)) & (training>=m): # if training is int and bigger than number of cells
-		n = int(m*0.8) # since the number of training cells was larger than the number of cells in the sample, take 80%
-	elif (isinstance(training, float)) & (0<training) & (training<1):
-		n = int(m*training) # number of cells for the training set
-	else:
-		raise Exception('Value passed to training argument is invalid. Must be an int or a float between 0 and 1.')
+# '''
 
-	idx = np.random.choice(m, n, replace=False) # get n random cell indices
-	not_idx = np.setdiff1d(range(m), idx) # get the validation set indices
+# # concatenate all coefficient matrices together
+# allC = cat_data(pop, 'C')
 
-	Ctrain = C[idx,:]
-	Cvalid = C[not_idx,:]
+# # use the gmm to classify all of the data
+# classes = pop['gmm'].predict(allC)
 
-	if reg_covar == True:
-		reg_covar_param = pop['reg_covar'] # retrieve reg value from pop object that was computed from projection data
-	elif reg_covar == False:
-		reg_covar_param = 0 # default value is 0 (no assumption on the data)
-	else:
-		reg_covar_param = reg_covar
-	with Pool(pop['ncores']) as p:
-			q = p.starmap(build_single_GMM, [(k, Ctrain, reg_covar_param) for k in np.repeat(ks, niters)])
-	
-	# We minimize the BIC score of the validation set
-	# to pick the best fitted gmm
-	BIC = [gmm.bic(Cvalid) for gmm in q]
-	gmm = q[np.argmin(BIC)]
-	pop['gmm'] = gmm
-
-	if types != None:
-		pop['gmm_types'] = typer_func(gmm=gmm, prediction=gmm.predict(C), M=M, genes=pop['genes'], types=types)
-	else:
-		pop['gmm_types'] = [str(ii) for ii in range(gmm.n_components)]
-	sd = render_model(pop, 'unique_gmm', figsize)
-
-def score_cells_global_gmm(pop)
-'''
-	Scores cells using a global model and then 
-
-	Parameters
-	----------
-	pop: obj
-		pop object containing all data, must have unique gmm 
-
-'''
-
-# concatenate all coefficient matrices together
-allC = cat_data(pop, 'C')
-
-# use the gmm to classify all of the data
-classes = pop['gmm'].predict(allC)
-
-# save the cell type labels into the meta file and re-save the meta file
+# # save the cell type labels into the meta file and re-save the meta file
 
 
