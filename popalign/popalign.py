@@ -3473,7 +3473,7 @@ def samples_grid(pop, method='tsne', figsize=(20,20), size_background=.1, size_s
 	'''
 
 	if method not in pop: # if method not run before
-		X = cat_data(pop, 'C') # retrieve feature space data
+		X = get_cat_coeff(pop) # retrieve feature space data
 		if method == 'umap': # if method is umap
 			X = umap.UMAP().fit_transform(X) # run umap
 		elif method == 'tsne': # if method is tsne
