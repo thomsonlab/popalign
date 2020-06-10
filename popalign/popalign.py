@@ -297,7 +297,7 @@ def load_multiplexed(matrix, barcodes, metafile, controlstring=None, genes=None,
 	else:
 		obj = existing_obj
 
-	# check straight away if meta data has the minimum requirements
+	# check if meta data has the minimum requirements
 	meta = pd.read_csv(metafile, header=0) # load metadata file
 	cols = meta.columns.values
 	check_cols('cell_barcode', cols)
@@ -306,7 +306,8 @@ def load_multiplexed(matrix, barcodes, metafile, controlstring=None, genes=None,
 		check_cols(col, cols)
 		if value not in meta[col].unique():
 			raise Exception('Provided value not in column %s' % col) 
-
+	
+	# Find sample names that obey the metadata filter 
 	if (value != None) and (col != None):
 		tmp_only = meta[meta[col]==value]['sample_id'].dropna().unique()
 	elif (value != None) and (col == None):
@@ -325,6 +326,7 @@ def load_multiplexed(matrix, barcodes, metafile, controlstring=None, genes=None,
 	for i, bc in enumerate(barcodes):
 		bc_idx[bc] = i
 
+	accum_idx = [] # accumulate index values for subsetted samples
 	for i in only: # go through the sample_id values to split the data and store it for each individual sample
 		x = str(i)
 		if x != 'unknown':
@@ -333,6 +335,11 @@ def load_multiplexed(matrix, barcodes, metafile, controlstring=None, genes=None,
 			idx = [bc_idx[bc] for bc in sample_bcs] # retrieve list of matching indices
 			obj['samples'][x]['M'] = M[:,idx] # extract matching data from M
 			obj['order'].append(x) # save list of sample names to always call them in the same order for consistency
+			accum_idx = accum_idx + idx 
+
+	# Trim the meta data file to only contain the filtered samples
+	currmeta = meta.loc[accum_idx]
+	obj['meta'] = currmeta
 
 	# save start and end of cell indices of sample relative to other samples
 	if existing_obj != None:
@@ -1186,7 +1193,7 @@ def onmf(pop, ncells=2000, nfeats=[5,7,9], nreps=3, niter=300):
 	pop['W'] = q[idx_best] # retrieve matching W
 	pop['nfeats'] = pop['W'].shape[1] # store number of features in best W
 	proj = projs[idx_best] # retrieve matching projection
-	pop['reg_covar'] = max(np.linalg.eig(np.cov(proj.T))[0])/100 # store a regularization value for GMM covariance matrices
+	# pop['reg_covar'] = max(np.linalg.eig(np.cov(proj.T))[0])/100 # store a regularization value for GMM covariance matrices
 
 	gsea(pop) # run GSEA on feature space
 	split_proj(pop, proj) # split projected data and store it for each individual sample
@@ -1906,6 +1913,15 @@ def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar=
 	else:
 		samples = pop['order']
 
+	# define regularization covariance
+	allcoeff  = get_cat_coeff(pop)
+
+	if pop['featuretype'] == 'pca': 
+		denom = 500
+	elif pop['featuretype'] =='onmf':
+		denom = 100
+	pop['reg_covar'] = max(np.linalg.eig(np.cov(allcoeff.T))[0])/denom # store a regularization value for GMM covariance matrices
+
 	for i,x in enumerate(samples): # for each sample x
 		print('Building model for %s (%d of %d)' % (x, (i+1), len(samples)))
 		# C = pop['samples'][x]['C'] # get sample feature data
@@ -2031,6 +2047,15 @@ def build_global_gmm(pop, ks=(5,20), niters=3, training=0.2, reg_covar=True, typ
 	M = cat_data(pop, 'M') # get gene data
 	C = get_cat_coeff(pop) # get coefficient data depending on the featuretype
 	m = C.shape[0] # get training and validation sets ready
+
+
+	# define regularization covariance
+	if pop['featuretype'] == 'pca': 
+		denom = 500
+	elif pop['featuretype'] =='onmf':
+		denom = 100
+	pop['reg_covar'] = max(np.linalg.eig(np.cov(C.T))[0])/denom # store a regularization value for GMM covariance matrices
+
 	
 	if (isinstance(training, int)) & (training<m) & (training > 1): # if training is int and smaller than number of cells
 		n = training
@@ -4869,32 +4894,57 @@ def calc_p_value(controlvals, testvals, tail = 1) :
 
 	return pvals, CI_min, CI_max
 
-import sys
-if not sys.warnoptions:
-	import warnings
-	warnings.simplefilter("ignore")
 
 '''
 Universal model method
 '''
 
-# def score_cells_global_gmm(pop)
-# '''
-# 	Scores cells using a global model and then 
+def save_celltypes_in_meta(pop, meta_in, meta_out):
+    '''
+    Save the labeled cell types into the metadata file
 
-# 	Parameters
-# 	----------
-# 	pop: obj
-# 		pop object containing all data, must have global gmm 
+    Parameters
+    ----------
+    pop : dict
+        PopAlign object        
+    meta_in : str
+    	original meta file name
+    meta_out : str
+        file name that ends in csv
+    '''
 
-# '''
+    # concatenate all coefficient matrices together
+    allC = get_cat_coeff(pop)
 
-# # concatenate all coefficient matrices together
-# allC = cat_data(pop, 'C')
+    # use the gmm to classify all of the data
+    classes = pop['gmm'].predict(allC)
 
-# # use the gmm to classify all of the data
-# classes = pop['gmm'].predict(allC)
+    dicttypes = pop['gmm_types']
+    celltypes = [dicttypes[i] for i in classes]
 
-# # save the cell type labels into the meta file and re-save the meta file
+    # add new column to metadata with cell types
+    newmeta = pop['meta']
+    newmeta['cell_type'] = celltypes
+
+    # load original metadata file and add cell_types column
+    meta = pd.read_csv(meta_in)
+
+    # if 'cell_type' column does not already exist, add new column in meta where all cell_types are None
+    if 'cell_type' not in list(meta):
+        meta['cell_type'] = None
+
+    # insert the identified cell types from the newmeta object into the original metadata table
+    for i in newmeta.index:
+        bc = newmeta.loc[i].cell_barcode
+        currcelltype = newmeta.loc[i].cell_type
+        meta.at[i,'cell_type'] = currcelltype
+
+    # save the meta data file
+    meta.to_csv(meta_out) # save dataframe in a single csv file
 
 
+
+import sys
+if not sys.warnoptions:
+	import warnings
+	warnings.simplefilter("ignore")
