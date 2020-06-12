@@ -5131,54 +5131,65 @@ def remove_celltypes(pop, ctlist):
 	# ['tsne']
 	# ['onmf']
 
+	newpop = pop # make a new pop object
  	# from each sample: remove cells from 'M', 'cell_type', 'indices', 'M_norm', 'pcaproj'
 	for ct in ctlist: 
 		
 		# remove cells from top level of pop object 
-		allcelltypes = cat_data(pop,'cell_type')
+		allcelltypes = cat_data(newpop,'cell_type')
 		allkeepidx = np.where(np.array(allcelltypes) != ct)[0]
-		pop['meta'] = pop['meta'].loc[allkeepidx]
+		newpop['meta'] = newpop['meta'].loc[allkeepidx]
 		try:
-			pop['umap'] = pop['umap'][allkeepidx,:]
+			newpop['umap'] = newpop['umap'][allkeepidx,:]
 		except: 
 			print(ct + 's not removed for umap: no umap coordinates currently stored.')
 		try: 
-			pop['tsne'] = pop['tsne'][allkeepidx,:]
+			newpop['tsne'] = newpop['tsne'][allkeepidx,:]
 		except: 
 			print(ct + 's not removed for tsne: no tsne coordinates currently stored.')
 		try:
-			pop['pca']['proj'] = pop['pca']['proj'][allkeepidx,:]
+			newpop['pca']['proj'] = newpop['pca']['proj'][allkeepidx,:]
 		except: 
-			print(ct + 's not removed for pca: no pca coordinates currently stored.')
+			print(ct + 's not removed for pca: no pca coefficients currently stored.')
 
 		# remove cells from each sample:
-		for x in pop['order']: 
-			currtypes = pop['samples'][x]['cell_type']
+		for x in newpop['order']: 
+			currtypes = newpop['samples'][x]['cell_type']
 			keepidx = np.where(np.array(currtypes) != ct)[0]
-			pop['samples'][x]['M'] = pop['samples'][x]['M'][:,keepidx]
-			pop['samples'][x]['cell_type'] = currtypes[keepidx]
+			newpop['samples'][x]['M'] = newpop['samples'][x]['M'][:,keepidx]
+			newpop['samples'][x]['cell_type'] = [currtypes[i] for i in keepidx]
 			try:
-				pop['samples'][x]['M_norm'] = pop['samples'][x]['M_norm'][:,keepidx]
+				newpop['samples'][x]['M_norm'] = newpop['samples'][x]['M_norm'][:,keepidx]
 			except: 
-				print('')
+				if x == newpop['order'][0]:
+					print(ct + 's not removed for M_norm in each sample: no normalized gene expression data stored')
 			try: 
-				pop['samples'][x]['pcaproj'] = pop['samples'][x]['pcaproj'][keepidx,:]
+				newpop['samples'][x]['pcaproj'] = newpop['samples'][x]['pcaproj'][keepidx,:]
 			except: 
-				print('')
+				if x == newpop['order'][0]:
+					print(ct + 's not removed for pca in each sample: no pca coefficients currently stored.')
+			try: 
+				newpop['samples'][x]['C'] = newpop['samples'][x]['C'][keepidx,:]
+			except: 
+				if x == newpop['order'][0]:
+					print(ct + 's not removed for onmf in each sample: no onmf coefficients currently stored.')
 
 	# redefine indices for each sample 
 	start = 0
 	end = 0
-	for i,x in enumerate(pop['order']): # for each sample
-		numcells = np.shape(pop['samples'][x]['M'])[1]
+	for i,x in enumerate(newpop['order']): # for each sample
+		numcells = np.shape(newpop['samples'][x]['M'])[1]
 		end = start+numcells # update start and end cell indices
-		pop['samples'][x]['indices'] = (start,end) # update start and end cell indices
+		newpop['samples'][x]['indices'] = (start,end) # update start and end cell indices
 		start = end # update start and end cell indices
 
 	# recalculate pca max and min	
-	newproj = pop['pca']['proj']
-	pop['pca']['maxes'] = newproj.max(axis=0) # store PCA projection space limits
-	pop['pca']['mins'] = newproj.min(axis=0) # store PCA projection space limits
+	newproj = newpop['pca']['proj']
+	newpop['pca']['maxes'] = newproj.max(axis=0) # store PCA projection space limits
+	newpop['pca']['mins'] = newproj.min(axis=0) # store PCA projection space limits
+
+	# only if all things have been replaced, set pop to newpop
+	pop = newpop
 
 def save_celltypes_in_meta(pop, meta_in, meta_out):
     '''
