@@ -721,6 +721,7 @@ def gene_filter(pop, remove_ribsomal=True):
 	plt.show()
 
 def removeRBC(pop, species):
+	# need to fix this to update all pieces of data
 	'''
 	Remove red blood cells from data
 
@@ -1671,6 +1672,9 @@ def render_model(pop, name, figsizesingle):
 	mean_proj = np.zeros((gmm.n_components, 2)) # to project the means in PC1/PC2 space
 	sample_density = np.zeros(X.shape)
 	w = gmm.weights_ # get the model component weights
+	
+	print(name)
+	print(mean_labels)
 
 	if mean_labels != [str(i) for i in range(gmm.n_components)]:
 		mean_labels = ['%d: %s' % (i,lbl) for i,lbl in enumerate(mean_labels)]
@@ -1865,88 +1869,7 @@ def build_single_GMM(k, C, reg_covar):
 		verbose_interval=10) # create model
 	return gmm.fit(C) # Fit the data
 
-
-
-def build_single_GMM_celltypes(coeff, cell_types):
-	'''
-	Generate a gaussian mixture model using existing cell types
-
-	Parameters
-	----------
-	k : int
-		Number of components
-	C : array
-		Feature data
-	reg_covar : float
-		Regularization of the covariance matrix
-	'''
-	# np.random.seed()
-	# gmm = smix.GaussianMixture(
-	# 	n_components=k,
-	# 	covariance_type='full',
-	# 	tol=0.001,
-	# 	reg_covar=reg_covar,
-	# 	max_iter=10000,
-	# 	n_init=10,
-	# 	init_params='kmeans',
-	# 	weights_init=None,
-	# 	means_init=None,
-	# 	precisions_init=None,
-	# 	random_state=None,
-	# 	warm_start=False,
-	# 	verbose=0,
-	# 	verbose_interval=10) # create model
-	# return gmm.fit(C) # Fit the data
-
-	main_types = np.unique(cell_types)
-	k = len(main_types)
-
-	if pop['featuretype'] == 'pca': 
-		D = np.shape(pop['pca']['components'])[1]
-	elif pop['featuretype'] =='onmf':
-		D  = np.shape(pop['W'])[1]
-
-	# extract weights_init
-	counts = [cell_types.count(i) for i in main_types]
-	weights_init = np.divide(counts, sum(counts))
-
-	# extract means_init, precisions_init
-	means_init = []
-	precisions_init = np.zeros((k,D,D))
-	for i in range(0,len(main_types)):
-		currtype = main_types[i]
-
-		idx = np.where(np.array(cell_types) == currtype)[0]
-		currcoeff = coeff[idx,]
-
-		currmean = np.mean(currcoeff,axis=0)
-		currprecision = validation.check_symmetric(np.linalg.inv(np.cov(currcoeff.T)))
-
-		means_init.append(currmean)
-		precisions_init[i,:,:] = currprecision
-
-	means_init = np.vstack(means_init)
-
-	gmm = smix.GaussianMixture(
-		n_components=k,
-		covariance_type='full',
-		tol=0.001,
-		reg_covar=False,
-		max_iter=1,
-		n_init=1,
-		init_params='kmeans',
-		weights_init=weights_init,
-		means_init=means_init,
-		precisions_init=precisions_init,
-		random_state=None,
-		warm_start=False,
-		verbose=0,
-		verbose_interval=10)
-
-	return gmm.fit(coeff)
-
-
-def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar='auto', rendering='grouped', types=None, figsizegrouped=(20,20), figsizesingle=(5,5), only=None, featuretype='onmf'):
+def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar='auto', rendering='grouped', types=None, figsizegrouped=(20,20), figsizesingle=(5,5), only=None, featuretype = 'onmf'):
 	'''
 	Build a Gaussian Mixture Model on feature projected data for each sample
 
@@ -1977,6 +1900,8 @@ def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar=
 		Size of the figure for each single sample rendering. Default is (5,5)
 	only: list or str, optional
 		Sample label or list of sample labels. Will force GMM construction for specified samples only. Defaults to None
+	featuretype: str
+		either 'pca' or 'onmf'
 	'''
 
 	if 'featuretype' in pop.keys():
@@ -2083,8 +2008,8 @@ def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar=
 	print('Rendering models')
 	render_models(pop, figsizegrouped=figsizegrouped, figsizesingle=figsizesingle, samples=samples, mode=rendering) # render the models
 
-#def build_unique_gmm(pop, ks=(5,20), niters=3, training=0.2, reg_covar=True, types=None, figsize=(6,5), featuretype='onmf'):
-def build_global_gmm(pop, ks=(5,20), niters=3, training=0.2, reg_covar=True, types=None, figsize=(6,5), featuretype='onmf'):
+#def build_unique_gmm(pop, ks=(5,20), niters=3, training=0.2, reg_covar=True, types=None, figsize=(6,5)):
+def build_global_gmm(pop, ks=(5,20), niters=3, training=0.2, reg_covar=True, types=None, figsize=(6,5), featuretype = 'onmf'):
 	'''
 	Build a global Gaussian Mixture Model on the feature projected data for all samples
 
@@ -2107,7 +2032,7 @@ def build_global_gmm(pop, ks=(5,20), niters=3, training=0.2, reg_covar=True, typ
 		Dictionary of cell types.
 		If None, a default PBMC cell types dictionary is provided
 	featuretype: str
-		either 'pca' or 'nmf'
+		either 'pca' or 'onmf'
 	'''
 	# Set featuretype to supplied featuretype but first check the variable
 
@@ -2169,144 +2094,6 @@ def build_global_gmm(pop, ks=(5,20), niters=3, training=0.2, reg_covar=True, typ
 	sd = render_model(pop, 'global_gmm', figsize)
 
 
-def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar='auto', rendering='grouped', types=None, figsizegrouped=(20,20), figsizesingle=(5,5), only=None, featuretype='onmf'):
-	'''
-	Build a Gaussian Mixture Model on feature projected data for each sample
-
-	Parameters
-	----------
-	pop : dict
-		Popalign object
-	ks : int or tuple
-		Number or range of components to use
-	niters : int
-		number of replicates to build for each k in `ks`
-	training : int or float
-		If training is float, the value will be used a percentage to select cells for the training set. Must follow 0<value<1
-		If training is int, that number of cells will be used for the training set.
-	nreplicates : int
-		Number of replicates to generate. These replicates model will be used to provide confidence intervals later in the analysis.
-	reg_covar : str or float
-		If 'auto', the regularization value will be computed from the feature data
-		If float, value will be used as reg_covar parameter to build GMMs
-	rendering : str
-		Either 'grouped', 'individual' or 'global'
-	types : dict, str or None
-		Dictionary of cell types.
-		If None, a default PBMC cell types dictionary is provided
-	figsizegrouped : tuple, optional
-		Size of the figure for the renderings together. Default is (20,20)
-	figsizesingle : tuple, optional
-		Size of the figure for each single sample rendering. Default is (5,5)
-	only: list or str, optional
-		Sample label or list of sample labels. Will force GMM construction for specified samples only. Defaults to None
-	'''
-
-	if 'featuretype' in pop.keys():
-		if featuretype != pop['featuretype']:
-			raise Exception('featuretype supplied is not consistent with existing featuretype. Please reset stored gmms (reset_gmms) and try again.')
-	else: 
-		pop['featuretype'] = featuretype
-
-	if isinstance(ks, tuple): # if ks is tuple
-		ks = np.arange(ks[0], ks[1]) # create array of ks
-	if isinstance(ks, int): # if int
-		ks = [ks] # # make it a list
-
-	if 'pca' not in pop:
-		pca(pop) # build pca space if necessary
-
-	if only != None:
-		if isinstance(only,list):
-			samples = only
-		else:
-			samples = [only]
-	else:
-		samples = pop['order']
-
-	for i,x in enumerate(samples): # for each sample x
-		print('Building model for %s (%d of %d) based on existing labels' % (x, (i+1), len(samples)))
-		C = get_coeff(pop,x)
-		M = pop['samples'][x]['M'] # get sample gene data
-		m = C.shape[0] # number of cells
-
-		# if (isinstance(training, int)) & (training<m) & (training > 1): # if training is int and smaller than number of cells
-		# 	n = training
-		# elif (isinstance(training, int)) & (training>=m): # if training is int and bigger than number of cells
-		# 	n = int(m*0.8) # since the number of training cells was larger than the number of cells in the sample, take 80%
-		# elif (isinstance(training, float)) & (0<training) & (training<1):
-		# 	n = int(m*training) # number of cells for the training set
-		# else:
-		# 	raise Exception('Value passed to training argument is invalid. Must be an int or a float between 0 and 1.')
-
-		# idx = np.random.choice(m, n, replace=False) # get n random cell indices
-		# not_idx = np.setdiff1d(range(m), idx) # get the validation set indices
-
-		# Ctrain = C[idx,:] # subset to get the training sdt
-		# Cvalid = C[not_idx,:] # subset to get the validation set
-
-		# if reg_covar == 'auto':
-		# 	reg_covar_param = pop['reg_covar'] # retrieve reg value from pop object that was computed from projection data
-		# else:
-		# 	reg_covar_param = reg_covar
-		with Pool(pop['ncores']) as p: # build all the models in parallel
-			q = p.starmap(build_single_GMM, [(k, Ctrain, reg_covar_param) for k in np.repeat(ks, niters)])
-
-
-
-		# We minimize the BIC score of the validation set
-		# to pick the best fitted gmm
-		BIC = [gmm.bic(Cvalid) for gmm in q] # compute the BIC for each model with the validation set
-		gmm = q[np.argmin(BIC)] # best gmm is the one that minimizes the BIC
-		pop['samples'][x]['gmm'] = gmm # store gmm
-		# pop['samples'][x]['gmm_means'] = np.array(gmm.means_.dot(pop['W'].T))
-		pop['samples'][x]['gmm_means'] = get_gmm_means(pop,x,None)
-
-		if types != None:
-			try:
-				pop['samples'][x]['gmm_types'] = typer_func(gmm=gmm, prediction=gmm.predict(C), M=M, genes=pop['genes'], types=types)
-			except:
-				print('Something went wrong while typing the GMM subopulations. Skipping subpopulation typing.')
-				pop['samples'][x]['gmm_types'] = [str(ii) for ii in range(gmm.n_components)]
-		else:
-			pop['samples'][x]['gmm_types'] = [str(ii) for ii in range(gmm.n_components)]
-
-		# Also store first gmm in ['replicates'][0]: 
-		pop['samples'][x]['replicates'] = {}
-		pop['samples'][x]['replicates'][0] = {}
-		pop['samples'][x]['replicates'][0]['gmm'] = gmm # store gmm
-		# pop['samples'][x]['replicates'][0]['gmm_means'] = np.array(gmm.means_.dot(pop['W'].T))
-		pop['samples'][x]['replicates'][0]['gmm_means'] = get_gmm_means(pop, x, 0)
-
-		# Create replicates
-		pop['nreplicates'] = nreplicates # store number of replicates in pop object
-		if nreplicates >=1: # if replicates are requested
-			for j in range(1,nreplicates): # for each replicate number j
-				idx = np.random.choice(m, n, replace=False) # get n random cell indices
-				not_idx = np.setdiff1d(range(m), idx) # get the validation set indices
-				Ctrain = C[idx,:] # subset to get the training sdt
-				Cvalid = C[not_idx,:] # subset to get the validation set
-
-				with Pool(pop['ncores']) as p: # build all the models in parallel
-					q = p.starmap(build_single_GMM, [(k, Ctrain, reg_covar_param) for k in np.repeat(ks, niters)])
-				# We minimize the BIC score of the validation set
-				# to pick the best fitted gmm
-				BIC = [gmm.bic(Cvalid) for gmm in q] # compute the BIC for each model with the validation set
-				gmm = q[np.argmin(BIC)] # best gmm is the one that minimizes the BIC
-				pop['samples'][x]['replicates'][j] = {}
-				pop['samples'][x]['replicates'][j]['gmm'] = gmm # store replicate number j
-				# pop['samples'][x]['replicates'][j]['gmm_means'] = gmm.means_.dot(pop['W'].T)
-				pop['samples'][x]['replicates'][j]['gmm_means'] = get_gmm_means(pop, x, j)
-				if types != None:
-					pop['samples'][x]['replicates'][j]['gmm_types'] = typer_func(gmm=gmm, prediction=gmm.predict(C), M=M, genes=pop['genes'], types=types)
-				else:
-					pop['samples'][x]['replicates'][j]['gmm_types'] = [str(ii) for ii in range(gmm.n_components)]
-
-	print('Rendering models')
-	render_models(pop, figsizegrouped=figsizegrouped, figsizesingle=figsizesingle, samples=samples, mode=rendering) # render the models
-
-
-
 def calc_reg_covar(pop): 
 	'''
 	Compute a regularization value for covariance based on scale of coefficients
@@ -2360,6 +2147,218 @@ def get_gmm_means(pop, sample, rep = None):
 
 	return gmm_means
 
+
+'''
+Build gmms using cell types
+'''
+
+def build_single_GMM_by_celltype(coeff, cell_types):
+	'''
+	Generate a gaussian mixture model using existing cell types
+
+	Parameters
+	----------
+	k : int
+		Number of components
+	C : array
+		Feature data
+	reg_covar : float
+		Regularization of the covariance matrix
+	'''
+	# np.random.seed()
+	# gmm = smix.GaussianMixture(
+	# 	n_components=k,
+	# 	covariance_type='full',
+	# 	tol=0.001,
+	# 	reg_covar=reg_covar,
+	# 	max_iter=10000,
+	# 	n_init=10,
+	# 	init_params='kmeans',
+	# 	weights_init=None,
+	# 	means_init=None,
+	# 	precisions_init=None,
+	# 	random_state=None,
+	# 	warm_start=False,
+	# 	verbose=0,
+	# 	verbose_interval=10) # create model
+	# return gmm.fit(C) # Fit the data
+
+	main_types = np.unique(cell_types)
+	k = len(main_types)
+	
+	D  = np.shape(coeff)[1]
+
+	# extract weights_init
+	counts = [cell_types.count(i) for i in main_types]
+	weights_init = np.divide(counts, sum(counts))
+
+	# extract means_init, precisions_init
+	means_init = []
+	precisions_init = np.zeros((k,D,D))
+	for i in range(0,len(main_types)):
+		currtype = main_types[i]
+
+		idx = np.where(np.array(cell_types) == currtype)[0]
+		currcoeff = coeff[idx,]
+
+		currmean = np.mean(currcoeff,axis=0)
+		currprecision = np.linalg.inv(np.cov(currcoeff.T))
+
+		means_init.append(currmean)
+		precisions_init[i,:,:] = currprecision
+
+	means_init = np.vstack(means_init)
+
+	gmm = smix.GaussianMixture(
+		n_components=k,
+		covariance_type='full',
+		tol=0.001,
+		reg_covar=False,
+		max_iter=1,
+		n_init=1,
+		init_params='kmeans',
+		weights_init=weights_init,
+		means_init=means_init,
+		precisions_init=precisions_init,
+		random_state=None,
+		warm_start=False,
+		verbose=0,
+		verbose_interval=10)
+
+	return gmm.fit(coeff)
+
+
+def build_gmms_by_celltypes(pop, ks=(5,10), only=None,rendering='grouped', figsizegrouped=(20,20), figsizesingle=(5,5), niters=3, training=0.7, nreplicates=0, reg_covar='auto',types='defaultpbmc', featuretype = 'onmf'):
+	'''
+	Build a Gaussian Mixture Model on feature projected data for each sample
+
+	Parameters
+	----------
+	pop : dict
+		Popalign object
+	ks : int or tuple
+		Number or range of components to use
+	niters : int
+		number of replicates to build for each k in `ks`
+	training : int or float
+		If training is float, the value will be used a percentage to select cells for the training set. Must follow 0<value<1
+		If training is int, that number of cells will be used for the training set.
+	nreplicates : int
+		Number of replicates to generate. These replicates model will be used to provide confidence intervals later in the analysis.
+	reg_covar : str or float
+		If 'auto', the regularization value will be computed from the feature data
+		If float, value will be used as reg_covar parameter to build GMMs
+	rendering : str
+		Either 'grouped', 'individual' or 'global'
+	types : dict, str or None
+		Dictionary of cell types.
+		If None, a default PBMC cell types dictionary is provided
+	figsizegrouped : tuple, optional
+		Size of the figure for the renderings together. Default is (20,20)
+	figsizesingle : tuple, optional
+		Size of the figure for each single sample rendering. Default is (5,5)
+	only: list or str, optional
+		Sample label or list of sample labels. Will force GMM construction for specified samples only. Defaults to None
+	featuretype: str
+		either 'pca' or 'onmf'
+	'''
+
+	if 'featuretype' in pop.keys():
+		if featuretype != pop['featuretype']:
+			raise Exception('featuretype supplied is not consistent with existing featuretype. Please reset stored gmms (reset_gmms) and try again.')
+	else: 
+		pop['featuretype'] = featuretype
+
+	if isinstance(ks, tuple): # if ks is tuple
+		ks = np.arange(ks[0], ks[1]) # create array of ks
+	if isinstance(ks, int): # if int
+		ks = [ks] # # make it a list
+
+	if 'pca' not in pop:
+		pca(pop) # build pca space if necessary
+
+	if only != None:
+		if isinstance(only,list):
+			samples = only
+		else:
+			samples = [only]
+	else:
+		samples = pop['order']
+
+	calc_reg_covar(pop)
+
+	for i,x in enumerate(samples): # for each sample x
+		print('Building model for %s (%d of %d) using cell type labels' % (x, (i+1), len(samples)))
+
+		# C = pop['samples'][x]['C'] # get sample feature data
+		coeff = get_coeff(pop,x)
+		celltypes = pop['samples'][x]['cell_type']
+
+		try: 
+			gmm = build_single_GMM_by_celltype(coeff, celltypes)
+			main_types = np.unique(celltypes).tolist()
+			
+		except: 
+			print('Building model for %s (%d of %d) using cell type labels didn\'t work' % (x, (i+1), len(samples)))
+			print('Building model for %s (%d of %d) using gmm fitting instead and supplied parameters' % (x, (i+1), len(samples)))
+			
+			m = coeff.shape[0] # number of cells
+
+			if (isinstance(training, int)) & (training<m) & (training > 1): # if training is int and smaller than number of cells
+				n = training
+			elif (isinstance(training, int)) & (training>=m): # if training is int and bigger than number of cells
+				n = int(m*0.8) # since the number of training cells was larger than the number of cells in the sample, take 80%
+			elif (isinstance(training, float)) & (0<training) & (training<1):
+				n = int(m*training) # number of cells for the training set
+			else:
+				raise Exception('Value passed to training argument is invalid. Must be an int or a float between 0 and 1.')
+
+			idx = np.random.choice(m, n, replace=False) # get n random cell indices
+			not_idx = np.setdiff1d(range(m), idx) # get the validation set indices
+
+			Ctrain = coeff[idx,:] # subset to get the training sdt
+			Cvalid = coeff[not_idx,:] # subset to get the validation set
+
+			if reg_covar == 'auto':
+				reg_covar_param = pop['reg_covar'] # retrieve reg value from pop object that was computed from projection data
+			else:
+				reg_covar_param = reg_covar
+			with Pool(pop['ncores']) as p: # build all the models in parallel
+				q = p.starmap(build_single_GMM, [(k, Ctrain, reg_covar_param) for k in np.repeat(ks, niters)])
+
+			# We minimize the BIC score of the validation set
+			# to pick the best fitted gmm
+			BIC = [gmm.bic(Cvalid) for gmm in q] # compute the BIC for each model with the validation set
+			gmm = q[np.argmin(BIC)] # best gmm is the one that minimizes the BIC
+		
+			if types != None:
+				try:
+					M = pop['samples'][x]['M'] # get sample gene data
+					main_types = typer_func(gmm=gmm, prediction=gmm.predict(coeff), M=M, genes=pop['genes'], types=types)
+				except:
+					print('Something went wrong while typing the GMM subopulations. Skipping subpopulation typing.')
+					main_types = [str(ii) for ii in range(gmm.n_components)]
+			else:
+				main_types = [str(ii) for ii in range(gmm.n_components)]
+
+		pop['samples'][x]['gmm'] = gmm # store gmm
+		# pop['samples'][x]['gmm_means'] = np.array(gmm.means_.dot(pop['W'].T))
+		pop['samples'][x]['gmm_means'] = get_gmm_means(pop,x,None)
+		pop['samples'][x]['gmm_types'] = main_types
+
+	print('Rendering models')
+	render_models(pop, figsizegrouped=figsizegrouped, figsizesingle=figsizesingle, samples=samples, mode=rendering) # render the models
+
+def check_symmetric(mat):
+	return (np.allclose(mat, mat.T))
+
+def check_posdef(mat):
+	return(np.all(np.linalg.eigvalsh(mat) > 0.))
+
+def check_allprec(precisions):
+	value = True
+	for prec in precisions:
+		value = value and (check_symmetric(prec) and check_posdef(prec))
 
 '''
 Entropy functions
