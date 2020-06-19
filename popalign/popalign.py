@@ -2829,8 +2829,8 @@ def align(pop, ref=None, method='conservative', figsizedeltas=(10,10), figsizeen
 		except:
 			pass
 
-	plot_deltas(pop, figsizedeltas) # generate plot mu and delta w plots
-	entropy(pop, figsizeentropy)
+	# plot_deltas(pop, figsizedeltas) # generate plot mu and delta w plots
+	# entropy(pop, figsizeentropy)
 
 
 # Assign sample cells to reference gmm components and compute deltas - This section needs work
@@ -5192,6 +5192,7 @@ def remove_celltypes(pop, ctlist):
 def save_celltypes_in_meta(pop, meta_in, meta_out):
     '''
     Save the labeled cell types into the metadata file
+    And also put it the 
 
     Parameters
     ----------
