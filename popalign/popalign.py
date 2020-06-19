@@ -1248,7 +1248,7 @@ def pca(pop, n_components=2, fromspace='genes'):
 	pop['pca']['components'] = pca.components_.T # store PCA space (PC1, PC2)
 	pop['pca']['proj'] = pcaproj # store entire PCA projection
 	pop['pca']['maxes'] = pcaproj.max(axis=0) # store PCA projection space limits
-	pop['pca']['mins'] = pcaproj.min(axis=0) # store PCA projection space limits
+	pop['pca']['mines'] = pcaproj.min(axis=0) # store PCA projection space limits
 	pop['pca']['lims_ext'] = 0.25
 	pop['pca']['fromspace'] = fromspace
 	pop['pca']['mean'] = pca.mean_
@@ -1657,7 +1657,7 @@ def render_model(pop, name, figsizesingle):
 	row_idx = np.array([x, y])
 	col_idx = np.array([x, y])
 	maxes = pop['pca']['maxes']
-	mins = pop['pca']['mins']
+	mins = pop['pca']['mines']
 	xlim = (mins[x], maxes[x])
 	ylim = (mins[y], maxes[y])
 	x_ext = (xlim[1]-xlim[0])*lims_ext
@@ -1746,7 +1746,7 @@ def grid_rendering(pop, q, figsize, samples):
 	row_idx = np.array([x, y])
 	col_idx = np.array([x, y])
 	maxes = pop['pca']['maxes']
-	mins = pop['pca']['mins']
+	mins = pop['pca']['mines']
 	xlim = (mins[x], maxes[x])
 	ylim = (mins[y], maxes[y])
 	x_ext = (xlim[1]-xlim[0])*lims_ext
@@ -2228,10 +2228,9 @@ def build_single_GMM_by_celltype(coeff, cell_types):
 	return gmm.fit(coeff)
 
 
-def build_gmms_by_celltypes(pop, ks=(5,10), only=None,rendering='grouped', figsizegrouped=(20,20), figsizesingle=(5,5), niters=3, training=0.7, nreplicates=0, reg_covar='auto',types='defaultpbmc', featuretype = 'onmf'):
+def build_gmms_by_celltypes(pop, ks=(5,10), only=None, rendering='grouped', figsizegrouped=(20,20), figsizesingle=(5,5), niters=3, training=0.7, nreplicates=0, reg_covar='auto',types='defaultpbmc', featuretype = 'onmf'):
 	'''
-	Build a Gaussian Mixture Model on feature projected data for each sample
-
+	Build a Gaussian Mixture Model on feature projected data using cell type labels for each sample
 	Parameters
 	----------
 	pop : dict
@@ -2297,7 +2296,7 @@ def build_gmms_by_celltypes(pop, ks=(5,10), only=None,rendering='grouped', figsi
 		try: 
 			gmm = build_single_GMM_by_celltype(coeff, celltypes)
 			main_types = np.unique(celltypes).tolist()
-			
+
 		except: 
 			print('Building model for %s (%d of %d) using cell type labels didn\'t work' % (x, (i+1), len(samples)))
 			print('Building model for %s (%d of %d) using gmm fitting instead and supplied parameters' % (x, (i+1), len(samples)))
@@ -5125,7 +5124,7 @@ def remove_celltypes(pop, ctlist):
 
 	# remove data from main section first
 	# ['meta']
-	# ['pca']: ['proj'] ['mins'] ['maxes']
+	# ['pca']: ['proj'] ['mines'] ['maxes']
 	# ['umap']
 	# ['tsne']
 	# ['onmf']
@@ -5137,19 +5136,19 @@ def remove_celltypes(pop, ctlist):
 		# remove cells from top level of pop object 
 		allcelltypes = cat_data(newpop,'cell_type')
 		allkeepidx = np.where(np.array(allcelltypes) != ct)[0]
-		newpop['meta'] = newpop['meta'].loc[allkeepidx]
+		newpop['meta'] = newpop['meta'].iloc[allkeepidx]
 		try:
 			newpop['umap'] = newpop['umap'][allkeepidx,:]
 		except: 
-			print(ct + 's not removed for umap: no umap coordinates currently stored.')
+			print(ct + ' not removed for umap: no umap coordinates currently stored.')
 		try: 
 			newpop['tsne'] = newpop['tsne'][allkeepidx,:]
 		except: 
-			print(ct + 's not removed for tsne: no tsne coordinates currently stored.')
+			print(ct + ' not removed for tsne: no tsne coordinates currently stored.')
 		try:
 			newpop['pca']['proj'] = newpop['pca']['proj'][allkeepidx,:]
 		except: 
-			print(ct + 's not removed for pca: no pca coefficients currently stored.')
+			print(ct + ' not removed for pca: no pca coefficients currently stored.')
 
 		# remove cells from each sample:
 		for x in newpop['order']: 
@@ -5185,7 +5184,7 @@ def remove_celltypes(pop, ctlist):
 	# recalculate pca max and min	
 	newproj = newpop['pca']['proj']
 	newpop['pca']['maxes'] = newproj.max(axis=0) # store PCA projection space limits
-	newpop['pca']['mins'] = newproj.min(axis=0) # store PCA projection space limits
+	newpop['pca']['mines'] = newproj.min(axis=0) # store PCA projection space limits
 
 	# only if all things have been replaced, set pop to newpop
 	pop = newpop
