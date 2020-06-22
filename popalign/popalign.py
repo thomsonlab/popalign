@@ -2007,8 +2007,8 @@ def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar=
 				else:
 					pop['samples'][x]['replicates'][j]['gmm_types'] = [str(ii) for ii in range(gmm.n_components)]
 
-	print('Rendering models')
-	render_models(pop, figsizegrouped=figsizegrouped, figsizesingle=figsizesingle, samples=samples, mode=rendering) # render the models
+	# print('Rendering models')
+	# render_models(pop, figsizegrouped=figsizegrouped, figsizesingle=figsizesingle, samples=samples, mode=rendering) # render the models
 
 #def build_unique_gmm(pop, ks=(5,20), niters=3, training=0.2, reg_covar=True, types=None, figsize=(6,5)):
 def build_global_gmm(pop, ks=(5,20), niters=3, training=0.2, reg_covar=True, types=None, figsize=(6,5), featuretype = 'onmf'):
@@ -2348,8 +2348,8 @@ def build_gmms_by_celltypes(pop, ks=(5,10), only=None, rendering='grouped', figs
 		pop['samples'][x]['gmm_types'] = main_types
 		pop['nreplicates'] = 0
 
-	print('Rendering models')
-	render_models(pop, figsizegrouped=figsizegrouped, figsizesingle=figsizesingle, samples=samples, mode=rendering) # render the models
+	# print('Rendering models')
+	# render_models(pop, figsizegrouped=figsizegrouped, figsizesingle=figsizesingle, samples=samples, mode=rendering) # render the models
 
 def check_symmetric(mat):
 	return (np.allclose(mat, mat.T))
