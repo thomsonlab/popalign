@@ -565,6 +565,7 @@ def filter(pop, remove_ribsomal=True, remove_mitochondrial=True):
 		pop['samples'][x]['M'].data = np.log(pop['samples'][x]['M'].data+1) # log the non gene-filtered matrix 
 
 	filtered_genes = [genes[i] for i in gene_idx] # get gene names of filtered genes
+	pop['filter_idx'] = gene_idx
 	pop['filtered_genes'] = filtered_genes # store name list
 	pop['filtered_genes_set'] = set(filtered_genes)
 
@@ -1782,6 +1783,7 @@ def grid_rendering(pop, q, figsize, samples):
 	mkdir(os.path.join(pop['output'], dname))
 	name = name.replace('/','')
 	plt.savefig(os.path.join(pop['output'], dname, 'model_rendering_%s.pdf' % 'allsamples'), dpi=200)
+	plt.savefig(os.path.join(pop['output'], dname, 'model_rendering_%s.png' % 'allsamples'), dpi=200)
 	plt.close()
 
 	'''
@@ -2344,6 +2346,7 @@ def build_gmms_by_celltypes(pop, ks=(5,10), only=None, rendering='grouped', figs
 		# pop['samples'][x]['gmm_means'] = np.array(gmm.means_.dot(pop['W'].T))
 		pop['samples'][x]['gmm_means'] = get_gmm_means(pop,x,None)
 		pop['samples'][x]['gmm_types'] = main_types
+		pop['nreplicates'] = 0
 
 	print('Rendering models')
 	render_models(pop, figsizegrouped=figsizegrouped, figsizesingle=figsizesingle, samples=samples, mode=rendering) # render the models
@@ -2570,7 +2573,7 @@ def plot_deltas(pop, figsize=(10,10), sortby='mu', pthresh = 0.05): # generate p
 			added = False
 			tmp_delta_mus = []
 			tmp_delta_ws = []
-			if pop['nreplicates'] >= 1: # if gmm replicates exist
+			if pop['nreplicates'] > 1: # if gmm replicates exist
 				for j in range(pop['nreplicates']):
 					arr = pop['samples'][x]['replicates'][j]['alignments']
 					try:
@@ -2580,13 +2583,26 @@ def plot_deltas(pop, figsize=(10,10), sortby='mu', pthresh = 0.05): # generate p
 						mu_test = get_gmm_means(pop, x, j)[itest]
 						w_test = pop['samples'][x]['replicates'][j]['gmm'].weights_[itest] # get the test comp weight value
 						samplelbls.append(x)
-						tmp_delta_mus.append(np.linalg.norm([np.array(mu_test).flatten() - np.array(mu_ref).flatten()], ord='fro')) # store delta mu
+						tmp_delta_mus.append(np.linalg.norm([np.array(mu_test).flatten() - np.array(mu_ref[i]).flatten()], ord='fro')) # store delta mu
 						tmp_delta_ws.append((w_test - w_ref)*100) # store delta w
 						xcoords.append(k)
 						added = True
 					except:
 						pass
-			
+
+			if pop['nreplicates'] <= 1: # if gmm replicates exist
+				arr = pop['samples'][x]['alignments']
+				irow = np.where(arr[:,1] == i) # try to get the row where the ref comp number matches i
+				itest = int(arr[irow, 0]) # get test comp number from row
+				# mu_test = pop['samples'][x]['replicates'][j]['gmm_means'][itest] # get the test comp mean value
+				mu_test = get_gmm_means(pop, x)[itest]
+				w_test = pop['samples'][x]['gmm'].weights_[itest] # get the test comp weight value
+				samplelbls.append(x)
+				tmp_delta_mus.append(np.linalg.norm([np.array(mu_test).flatten() - np.array(mu_ref[i]).flatten()], ord='fro')) # store delta mu
+				tmp_delta_ws.append((w_test - w_ref)*100) # store delta w
+				xcoords.append(k)
+				added = True
+
 			if x != ref: # if x is not the reference
 				arr = pop['samples'][x]['alignments'] # get the alignments between x and the reference
 				try:
@@ -2596,7 +2612,7 @@ def plot_deltas(pop, figsize=(10,10), sortby='mu', pthresh = 0.05): # generate p
 					mu_test = get_gmm_means(pop, ref, None)[itest]
 					w_test = pop['samples'][x]['gmm'].weights_[itest] # get the test comp weight value
 					samplelbls.append(x) # store test sample label x
-					tmp_delta_mus.append(np.linalg.norm([np.array(mu_test).flatten() - np.array(mu_ref).flatten()], ord='fro')) # store delta mu
+					tmp_delta_mus.append(np.linalg.norm([np.array(mu_test).flatten() - np.array(mu_ref[i]).flatten()], ord='fro')) # store delta mu
 					tmp_delta_ws.append((w_test - w_ref)*100) # store delta w
 					xcoords.append(k)
 					added = True
@@ -2699,7 +2715,7 @@ def plot_deltas(pop, figsize=(10,10), sortby='mu', pthresh = 0.05): # generate p
 
 		plt.tight_layout()
 		currtype = currtype.replace('/','')
-		plt.rc('font', size= 18) 
+		plt.rc('font', size= 12) 
 		plt.savefig(os.path.join(pop['output'], dname, 'deltas_comp%d_%s_%ssort.pdf' % (i,currtype, sortby)), format='pdf', bbox_inches='tight')
 		plt.close()
 
@@ -5190,49 +5206,56 @@ def remove_celltypes(pop, ctlist):
 	pop = newpop
 
 def save_celltypes_in_meta(pop, meta_in, meta_out):
-    '''
-    Save the labeled cell types into the metadata file
-    And also put it the 
+	'''
+	Save the labeled cell types into the metadata file
+	And also put it the pop object
 
-    Parameters
-    ----------
-    pop : dict
-        PopAlign object        
-    meta_in : str
-    	original meta file name
-    meta_out : str
-        file name that ends in csv
-    '''
+	Parameters
+	----------
+	pop : dict
+	    PopAlign object        
+	meta_in : str
+		original meta file name
+	meta_out : str
+	    file name that ends in csv
+	'''
 
-    # concatenate all coefficient matrices together
-    allC = get_cat_coeff(pop)
+	# concatenate all coefficient matrices together
+	allC = get_cat_coeff(pop)
 
-    # use the gmm to classify all of the data
-    classes = pop['gmm'].predict(allC)
+	# use the gmm to classify all of the data
+	classes = pop['gmm'].predict(allC)
 
-    dicttypes = pop['gmm_types']
-    celltypes = [dicttypes[i] for i in classes]
+	dicttypes = pop['gmm_types']
+	celltypes = [dicttypes[i] for i in classes]
 
-    # add new column to metadata with cell types
-    newmeta = pop['meta']
-    newmeta['cell_type'] = celltypes
+	# add new column to metadata with cell types
+	newmeta = pop['meta']
+	newmeta['cell_type'] = celltypes
 
-    # load original metadata file and add cell_types column
-    meta = pd.read_csv(meta_in)
+	# load original metadata file and add cell_types column
+	meta = pd.read_csv(meta_in)
 
-    # if 'cell_type' column does not already exist, add new column in meta where all cell_types are None
-    if 'cell_type' not in list(meta):
-        meta['cell_type'] = None
+	# if 'cell_type' column does not already exist, add new column in meta where all cell_types are None
+	if 'cell_type' not in list(meta):
+		meta['cell_type'] = None
 
-    # insert the identified cell types from the newmeta object into the original metadata table
-    for i in newmeta.index:
-        bc = newmeta.loc[i].cell_barcode
-        currcelltype = newmeta.loc[i].cell_type
-        meta.at[i,'cell_type'] = currcelltype
+	# insert the identified cell types from the newmeta object into the original metadata table
+	for i in newmeta.index:
+		bc = newmeta.loc[i].cell_barcode
+		currcelltype = newmeta.loc[i].cell_type
+		meta.at[i,'cell_type'] = currcelltype
 
-    # save the meta data file
-    meta.to_csv(meta_out) # save dataframe in a single csv file
+	# save the meta data file
+	meta.to_csv(meta_out) # save dataframe in a single csv file
 
+	# Store newmeta into pop object
+	pop['meta'] = newmeta
+
+	# Store cell types back into individual samples
+	for x in pop['order']:
+		currtypes = newmeta[newmeta.sample_id == x].cell_type.values
+		pop['samples'][x]['cell_type'] = currtypes
 
 import sys
 if not sys.warnoptions:
