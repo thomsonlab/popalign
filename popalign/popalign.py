@@ -2590,26 +2590,13 @@ def plot_deltas(pop, figsize=(10,10), sortby='mu', pthresh = 0.05): # generate p
 					except:
 						pass
 
-			if pop['nreplicates'] <= 1: # if gmm replicates exist
-				arr = pop['samples'][x]['alignments']
-				irow = np.where(arr[:,1] == i) # try to get the row where the ref comp number matches i
-				itest = int(arr[irow, 0]) # get test comp number from row
-				# mu_test = pop['samples'][x]['replicates'][j]['gmm_means'][itest] # get the test comp mean value
-				mu_test = get_gmm_means(pop, x)[itest]
-				w_test = pop['samples'][x]['gmm'].weights_[itest] # get the test comp weight value
-				samplelbls.append(x)
-				tmp_delta_mus.append(np.linalg.norm([np.array(mu_test).flatten() - np.array(mu_ref[i]).flatten()], ord='fro')) # store delta mu
-				tmp_delta_ws.append((w_test - w_ref)*100) # store delta w
-				xcoords.append(k)
-				added = True
-
 			if x != ref: # if x is not the reference
 				arr = pop['samples'][x]['alignments'] # get the alignments between x and the reference
 				try:
 					irow = np.where(arr[:,1] == i) # try to get the row where the ref comp number matches i
 					itest = int(arr[irow, 0]) # get test comp number from row
 					# mu_test = pop['samples'][x]['gmm_means'][itest] # get the test comp mean value
-					mu_test = get_gmm_means(pop, ref, None)[itest]
+					mu_test = get_gmm_means(pop, x, None)[itest]
 					w_test = pop['samples'][x]['gmm'].weights_[itest] # get the test comp weight value
 					samplelbls.append(x) # store test sample label x
 					tmp_delta_mus.append(np.linalg.norm([np.array(mu_test).flatten() - np.array(mu_ref[i]).flatten()], ord='fro')) # store delta mu
