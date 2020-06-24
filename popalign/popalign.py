@@ -3694,7 +3694,7 @@ def scatter(pop, method='tsne', sample=None, compnumber=None, marker=None, size=
 	plt.savefig(os.path.join(pop['output'], dname, '%s.%s' % (filename, extension)), dpi=200, bbox_inches='tight') # save figure
 	plt.close()
 
-def samples_grid(pop, method='tsne', figsize=(20,20), size_background=.1, size_samples=.1, samplecolor='purple'):
+def samples_grid(pop, method='tsne', figsize=(20,20), size_background=.1, size_samples=.3, samplecolor='purple'):
 	'''
 	Generate a grid plot of sample plots in an embedding space
 
