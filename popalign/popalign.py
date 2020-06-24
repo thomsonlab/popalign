@@ -3597,7 +3597,7 @@ def plot_genes_gmm_cells(pop, sample='', genelist=[], savename='', metric='corre
 	plt.savefig(os.path.join(pop['output'], dname, '%s_cells.pdf' % savename), dpi=200, bbox_inches='tight')
 	plt.close()
 
-def scatter(pop, method='tsne', sample=None, compnumber=None, marker=None, size=.1, extension='pdf'):	
+def scatter(pop, method='tsne', sample=None, compnumber=None, marker=None, size=.3, extension='pdf', samplecolor='red'):	
 	'''
 	Run an embedding algorithm and plot the data in a scatter plot
 
@@ -3659,14 +3659,14 @@ def scatter(pop, method='tsne', sample=None, compnumber=None, marker=None, size=
 		except:
 			raise Exception('Gene name not valid') # raise exception if gene name not valid
 	else:
-		c = 'red'
+		c = samplecolor
 		cmap = None
 	
 	if not sample:
 		plt.scatter(X[:,0], X[:,1], c=c, cmap=cmap, s=size)
 	else:
 		plt.scatter(X[:,0], X[:,1], c='lightgrey', cmap=cmap, s=size)
-		plt.scatter(xsample, ysample, c=c, cmap=cmap, s=size)
+		plt.scatter(xsample, ysample, c=c, cmap=cmap, s=size*3)
 	
 	plt.xticks([]) # remove x ticks
 	plt.yticks([]) # remove y ticks
@@ -3694,7 +3694,7 @@ def scatter(pop, method='tsne', sample=None, compnumber=None, marker=None, size=
 	plt.savefig(os.path.join(pop['output'], dname, '%s.%s' % (filename, extension)), dpi=200, bbox_inches='tight') # save figure
 	plt.close()
 
-def samples_grid(pop, method='tsne', figsize=(20,20), size_background=.1, size_samples=.1):
+def samples_grid(pop, method='tsne', figsize=(20,20), size_background=.1, size_samples=.1, samplecolor='purple'):
 	'''
 	Generate a grid plot of sample plots in an embedding space
 
@@ -3744,7 +3744,7 @@ def samples_grid(pop, method='tsne', figsize=(20,20), size_background=.1, size_s
 		ysub = y[start:end] # splice y coordinates
 		start = end # update start index
 		ax.scatter(x, y, c='lightgrey', s=size_background) # plot all cells as background
-		ax.scatter(xsub, ysub, c='purple', s=size_samples) # plot sample cells on top
+		ax.scatter(xsub, ysub, c=samplecolor, s=size_samples) # plot sample cells on top
 		ax.set(xticks=[]) # remove x ticks
 		ax.set(yticks=[]) # remove y ticks
 		ax.set(title=name) # sample name as title
