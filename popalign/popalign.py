@@ -3597,7 +3597,7 @@ def plot_genes_gmm_cells(pop, sample='', genelist=[], savename='', metric='corre
 	plt.savefig(os.path.join(pop['output'], dname, '%s_cells.pdf' % savename), dpi=200, bbox_inches='tight')
 	plt.close()
 
-def scatter(pop, method='tsne', sample=None, compnumber=None, marker=None, size=.3, extension='pdf', samplecolor='red'):	
+def scatter(pop, method='tsne', sample=None, compnumber=None, marker=None, size=.3, extension='pdf', cmap='Blues',samplecolor='red'):	
 	'''
 	Run an embedding algorithm and plot the data in a scatter plot
 
@@ -3655,7 +3655,6 @@ def scatter(pop, method='tsne', sample=None, compnumber=None, marker=None, size=
 		try:
 			ig = np.where(pop['genes']==marker)[0][0] # get gene index if valid gene name
 			c = M[ig,:].toarray().flatten() # get expression values of gene
-			cmap = 'Blues'
 		except:
 			raise Exception('Gene name not valid') # raise exception if gene name not valid
 	else:
