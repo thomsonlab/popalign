@@ -4681,8 +4681,8 @@ def all_diffexp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists=True
 	except:
 		raise Exception('Could not retrieve a matching alignment between sample %s and reference component %d' % (sample, refcomp))
 
- 	refcoeff = get_coeff(pop,xref)
- 	testcoeff = get_coeff(pop,xtest)
+	refcoeff = get_coeff(pop,xref)
+	testcoeff = get_coeff(pop,xtest)
 	predictionref = pop['samples'][xref]['gmm'].predict(refcoeff) # get ref cell assignments
 	predictiontest = pop['samples'][xtest]['gmm'].predict(testcoeff) # get test cell assignments
 
