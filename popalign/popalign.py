@@ -1641,7 +1641,6 @@ def render_model(pop, name, figsizesingle):
 		mean_labels = pop['gmm_types']
 	else:
 		gmm = pop['samples'][name]['gmm']
-		# C = pop['samples'][name]['C']
 		C = get_coeff(pop, name)
 		pcaproj = pop['samples'][name]['pcaproj']
 		mean_labels = pop['samples'][name]['gmm_types']
@@ -3333,7 +3332,7 @@ def plot_heatmap(pop, refcomp, genelist, clustersamples=True, clustercells=True,
 
 	ref = pop['ref'] # get reference sample label
 	reftype = pop['samples'][ref]['gmm_types'][refcomp]
-	C = pop['samples'][ref]['C'] # get reference data in feature space
+	C = get_coeff(pop,ref)# get reference data in feature space
 	M = pop['samples'][ref]['M'][gidx,:] # get reference data in gene space, subsample genes
 	prediction = pop['samples'][ref]['gmm'].predict(C) # get cell predictions
 	idx = np.where(prediction == refcomp)[0] # get indices of cells in component #refcomp
@@ -3529,8 +3528,7 @@ def plot_genes_gmm_cells(pop, sample='', genelist=[], savename='', metric='corre
 	elif sample in pop['order']: # if the user wants to access the gmm of a given sample
 		gmm = pop['samples'][sample]['gmm'] # get sample's gmm
 		M = pop['samples'][sample][datatype] # get sample data in gene space
-		# C = pop['samples'][sample]['C'] # get sample data in feat space
-		C = get_coeff(pop, sample)
+		C = get_coeff(pop, sample)# get sample data in feat space
 		columns = pop['samples'][sample]['gmm_types'] # get the GMM subpopulation labels
 	else: 
 		raise Exception('sample should be `global` or a valid sample name.')
@@ -3642,7 +3640,6 @@ def scatter(pop, method='tsne', sample=None, compnumber=None, marker=None, size=
 		
 		if compnumber != None:
 			gmm = pop['samples'][sample]['gmm']
-			# C = pop['samples'][sample]['C']
 			C = get_coeff(pop, sample)
 			prediction = gmm.predict(C)
 			idx = np.where(prediction==compnumber)[0]
@@ -3739,7 +3736,7 @@ def samples_grid(pop, method='tsne', figsize=(20,20), size_background=.1, size_s
 	end = 0 # end index to retrive cells for a given sample
 	for i, name in enumerate(pop['order']): # for each sample
 		ax = axes[i] # assign sub axis
-		end = start+pop['samples'][name]['C'].shape[0] # adjust end index with number of cells
+		end = start+pop['samples'][name]['M'].shape[1] # adjust end index with number of cells
 		xsub = x[start:end] # splice x coordinates
 		ysub = y[start:end] # splice y coordinates
 		start = end # update start index
@@ -4023,7 +4020,7 @@ def plot_violins(pop, refcomp, samples, plotgenes, prefix, **kwargs):
 			except:
 				raise Exception('Could not retrieve a matching alignment between sample %s and reference component %d' % (xtest, refcomp))
 			Mtest = pop['samples'][xtest]['M']
-			predictiontest = pop['samples'][xtest]['gmm'].predict(pop['samples'][xtest]['C']) # get test cell assignments
+			predictiontest = pop['samples'][xtest]['gmm'].predict(get_coeff(pop,xtest)) # get test cell assignments
 			idxtest = np.where(predictiontest==itest)[0] # get matching indices
 			subtest = Mtest[:,idxtest] # subset cells that match subpopulation itest
 			subtest = subtest.toarray() # from sparse matrix to numpy array for slicing efficiency
@@ -4316,8 +4313,8 @@ def diffexp(pop, refcomp=0, testcomp=0, sample='', nbins=20, cutoff=.5, renderhi
 		raise Exception('Could not retrieve a matching alignment between sample %s and reference component %d' % (sample, refcomp))
 	'''
 
-	predictionref = pop['samples'][xref]['gmm'].predict(pop['samples'][xref]['C']) # get ref cell assignments
-	predictiontest = pop['samples'][xtest]['gmm'].predict(pop['samples'][xtest]['C']) # get test cell assignments
+	predictionref = pop['samples'][xref]['gmm'].predict(get_coeff(pop,xref)) # get ref cell assignments
+	predictiontest = pop['samples'][xtest]['gmm'].predict(get_coeff(pop,xtest)) # get test cell assignments
 
 	idxref = np.where(predictionref==refcomp)[0] # get matching indices
 	idxtest = np.where(predictiontest==testcomp)[0] # get matching indices
@@ -4498,8 +4495,8 @@ def diffexp_testcomp(pop, refcomp=0, sample='', nbins=20, cutoff=.5, renderhists
 	except:
 		raise Exception('Could not retrieve a matching alignment for sample %s, component %d' % (sample, refcomp))
 
-	predictionref = pop['samples'][xref]['gmm'].predict(pop['samples'][xref]['C']) # get ref cell assignments
-	predictiontest = pop['samples'][xtest]['gmm'].predict(pop['samples'][xtest]['C']) # get test cell assignments
+	predictionref = pop['samples'][xref]['gmm'].predict(get_coeff(pop,xref)) # get ref cell assignments
+	predictiontest = pop['samples'][xtest]['gmm'].predict(get_coeff(pop,xtest)) # get test cell assignments
 
 	idxref = np.where(predictionref==refcomp)[0] # get matching indices
 	idxtest = np.where(predictiontest==testcomp)[0] # get matching indices
