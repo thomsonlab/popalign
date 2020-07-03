@@ -973,7 +973,10 @@ def split_proj(pop, proj):
 		Popalign object
 	proj : array
 		Projected data in feature space (cells x features)
+
 	'''
+	# Need to fix this function to accommodate other feature sets
+
 	start = 0
 	end = 0
 	for x in pop['order']: # for each sample in pop
@@ -1487,8 +1490,8 @@ def plotfeatures(pop):
 
 	# C = cat_data(pop, 'C')
 	C = get_cat_coeff(pop)
-	samplenums = np.concatenate([[i]*pop['samples'][x]['C'].shape[0] for i,x in enumerate(pop['order'])])
-	samplelbls = np.concatenate([[x]*pop['samples'][x]['C'].shape[0] for x in pop['order']])
+	samplenums = np.concatenate([[i]*C.shape[0] for i,x in enumerate(pop['order'])])
+	samplelbls = np.concatenate([[x]*C.shape[0] for x in pop['order']])
 
 	tab20 = matplotlib.cm.get_cmap('tab20')
 	colorscale = matplotlib_to_plotly(tab20, 20)
@@ -1932,8 +1935,7 @@ def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar=
 
 	for i,x in enumerate(samples): # for each sample x
 		print('Building model for %s (%d of %d)' % (x, (i+1), len(samples)))
-		# C = pop['samples'][x]['C'] # get sample feature data
-		C = get_coeff(pop,x)
+		C = get_coeff(pop,x) # get sample feature data
 		M = pop['samples'][x]['M'] # get sample gene data
 		m = C.shape[0] # number of cells
 
@@ -2291,8 +2293,7 @@ def build_gmms_by_celltypes(pop, ks=(5,10), only=None, rendering='grouped', figs
 	for i,x in enumerate(samples): # for each sample x
 		print('Building model for %s (%d of %d) using cell type labels' % (x, (i+1), len(samples)))
 
-		# C = pop['samples'][x]['C'] # get sample feature data
-		coeff = get_coeff(pop,x)
+		coeff = get_coeff(pop,x)# get sample feature data
 		celltypes = pop['samples'][x]['cell_type']
 
 		try: 
@@ -2940,7 +2941,7 @@ def score_subpopulations(pop, ref=None, figsize=(10,5)):
 		data = [] # empty list to store the samples cells log-likelihoods
 		means = [] # empty list to store the samples log-likelihood means 
 		for x in order: # for each test sample
-			C = pop['samples'][x]['C'] # retrive the feature space data (dimensionality k)
+			C = get_coeff(pop, x) # retrive the feature space data (dimensionality k)
 			LLS = np.array([LL(v,mu,sigma,k) for v in C]) # compute the LL for each cell for a given gaussian density
 			data.append(LLS) # store the LL values
 			means.append(LLS.mean()) # store the matching mean
@@ -3008,7 +3009,7 @@ def rank(pop, ref=None, k=100, niter=200, method='LLR', mincells=50, figsize=(10
     controlstring = pop['controlstring']
 
     for x in pop['order']:
-        C = pop['samples'][x]['C']
+        C = get_coeff(pop,x)
         m,n = C.shape
         if m > mincells:
             # nk is actual number of cells used
@@ -3179,7 +3180,7 @@ def plot_query(pop, pcells=.2, nreps=10, figsize=(10,20), sharey=True):
 	arrstds = np.zeros((N, gmm.n_components)) # matching array to store the matching standard deviations
 
 	for i,x in enumerate(pop['order']): # for each sample x
-		C = pop['samples'][x]['C'] # get feature data
+		C = get_coeff(pop,x) # get feature data
 		ncells = int(C.shape[0]*pcells) # compute number of random cells to select from percentage value
 		concat = [] # list to store the proportion arrays for each rep
 		for rn in range(nreps): # for each repetition rn
@@ -3256,7 +3257,7 @@ def plot_query_heatmap(pop, figsize=(10,10)):
 	N = len(pop['order'])
 	arr = np.zeros((N, gmm.n_components)) 
 	for i,x in enumerate(pop['order']):
-		C = pop['samples'][x]['C']
+		C = get_coeff(pop, x)
 		prediction = gmm.predict(C)
 		unique, counts = np.unique(prediction, return_counts=True)
 		l = len(prediction)
@@ -3358,7 +3359,7 @@ def plot_heatmap(pop, refcomp, genelist, clustersamples=True, clustercells=True,
 
 					if len(irow)==1:
 						itest = int(arr[irow, 0]) # get test subpopulation number if exists
-						C = pop['samples'][x]['C'] # get test sample feature space data
+						C = get_coeff(pop,x) # get test sample feature space data
 						prediction = pop['samples'][x]['gmm'].predict(C) # get the subpopulations assignments
 						idx = np.where(prediction == itest)[0] # get indices of cells that match aligned test subpopulation
 						M = pop['samples'][x]['M'][gidx,:] # get test sample gene space data, subsample
@@ -3372,7 +3373,7 @@ def plot_heatmap(pop, refcomp, genelist, clustersamples=True, clustercells=True,
 						MSlabels.append('%s (%d)' % (x,itest)) # append matching sample label to list
 					else:
 						for itest in irow:
-							C = pop['samples'][x]['C'] # get test sample feature space data
+							C = get_coeff(pop,x) # get test sample feature space data
 							prediction = pop['samples'][x]['gmm'].predict(C) # get the subpopulations assignments
 							idx = np.where(prediction == itest)[0] # get indices of cells that match aligned test subpopulation
 							M = pop['samples'][x]['M'][gidx,:] # get test sample gene space data, subsample
@@ -3393,7 +3394,7 @@ def plot_heatmap(pop, refcomp, genelist, clustersamples=True, clustercells=True,
 			irow = np.where(arr[:,1] == refcomp)[0] # get row number in alignments where ref subpop is the desired ref subpop
 			if len(irow)==1:
 				itest = int(arr[irow, 0]) # get test subpopulation number if exists
-				C = pop['samples'][x]['C'] # get test sample feature space data
+				C = get_coeff(pop,x) # get test sample feature space data
 				prediction = pop['samples'][x]['gmm'].predict(C) # get the subpopulations assignments
 				idx = np.where(prediction == itest)[0] # get indices of cells that match aligned test subpopulation
 
@@ -3408,7 +3409,7 @@ def plot_heatmap(pop, refcomp, genelist, clustersamples=True, clustercells=True,
 				MSlabels.append('%s (%d)' % (x,itest)) # append matching sample label to list
 			else:
 				for itest in irow:
-					C = pop['samples'][x]['C'] # get test sample feature space data
+					C = get_coeff(pop,x) # get test sample feature space data
 					prediction = pop['samples'][x]['gmm'].predict(C) # get the subpopulations assignments
 					idx = np.where(prediction == itest)[0] # get indices of cells that match aligned test subpopulation
 
