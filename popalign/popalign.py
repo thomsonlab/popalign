@@ -4895,7 +4895,7 @@ def all_samples_diffexp(pop, nbins=20, cutoff=[], renderhists=True, usefiltered=
 	controlstring = pop['controlstring']
 	if controlstring==None:
 		raise Exception('Did not supply controlstring during load. Can be set now by executing: pop[\'controlstring\']=X')
-	deltaobj = pop['deltas']
+	# deltaobj = pop['deltas']
 
 	ref = pop['ref'] # get reference sample name
 	celltypes = pop['samples'][ref]['gmm_types']
@@ -4955,7 +4955,9 @@ def all_samples_diffexp(pop, nbins=20, cutoff=[], renderhists=True, usefiltered=
 		# Run over rest of samples with cutoff (either supplied or cell-type specific)
 		deobj[currtype] = {}
 		deobj[currtype]['samples'] = {}  
-		deobj[currtype]['orderedsamples'] = deltaobj[currtype]['orderedsamples']
+		# deobj[currtype]['orderedsamples'] = deltaobj[currtype]['orderedsamples']
+		deobj[currtype]['orderedsamples'] = pop['order']
+		
 		all_q = []            
 
 		for x in samples:
@@ -5086,7 +5088,6 @@ def calc_p_value(controlvals, testvals, tail = 1) :
 	df = len(controlvals)-1 # number of samples = control samples -1
 
 	# p-value after comparison with the t 
-	print(tail)
 	if tail == 1:
 		pvals_raw = 1 - stats.t.cdf(t_val, df=df) 
 	elif tail == 2: 
