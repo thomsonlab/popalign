@@ -4087,7 +4087,7 @@ def plot_violin_entirepop(pop, samples, plotgenes, prefix, **kwargs):
 
 	genes = pop['genes']
 	dname = 'violins/'
-	PA.mkdir(os.path.join(pop['output'], dname)) # create directory if needed
+	mkdir(os.path.join(pop['output'], dname)) # create directory if needed
 
 	for i in range(len(plotgenes)):
 		currgene = plotgenes[i]
@@ -4900,6 +4900,10 @@ def all_samples_diffexp(pop, nbins=20, cutoff=[], renderhists=True, usefiltered=
 	ref = pop['ref'] # get reference sample name
 	celltypes = pop['samples'][ref]['gmm_types']
 
+	# check that nbis is the same length as gmm_types
+	if len(nbins)!=len(celltypes):
+		raise Exception('nbins vector must be same length as celltypes')
+
 	# get control values
 	x = range(len(samples))
 	controls = [i for i in pop['samples'].keys() if controlstring in i]
@@ -4908,6 +4912,7 @@ def all_samples_diffexp(pop, nbins=20, cutoff=[], renderhists=True, usefiltered=
 	
 	for y in range(len(celltypes)) : 
 		currtype = celltypes[y];
+		curr_nbin = nbins[y]
 
 		# Determine cutoff from control samples if it is not supplied
 		if np.isscalar(cutoff) and cutoff >= 0 and cutoff <= 2: 
@@ -4922,15 +4927,15 @@ def all_samples_diffexp(pop, nbins=20, cutoff=[], renderhists=True, usefiltered=
 			for x in controls: 
 				print(x + ' ' + currtype)
 				# calculate the differentially expressed genes
-				q_raw, genes_raw, lidx, upregulated, downregulated = all_diffexp(pop, refcomp=y, sample=x, nbins=nbins, cutoff=0.5, renderhists=renderhists, usefiltered=usefiltered)
+				q_raw, genes_raw, lidx, upregulated, downregulated = all_diffexp(pop, refcomp=y, sample=x, nbins=curr_nbin, cutoff=0.5, renderhists=renderhists, usefiltered=usefiltered)
 				all_control_q.append(q_raw)
 
 			all_control_q = np.concatenate(all_control_q)
-			nbins = 100
+			ctrlbins = 100
 			max_ = np.max(all_control_q)
 			min_ = np.min(all_control_q)
 
-			bn, be = np.histogram(all_control_q, bins=nbins, range=(-max_,max_))
+			bn, be = np.histogram(all_control_q, bins=ctrlbins, range=(-max_,max_))
 			bn = bn /len(all_control_q) 
 
 		    # find the threshold at which less than 0.001% of the genes in the controls 
@@ -4965,7 +4970,7 @@ def all_samples_diffexp(pop, nbins=20, cutoff=[], renderhists=True, usefiltered=
 
 			# calculate the differentially expressed genes
 			if checkalignment(pop, y, x): 			
-				q_raw, genes_raw, lidx, upregulated, downregulated = all_diffexp(pop, refcomp=y, sample=x, nbins=nbins, cutoff=currcutoff, renderhists=renderhists, usefiltered=usefiltered)
+				q_raw, genes_raw, lidx, upregulated, downregulated = all_diffexp(pop, refcomp=y, sample=x, nbins=curr_nbin, cutoff=currcutoff, renderhists=renderhists, usefiltered=usefiltered)
 				numgenes = len(lidx)
 			else: 
 				print('alignment does not exist')
@@ -5106,12 +5111,9 @@ def calc_p_value(controlvals, testvals, tail = 1) :
 
 	return pvals, CI_min, CI_max
 
-
 '''
-
 Auxiliary functions for building models with cell types
 '''
-
 
 def remove_celltypes(pop, ctlist): 
 	'''
@@ -5243,6 +5245,105 @@ def save_celltypes_in_meta(pop, meta_in, meta_out):
 	for x in pop['order']:
 		currtypes = newmeta[newmeta.sample_id == x].cell_type.values
 		pop['samples'][x]['cell_type'] = currtypes
+
+'''
+
+Auxiliary functions for calculating abundance and divergence changes
+'''
+
+def calc_abund_scores(fname, maintypes=['B-cells', 'Myeloid', 'T cells'], col = 'CD3', value=1):
+		
+	meta = pd.read_csv(fname, header=0) # load metadata file
+
+	# Find sample names that obey the metadata filter 
+	if (value != None) and (col != None):
+		tmp_only = meta[meta[col]==value]['sample_id'].dropna().unique()
+	elif (value != None) and (col == None):
+		raise Exception('col and value arguments must be specified together, or both equal to None')
+	elif (value == None) and (col != None):
+		raise Exception('col and value arguments must be specified together, or both equal to None')
+	else:
+		tmp_only =  meta['sample_id'].dropna().unique() # get unique list of sample names
+	
+	only = tmp_only.tolist()
+	try: 
+		only.remove('unknown')
+	except: 
+		print('')
+
+	# store index of each barcode in a dictionary to quickly retrieve indices for a list of barcodes
+	barcodes = meta.cell_barcode.tolist()
+	bc_idx = {} 
+	for i, bc in enumerate(barcodes):
+		bc_idx[bc] = i
+
+	# accumulate cell type counts for each sample
+	accum_idx = [] # accumulate index values for subsetted samples
+	order = list()
+	all_counts = np.zeros((len(only),3))
+	for i,y in enumerate(only): # go through the sample_id values to split the data and store it for each individual sample
+		x = str(y)
+		if x != 'unknown':
+			sample_bcs = meta[meta.sample_id == x].cell_barcode.values # get the cell barcodes for sample defined by sample_id
+			idx = [bc_idx[bc] for bc in sample_bcs] # retrieve list of matching indices
+			accum_idx = accum_idx + idx
+
+			# Get cell type abundances
+			currtypes = meta.cell_type.loc[idx].tolist()
+			curr_count = [currtypes.count(x) for x in maintypes]
+			all_counts[i,:] = curr_count
+			order.append(x)
+
+	# Calculate proportions
+	totcells = np.array(all_counts.sum(axis=1)).flatten()
+	all_props = all_counts*0
+	for i in range(len(all_props)): # for each column i
+		all_props[i,:] = all_counts[i,:] #/ totcells[i] # divide data values by matching column sum
+
+	# Calculate values for control samples
+	# controlstring = pop['controlstring']
+	controlstring = 'CONTROL_CD3'
+	controlidx = [i for i in range(0,len(order)) if controlstring in order[i]]
+
+	control_props = all_props[controlidx,:]
+	control_averages = control_props.mean(axis=0)
+	control_stds = control_props.std(axis=0)
+
+	# Generate z scores
+	scores = 0* all_props
+	for i in range(np.shape(all_props)[1]): 
+# 		scores[:,i] = (all_props[:,i] - control_averages[i]) / control_averages[i] # tweak this
+# 		scores[:,i] = (all_props[:,i] - control_averages[i]) / control_stds[i] # tweak this
+		scores[:,i] = np.log2(all_props[:,i] / control_averages[i]) # tweak this
+
+	snames = [x + '_score' for x in maintypes]
+	# Create scores dataframe
+	scores = pd.DataFrame(scores, index = order, columns=snames)
+
+	# generate vector specifying whether sample is a control
+	v = []
+	for x in order:
+		if controlstring in x:
+			v.append('True')
+		else: 
+			v.append('False')
+	# Add other columns
+	scores['totcells'] = totcells # total cells
+	scores['control'] = v
+	cnames = [x + '_counts' for x in maintypes]
+	for i in range(len(cnames)): 
+		scores[cnames[i]] = all_counts[:,i]
+
+	# get scores for controls (assume normally distributed)
+	control_scores = scores[snames]
+	control_scores = control_scores.iloc[controlidx,:]
+
+	for i in range(len(snames)):
+		pvals, CI_min, CI_max = calc_p_value(control_scores[snames[i]], scores[snames[i]], tail = 2)
+		colname = maintypes[i] + '_pval'
+		scores[colname] = pvals
+	return scores
+
 
 import sys
 if not sys.warnoptions:
