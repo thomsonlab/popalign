@@ -4941,7 +4941,7 @@ def all_samples_diffexp(pop, nbins=20, cutoff=[], renderhists=True, usefiltered=
 		    # find the threshold at which less than 0.001% of the genes in the controls 
 		    # sample have this level of differential change
 		    # sweep from 0.45 to 0.65:
-			testrange = np.linspace(0.45,0.65,21)
+			testrange = np.linspace(0.3,0.65,36)
 			for i in range(len(testrange)):
 				currcutoff = testrange[i]
 
@@ -5251,7 +5251,7 @@ def save_celltypes_in_meta(pop, meta_in, meta_out):
 Auxiliary functions for calculating abundance and divergence changes
 '''
 
-def calc_abund_scores(fname, maintypes=['B-cells', 'Myeloid', 'T cells'], col = 'CD3', value=1):
+def calc_abund_scores(fname, maintypes=['B-cells', 'Myeloid', 'T cells'], col = 'CD3', value=1, controlstring='CONTROL'):
 		
 	meta = pd.read_csv(fname, header=0) # load metadata file
 
@@ -5302,7 +5302,6 @@ def calc_abund_scores(fname, maintypes=['B-cells', 'Myeloid', 'T cells'], col = 
 
 	# Calculate values for control samples
 	# controlstring = pop['controlstring']
-	controlstring = 'CONTROL_CD3'
 	controlidx = [i for i in range(0,len(order)) if controlstring in order[i]]
 
 	control_props = all_props[controlidx,:]
