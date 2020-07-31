@@ -428,7 +428,7 @@ def scale_factor(pop, ncells):
 			M = M[:,idx]
 
 	ogmean = pop['original_mean'] # Retrive original mean of the data prior to normalization
-	factorlist = [1,500,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000] # list of factors to try
+	factorlist = [500,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000] # list of factors to try
 
 	with Pool(pop['ncores']) as p:
 		q = p.starmap(comparison_factor, [(M.copy(), f, ogmean) for f in factorlist]) # try different factors
@@ -460,7 +460,8 @@ def normalize(pop, scaling_factor=None, ncells=None):
 		Gene means before normalizing
 	'''
 	if 'normed' in pop:
-		print('Data already column normalized')
+		if pop['normed']==True:
+			print('Data already column normalized')
 	else:
 		M = cat_data(pop, 'M') # aggregate data
 		pop['original_mean'] = M.mean() # store original mean of the data
@@ -477,6 +478,7 @@ def normalize(pop, scaling_factor=None, ncells=None):
 		else:
 			print('Finding best scaling factor')
 			scale_factor(pop, ncells) # Apply normalization factor
+			print('Best scaling factor beta is: ' + str(pop['scalingfactor']))
 		pop['normed'] = True
 
 def mu_sigma(M, pop):
@@ -959,7 +961,8 @@ def reconstruction_errors(pop, M_norm, q):
 			Hj = p.starmap(nnls, [(Wj, M_norm[:,i].toarray().flatten()) for i in range(M_norm.shape[1])]) # project each cell i of normalized data onto the current W 
 		Hj = np.vstack(Hj) # Hj is projected data onto Wj
 		projs.append(Hj) # store projection
-		Dj = Wj.dot(Hj.T) # compute reconstructed data: Dj = Wj.Hj
+		Dj = Wj.dot(Hj.T) # compute reconstructed data: Dj = Wj.Hj\
+		curr_error = mean_squared_error(D, Dj)
 		errors.append(mean_squared_error(D, Dj)) # compute mean squared error between original data D and reconstructed data Dj
 	return errors, projs
 
@@ -1167,7 +1170,7 @@ def plot_H(pop, method='complete', n=None):
 	plt.savefig(os.path.join(pop['output'], dname, 'projection_cells.pdf'), bbox_inches = "tight", dpi=300)
 	plt.close()
 
-def onmf(pop, ncells=2000, nfeats=[5,7,9], nreps=3, niter=300):
+def onmf(pop, ncells=2000, nfeats=[5,7,9], nreps=3, niter=300, alpha = 3, multiplier=3):
 	'''
 	Compute feature spaces and minimize the reconstruction error
 	to pick a final feature space
@@ -1201,7 +1204,8 @@ def onmf(pop, ncells=2000, nfeats=[5,7,9], nreps=3, niter=300):
 	errors, projs = reconstruction_errors(pop, M_norm, q) # compute the reconstruction errors for all the different spaces in q and a list of the different data projections for each feature spaces
 	
 	print('Retrieving W with lowest error')
-	idx_best = np.argmin(errors) # get idx of lowest error
+	# idx_best = np.argmin(errors) # get idx of lowest error
+	idx_best = find_best_m(errors,alpha, multiplier)
 	pop['W'] = q[idx_best] # retrieve matching W
 	pop['nfeats'] = pop['W'].shape[1] # store number of features in best W
 	proj = projs[idx_best] # retrieve matching projection
@@ -1212,6 +1216,117 @@ def onmf(pop, ncells=2000, nfeats=[5,7,9], nreps=3, niter=300):
 	plot_top_genes_features(pop) # plot a heatmap of top genes for W
 	plot_H(pop, method='complete', n=2000)
 	#plot_reconstruction(pop) # plot reconstruction data
+
+def find_best_m(errors, alpha = 3, multiplier = 3): 
+	'''
+	Find the best number of features (m) given the MSE error and 
+	parameters for polynomial cost function f(m)
+
+	Parameters
+	----------
+	errors : list
+		list of MSE errors from oNMF
+	alpha : float
+		power of polynomial
+	multiplier : float
+		multiplies constant C in f(m)
+
+	Output
+	----------
+	bestm : int
+		value of m (number of features) that minimizes cost function f(m)
+	'''
+	# First rescale MSE so it starts at 1
+	errors_2 = np.divide(errors, np.max(errors))
+
+	# set all powers and scaling factors to try
+	alphas = [0.7, 0.9, 1, 2, 3, 4, 5]
+	if alpha not in alphas: 
+		alphas.append(alpha)
+		alphas = np.sort(alphas).tolist()
+
+	basescales = []
+	r_univ= range(1,30)
+
+	for i in range(len(alphas)):
+		currscale = np.round(np.max(np.power(np.array(r_univ),alphas[i]))*250)
+		basescales.append(currscale)
+
+	# Assemble f(m) values by sweeping over j and alpha
+	fm_df = pd.DataFrame()
+	minvals = []
+	jrange= range(1,8)
+	if multiplier not in jrange: 
+		jrange.append(multiplier)
+		jrange = np.sort(jrange).tolist()
+
+	for i in range(len(alphas)): 
+		curralpha = alphas[i]
+		currbasescale = basescales[i]
+		currminvals = []
+		for j in jrange:               
+			currscale = j*1/currbasescale # increase j linearly
+			#         currscale = np.power(2,j) * currbasescale # increase j by powers of 2
+			curr_values = currscale*(np.power(np.array(r),curralpha)) + np.array(errors)
+			currmin = np.argwhere(curr_values==np.min(curr_values))[0][0]
+
+			curr_df = {'vals': np.append(curr_values,np.min(curr_values)),
+						'm': np.append(r,currmin)}
+			curr_df = pd.DataFrame(curr_df)
+			curr_df['scale'] = currscale
+			curr_df['a'] = curralpha
+			curr_df['j'] = j
+			curr_df['col'] = np.append(0*curr_values,1)
+			fm_df = df.append(curr_df, ignore_index=True)
+
+			currminvals.append(r[currmin])
+		minvals.append(currminvals)
+
+	# Find best m given supplied alpha and multiplier: 
+	# Find best m given supplied alpha and multiplier: 
+	irow = alphas.index(alpha)
+	icol = jrange.index(multiplier)
+	idx_flat = irow*len(jrange) + icol
+	bestm = minvals[irow][icol]
+
+	# Plot MSE curve
+	plt.scatter(nfeats,errors, marker=".", s=100)
+	plt.plot(nfeats,errors, marker=".")
+	plt.ylabel('m')
+	plt.savefig(os.path.join(pop['output'], 'featurechoice_1_mse.pdf'), bbox_inches = "tight")
+	plt.close()
+
+	# Plot f(m) curves
+	with sns.plotting_context('notebook',font_scale=1.7):
+		g = sns.FacetGrid(fm_df, col="j",  row="a", hue="col")
+		g = (g.map(plt.scatter, "m", "vals", marker=".", s=400))#.set(ylim=(0.03,0.055))
+		g = (g.map(plt.plot, "m", "vals", marker="."))#.set(ylim=(0.03,0.055))
+
+		# Highlight the curve that uses the chosen parameters
+		axes = g.axes.flatten()
+		ax = axes[idx_flat]
+		for _, spine in ax.spines.items():
+			spine.set_visible(True) # You have to first turn them on
+			spine.set_color('blue')
+			spine.set_linewidth(3)
+
+		plt.savefig(os.path.join(pop['output'], 'featurechoice_2_fm_curves.pdf'), bbox_inches = "tight")
+		plt.close()
+
+	# Plot phase portrait of argmin
+	plt.figure(figsize=(5,7)) 
+	heat_map = sns.heatmap(minvals, annot=True, cmap='viridis')
+	plt.yticks(plt.yticks()[0], alphas)
+	heat_map.set_ylim(len(minvals)+0.5, -0.5)
+	plt.ylabel('alpha (a)')
+	plt.xlabel('constant multiplier (j)')
+	plt.yticks(rotation=0)
+	plt.xticks(np.array(jrange)-0.5, jrange)
+	plt.savefig(os.path.join(pop['output'], 'featurechoice_3_phase_argmin_m.pdf'), bbox_inches = "tight")
+	plt.close()
+
+	return bestm
+
 
 def pca(pop, n_components=2, fromspace='genes'):
 	'''
