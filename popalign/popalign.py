@@ -1010,7 +1010,7 @@ def save_top_genes_features(pop, stds, stdfactor):
 		out.append(gs) # store in list
 
 	dname = 'qc'
-	with open(os.path.join(pop['output'], dname, 'top_genes_per_feat.txt'), 'w') as fout: # create file
+	with open(os.path.join(pop['output'], dname, 'features_m%d_topgenes_list.txt' % pop['nfeats']), 'w') as fout: # create file
 		#for i in range(pop['nfeats']): # dump selected genes for each feature i
 		for i, lbl in enumerate(pop['top_feat_labels']): # dump selected genes for each feature i
 			print(i, lbl)
@@ -1057,7 +1057,7 @@ def plot_top_genes_features(pop):
 
 	dname = 'qc'
 	mkdir(os.path.join(pop['output'], dname)) # create subfolder
-	plt.savefig(os.path.join(pop['output'], dname, 'topgenes_features.pdf'), bbox_inches = "tight")
+	plt.savefig(os.path.join(pop['output'], dname, 'features_m%d_topgenes.pdf' % pop['nfeats']), bbox_inches = "tight")
 	plt.close()
 
 	save_top_genes_features(pop, stds, stdfactor)
@@ -1166,7 +1166,7 @@ def plot_H(pop, method='complete', n=None):
 
 	dname = 'qc'
 	mkdir(os.path.join(pop['output'], dname)) # create subfolder
-	plt.savefig(os.path.join(pop['output'], dname, 'projection_cells.pdf'), bbox_inches = "tight", dpi=300)
+	plt.savefig(os.path.join(pop['output'], dname, 'features_m%d_projection_allcells.pdf' % pop['nfeats']), bbox_inches = "tight", dpi=300)
 	plt.close()
 
 def onmf(pop, ncells=2000, nfeats=[5,7,9], nreps=3, niter=300):
@@ -1216,7 +1216,6 @@ def onmf(pop, ncells=2000, nfeats=[5,7,9], nreps=3, niter=300):
 	q = [q[i] for i in bestofreps]
 	errors = [errors[i] for i in bestofreps]
 	projs = [projs[i] for i in bestofreps]
-
 
 	# Store each of these feature sets into the pop object for posterity
 	pop['onmf'] = {}
@@ -1377,7 +1376,7 @@ def find_best_m(pop, alpha = 3, multiplier = 3):
 	# highlight the m value selected in the data
 	heat_map.add_patch(plt.Rectangle((icol, irow), 1, 1, fill=False, edgecolor='magenta', lw=2))
 	plt.savefig(os.path.join(pop['output'], 'featurechoice_3_phase_argmin_m.pdf'), bbox_inches = "tight")
-	plt.close()
+	# plt.close()
 
 	return bestm
 
