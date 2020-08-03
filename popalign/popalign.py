@@ -1136,9 +1136,8 @@ def plot_H(pop, method='complete', n=None):
 	n : int or None
 		Number of cells to randomly sample.
 	'''
-	#C = cat_data(pop, 'C') # get feature data
-	C = get_cat_coeff(pop)
-
+	C = cat_data(pop, 'C') # get feature data
+	
 	if n != None:
 		if not isinstance(n, int): # check that n is an int
 			raise Exception('n must be an int')
@@ -1170,7 +1169,7 @@ def plot_H(pop, method='complete', n=None):
 	plt.savefig(os.path.join(pop['output'], dname, 'projection_cells.pdf'), bbox_inches = "tight", dpi=300)
 	plt.close()
 
-def onmf(pop, ncells=2000, nfeats=[5,7,9], nreps=3, niter=300, alpha = 3, multiplier=3):
+def onmf(pop, ncells=2000, nfeats=[5,7,9], nreps=3, niter=300):
 	'''
 	Compute feature spaces and minimize the reconstruction error
 	to pick a final feature space
@@ -1203,9 +1202,60 @@ def onmf(pop, ncells=2000, nfeats=[5,7,9], nreps=3, niter=300, alpha = 3, multip
 	print('Computing reconstruction errors')
 	errors, projs = reconstruction_errors(pop, M_norm, q) # compute the reconstruction errors for all the different spaces in q and a list of the different data projections for each feature spaces
 	
-	print('Retrieving W with lowest error')
-	# idx_best = np.argmin(errors) # get idx of lowest error
-	idx_best = find_best_m(errors,alpha, multiplier)
+	# choose the best out of all replicates
+	mlist = np.repeat(nfeats,nreps)
+
+	bestofreps = []
+	for i in range(len(nfeats)): 
+	    curridx = np.where(mlist==nfeats[i])[0]
+	    currerrors = [errors[i] for i in curridx]
+	    bestidx = np.argmin(currerrors)
+	    bestofreps.append(curridx[bestidx])
+	    
+	# Now subselect only the best of the replicate feature sets
+	q = [q[i] for i in bestofreps]
+	errors = [errors[i] for i in bestofreps]
+	projs = [projs[i] for i in bestofreps]
+
+
+	# Store each of these feature sets into the pop object for posterity
+	pop['onmf'] = {}
+	pop['onmf']['q'] = q
+	pop['onmf']['errors'] = errors
+	pop['onmf']['projs'] = projs
+	pop['onmf']['nfeats'] = nfeats
+
+def choose_featureset(pop, m = [], alpha = 3, multiplier=3):
+	'''
+	Choose featureset from store oNMF calculations. Either user directly supplies a preferred m value or the 
+
+	Parameters
+	----------
+	errors : list
+		list of MSE errors from oNMF
+	alpha : float
+		power of polynomial
+	multiplier : float
+		multiplies constant C in f(m)
+
+	'''
+	# Unpack variables from pop object
+	q = pop['onmf']['q']
+	errors = pop['onmf']['errors']
+	projs = pop['onmf']['projs']
+	nfeats = pop['onmf']['nfeats']
+
+	if m in nfeats: 
+		print('Using oNMF featureset for specified m: ' + str(m))
+		bestm = m
+	else: 
+		print('Retrieving oNMF featureset with lowest f(m): ')
+		# idx_best = np.argmin(errors) # get idx of lowest error
+		bestm = find_best_m(pop, alpha, multiplier)
+		print('Featureset with ' + str(bestm) + ' features loaded')
+
+	idx_best = np.argwhere(np.array(nfeats)==bestm)[0][0]
+	# Store featureset and coefficients into the individual samples
 	pop['W'] = q[idx_best] # retrieve matching W
 	pop['nfeats'] = pop['W'].shape[1] # store number of features in best W
 	proj = projs[idx_best] # retrieve matching projection
@@ -1217,7 +1267,7 @@ def onmf(pop, ncells=2000, nfeats=[5,7,9], nreps=3, niter=300, alpha = 3, multip
 	plot_H(pop, method='complete', n=2000)
 	#plot_reconstruction(pop) # plot reconstruction data
 
-def find_best_m(errors, alpha = 3, multiplier = 3): 
+def find_best_m(pop, alpha = 3, multiplier = 3): 
 	'''
 	Find the best number of features (m) given the MSE error and 
 	parameters for polynomial cost function f(m)
@@ -1236,6 +1286,9 @@ def find_best_m(errors, alpha = 3, multiplier = 3):
 	bestm : int
 		value of m (number of features) that minimizes cost function f(m)
 	'''
+	errors = pop['onmf']['errors']
+	nfeats = pop['onmf']['nfeats']
+
 	# First rescale MSE so it starts at 1
 	errors_2 = np.divide(errors, np.max(errors))
 
@@ -1267,22 +1320,21 @@ def find_best_m(errors, alpha = 3, multiplier = 3):
 		for j in jrange:               
 			currscale = j*1/currbasescale # increase j linearly
 			#         currscale = np.power(2,j) * currbasescale # increase j by powers of 2
-			curr_values = currscale*(np.power(np.array(r),curralpha)) + np.array(errors)
+			curr_values = currscale*(np.power(np.array(nfeats),curralpha)) + np.array(errors)
 			currmin = np.argwhere(curr_values==np.min(curr_values))[0][0]
 
 			curr_df = {'vals': np.append(curr_values,np.min(curr_values)),
-						'm': np.append(r,currmin)}
+						'm': np.append(nfeats,currmin)}
 			curr_df = pd.DataFrame(curr_df)
 			curr_df['scale'] = currscale
 			curr_df['a'] = curralpha
 			curr_df['j'] = j
 			curr_df['col'] = np.append(0*curr_values,1)
-			fm_df = df.append(curr_df, ignore_index=True)
+			fm_df = fm_df.append(curr_df, ignore_index=True)
 
-			currminvals.append(r[currmin])
+			currminvals.append(nfeats[currmin])
 		minvals.append(currminvals)
 
-	# Find best m given supplied alpha and multiplier: 
 	# Find best m given supplied alpha and multiplier: 
 	irow = alphas.index(alpha)
 	icol = jrange.index(multiplier)
@@ -1307,8 +1359,8 @@ def find_best_m(errors, alpha = 3, multiplier = 3):
 		ax = axes[idx_flat]
 		for _, spine in ax.spines.items():
 			spine.set_visible(True) # You have to first turn them on
-			spine.set_color('blue')
-			spine.set_linewidth(3)
+			spine.set_color('magenta')
+			spine.set_linewidth(2)
 
 		plt.savefig(os.path.join(pop['output'], 'featurechoice_2_fm_curves.pdf'), bbox_inches = "tight")
 		plt.close()
@@ -1322,11 +1374,12 @@ def find_best_m(errors, alpha = 3, multiplier = 3):
 	plt.xlabel('constant multiplier (j)')
 	plt.yticks(rotation=0)
 	plt.xticks(np.array(jrange)-0.5, jrange)
+	# highlight the m value selected in the data
+	heat_map.add_patch(plt.Rectangle((icol, irow), 1, 1, fill=False, edgecolor='magenta', lw=2))
 	plt.savefig(os.path.join(pop['output'], 'featurechoice_3_phase_argmin_m.pdf'), bbox_inches = "tight")
 	plt.close()
 
 	return bestm
-
 
 def pca(pop, n_components=2, fromspace='genes'):
 	'''
