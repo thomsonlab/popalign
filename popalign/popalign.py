@@ -1027,32 +1027,55 @@ def plot_top_genes_features(pop):
 	pop : dict
 		Popalign object
 	"""
+	filtered_genes = pop['filtered_genes']
 	W = pop['W'] # grab feature space
 	stds = np.array(W.std(axis=0)).flatten() # get the feature standard deviations
 	stdfactor = 2 # factor to select genes
 	genes_idx = np.array([])
+	genes_loadings = np.array([])
 	for i,s in enumerate(stds): # for each feature i and its respective standard deviations
-		a = np.where(np.array(W[:,i]).flatten() > stdfactor*stds[i])[0] # get indices of top genes
+		a = np.where(np.array(W[:,i]).flatten() > stdfactor*s)[0] # get indices of top genes
 		sub = np.array(W[a,i]).flatten() # grab coefficients of top genes for feature i
 		a = a[np.argsort(sub)[::-1]] # sort subset by coefficent
 		genes_idx = np.concatenate([genes_idx, a]) # concatenate gene indices
+		genes_loadings = np.concatenate([genes_loadings, np.sort(sub)[::-1]])
 	genes_idx = genes_idx.astype(int)
 
 	# make list unique (a gene can't appear twice in the list for two different features)
 	s = set()
 	l = []
-	for x in genes_idx:
+	vals = []
+	for i in range(len(genes_idx)):
+		x = genes_idx[i]
+		currval = genes_loadings[i]
+		if x in s: 
+			# find the existing loading value and compare it to the new loading value
+			origidx = np.argwhere(l==x)[0][0]
+			origval = vals[origidx]
+			if origval<currval: 
+				# remove the origval and gene name in the list and append the new val and gene name
+				l.remove(x)
+				vals.remove(origval)
+				l.append(x)
+				vals.append(currval)
+
 		if x not in s:
 			s.add(x)
 			l.append(x)
-	genes_idx = np.array(l)
+			vals.append(currval)
 
+	genes_idx = np.array(l)[::-1]
+	keptgenes = [filtered_genes[i] for i in genes_idx]
+	print(keptgenes)
+
+	plt.figure(figsize=(5,8)) 
 	mtx = W[genes_idx, :] # subset feature space with the top genes for the features
-	ax = plt.imshow(mtx, cmap='magma', aspect='auto') # create heatmap
+	ax = plt.imshow(mtx, cmap='magma', aspect=0.2) # create heatmap
 	xlbls = [pop['top_feat_labels'][i] for i in range(pop['nfeats'])]
-	plt.xticks(np.arange(pop['nfeats']),xlbls,rotation=90)
+	plt.xticks(np.arange(pop['nfeats']),xlbls, rotation=45, ha='right',fontsize=6)
 	plt.ylabel('Genes')
-	plt.yticks([])
+	plt.ylim(-0.5,len(genes_idx)-0.5)
+	plt.yticks(np.arange(len(genes_idx)),keptgenes, fontsize=3)
 	plt.xlabel('Features')
 
 	dname = 'qc'
@@ -1341,9 +1364,12 @@ def find_best_m(pop, alpha = 3, multiplier = 3):
 	bestm = minvals[irow][icol]
 
 	# Plot MSE curve
+	minval=np.round(np.min(errors),3)-0.002
+	maxval=np.round(np.max(errors),3)+0.002
 	plt.scatter(nfeats,errors, marker=".", s=100)
 	plt.plot(nfeats,errors, marker=".")
-	plt.ylabel('m')
+	plt.ylabel('MSE(normalized)')
+	plt.ylim(minval,maxval)
 	plt.savefig(os.path.join(pop['output'], 'featurechoice_1_mse.pdf'), bbox_inches = "tight")
 	plt.close()
 
@@ -1376,7 +1402,7 @@ def find_best_m(pop, alpha = 3, multiplier = 3):
 	# highlight the m value selected in the data
 	heat_map.add_patch(plt.Rectangle((icol, irow), 1, 1, fill=False, edgecolor='magenta', lw=2))
 	plt.savefig(os.path.join(pop['output'], 'featurechoice_3_phase_argmin_m.pdf'), bbox_inches = "tight")
-	# plt.close()
+	plt.show()
 
 	return bestm
 
