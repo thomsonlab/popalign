@@ -1066,7 +1066,6 @@ def plot_top_genes_features(pop):
 
 	genes_idx = np.array(l)[::-1]
 	keptgenes = [filtered_genes[i] for i in genes_idx]
-	print(keptgenes)
 
 	plt.figure(figsize=(5,8)) 
 	mtx = W[genes_idx, :] # subset feature space with the top genes for the features
@@ -1324,7 +1323,7 @@ def find_best_m(pop, alpha = 3, multiplier = 3):
 	r_univ= range(1,30)
 
 	for i in range(len(alphas)):
-		currscale = np.round(np.max(np.power(np.array(r_univ),alphas[i]))*250)
+		currscale = np.round(np.max(np.power(np.array(r_univ),alphas[i]))*10)
 		basescales.append(currscale)
 
 	# Assemble f(m) values by sweeping over j and alpha
@@ -1342,7 +1341,7 @@ def find_best_m(pop, alpha = 3, multiplier = 3):
 		for j in jrange:               
 			currscale = j*1/currbasescale # increase j linearly
 			#         currscale = np.power(2,j) * currbasescale # increase j by powers of 2
-			curr_values = currscale*(np.power(np.array(nfeats),curralpha)) + np.array(errors)
+			curr_values = currscale*(np.power(np.array(nfeats),curralpha)) + np.array(errors_2)
 			currmin = np.argwhere(curr_values==np.min(curr_values))[0][0]
 
 			curr_df = {'vals': np.append(curr_values,np.min(curr_values)),
@@ -1364,12 +1363,9 @@ def find_best_m(pop, alpha = 3, multiplier = 3):
 	bestm = minvals[irow][icol]
 
 	# Plot MSE curve
-	minval=np.round(np.min(errors),3)-0.002
-	maxval=np.round(np.max(errors),3)+0.002
-	plt.scatter(nfeats,errors, marker=".", s=100)
-	plt.plot(nfeats,errors, marker=".")
+	plt.scatter(nfeats,errors_2, marker=".", s=100)
+	plt.plot(nfeats,errors_2, marker=".")
 	plt.ylabel('MSE(normalized)')
-	plt.ylim(minval,maxval)
 	plt.savefig(os.path.join(pop['output'], 'featurechoice_1_mse.pdf'), bbox_inches = "tight")
 	plt.close()
 
