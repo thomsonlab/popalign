@@ -1076,7 +1076,8 @@ def plot_top_genes_features(pop):
 	plt.ylim(-0.5,len(genes_idx)-0.5)
 	plt.yticks(np.arange(len(genes_idx)),keptgenes, fontsize=3)
 	plt.xlabel('Features')
-
+	plt.colorbar()
+	
 	dname = 'qc'
 	mkdir(os.path.join(pop['output'], dname)) # create subfolder
 	plt.savefig(os.path.join(pop['output'], dname, 'features_m%d_topgenes.pdf' % pop['nfeats']), bbox_inches = "tight")
