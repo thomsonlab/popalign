@@ -46,6 +46,7 @@ from plotly.offline import iplot
 import umap.umap_ as umap
 import time
 import shutil
+import itertools
 
 
 '''
@@ -241,7 +242,7 @@ def load_samples(samples, controlstring=None, genes=None, outputfolder='output',
 		end = start+n
 		obj['samples'][x]['indices'] = (start,end)
 		start = end
-
+	# obj['ncells'] = end
 	obj['nsamples'] = len(obj['order']) # save number of samples
 	obj['output'] = outputfolder # define name of output folder to save results
 	return obj
@@ -737,13 +738,14 @@ def removeRBC(pop, species):
 
 	'''
 	if species == 'mouse':
-		genes = ['HBB-BT','HBB-BS' ,'HBA-A1','HBA-A2'] # mouse RBC gene list
+		genes = ['HBB-BT','HBB-BS' ,'HBA-A1','HBA-A2','HBB-B1','HBB-B2'] # mouse RBC gene list
 	elif species == 'human':
 		genes = ['HBB', 'HBA1', 'HBA2'] # human RBC gene list
 	else:
 		raise Exception('Wrong species (must be mouse or human')
 	
-	gidx = [np.where(pop['genes']==g)[0][0] for g in genes] # get indices of genes in current gene list
+	gidx = [np.where(pop['genes']==g)[0] for g in genes] # get indices of genes in current gene list
+	gidx = np.concatenate(gidx)
 	cellssums = []
 	for x in pop['order']: # for each sample
 		cellssums.append(np.array(pop['samples'][x]['M'][gidx,:].sum(axis=0)).flatten()) # compute cell sums for the specific genes
@@ -752,6 +754,7 @@ def removeRBC(pop, species):
 
 	start = 0
 	end = 0
+	numcells = 0
 	for i,x in enumerate(pop['order']): # for each sample
 		idx = np.where(cellssums[i]<=T)[0] # get indices of cells with sums inferior to T
 		pop['samples'][x]['M'] = pop['samples'][x]['M'][:,idx] # select cells
@@ -759,7 +762,10 @@ def removeRBC(pop, species):
 		end = start+len(idx) # update start and end cell indices
 		pop['samples'][x]['indices'] = (start,end) # update start and end cell indices
 		start = end # update start and end cell indices
+		numcells = numcells + (np.shape(pop['samples'][x]['M'])[1] - len(idx))
 		#print(x, '%d cells kept out of %d' % (len(idx), len(cellssums[i])))
+
+	print('%d red blood cells have been removed across all samples' % numcells)
 
 '''
 Gene Set Enrichment Analysis functions
@@ -985,6 +991,8 @@ def split_proj(pop, proj):
 	for x in pop['order']: # for each sample in pop
 		n = pop['samples'][x]['M'].shape[1] # number of cells
 		end += n
+		print(start)
+		print(end)
 		pop['samples'][x]['C'] = proj[start:end,:] # store matching projected data
 		start = end
 
@@ -1077,7 +1085,7 @@ def plot_top_genes_features(pop):
 	plt.yticks(np.arange(len(genes_idx)),keptgenes, fontsize=3)
 	plt.xlabel('Features')
 	plt.colorbar()
-	
+
 	dname = 'qc'
 	mkdir(os.path.join(pop['output'], dname)) # create subfolder
 	plt.savefig(os.path.join(pop['output'], dname, 'features_m%d_topgenes.pdf' % pop['nfeats']), bbox_inches = "tight")
@@ -1167,6 +1175,8 @@ def plot_H(pop, method='complete', n=None):
 		if n<C.shape[0]: # if n is small than the number of cells in C
 			idx = np.random.choice(C.shape[0], n, replace=False) # randomly select ncells cells
 			C = C[idx,:] # subsample
+	else: 
+		n=C.shape[0]
 
 	d = pairwise_distances(X=C,metric='correlation',n_jobs=-1) # pairwaise distance matrix
 	np.fill_diagonal(d,0.) # make sure diagonal is not rounded to some small value
@@ -1189,7 +1199,7 @@ def plot_H(pop, method='complete', n=None):
 
 	dname = 'qc'
 	mkdir(os.path.join(pop['output'], dname)) # create subfolder
-	plt.savefig(os.path.join(pop['output'], dname, 'features_m%d_projection_allcells.pdf' % pop['nfeats']), bbox_inches = "tight", dpi=300)
+	plt.savefig(os.path.join(pop['output'], dname, 'features_m%d_projection_%dcells.pdf' % (pop['nfeats'], n)), bbox_inches = "tight", dpi=300)
 	plt.close()
 
 def onmf(pop, ncells=2000, nfeats=[5,7,9], nreps=3, niter=300):
@@ -1213,17 +1223,21 @@ def onmf(pop, ncells=2000, nfeats=[5,7,9], nreps=3, niter=300):
 	'''
 	M_norm = cat_data(pop, 'M_norm') # grab normalized data
 	maxncells = M_norm.shape[1] # get total number of cells
-	if ncells > maxncells: # if ncells is larger than total number of cells
-		ncells = maxncells # adjust number down
-	idx = np.random.choice(M_norm.shape[1], ncells, replace=False) # randomly select ncells cells
+	if 2*ncells > maxncells: # if ncells is larger than twice the number of cells
+		ncells = np.floor(maxncells/2) # adjust number down
+
+	# randomly select ncells and divide into training and cross-validation dataset
+	idx = np.random.choice(M_norm.shape[1], 2*ncells, replace=False) 
+	idx1 = idx[0:ncells]
+	idx2 = idx[ncells:]
 
 	print('Computing W matrices')
 	with Pool(pop['ncores']) as p:
-		q = p.starmap(oNMF, [(M_norm[:,idx], x, niter) for x in np.repeat(nfeats,nreps)]) # run ONMF in parallel for each possible k nreps times
+		q = p.starmap(oNMF, [(M_norm[:,idx1], x, niter) for x in np.repeat(nfeats,nreps)]) # run ONMF in parallel for each possible k nreps times
 
 	q = [scale_W(q[i][0]) for i in range(len(q))] # scale the different feature spaces
 	print('Computing reconstruction errors')
-	errors, projs = reconstruction_errors(pop, M_norm, q) # compute the reconstruction errors for all the different spaces in q and a list of the different data projections for each feature spaces
+	errors, projs = reconstruction_errors(pop, M_norm[:,idx2], q) # compute the reconstruction errors for all the different spaces in q and a list of the different data projections for each feature spaces
 	
 	# choose the best out of all replicates
 	mlist = np.repeat(nfeats,nreps)
@@ -1244,7 +1258,6 @@ def onmf(pop, ncells=2000, nfeats=[5,7,9], nreps=3, niter=300):
 	pop['onmf'] = {}
 	pop['onmf']['q'] = q
 	pop['onmf']['errors'] = errors
-	pop['onmf']['projs'] = projs
 	pop['onmf']['nfeats'] = nfeats
 
 def choose_featureset(pop, m = [], alpha = 3, multiplier=3):
@@ -1264,8 +1277,10 @@ def choose_featureset(pop, m = [], alpha = 3, multiplier=3):
 	# Unpack variables from pop object
 	q = pop['onmf']['q']
 	errors = pop['onmf']['errors']
-	projs = pop['onmf']['projs']
 	nfeats = pop['onmf']['nfeats']
+
+	# grab normalized data
+	M_norm = cat_data(pop, 'M_norm') 
 
 	if m in nfeats: 
 		print('Using oNMF featureset for specified m: ' + str(m))
@@ -1277,12 +1292,18 @@ def choose_featureset(pop, m = [], alpha = 3, multiplier=3):
 		print('Featureset with ' + str(bestm) + ' features loaded')
 
 	idx_best = np.argwhere(np.array(nfeats)==bestm)[0][0]
+
 	# Store featureset and coefficients into the individual samples
 	pop['W'] = q[idx_best] # retrieve matching W
 	pop['nfeats'] = pop['W'].shape[1] # store number of features in best W
-	proj = projs[idx_best] # retrieve matching projection
-	# pop['reg_covar'] = max(np.linalg.eig(np.cov(proj.T))[0])/100 # store a regularization value for GMM covariance matrices
 
+	# recompute new projection based on chosen feature set
+	print('Projecting into selected featureset...')
+	with Pool(pop['ncores']) as p:
+		H = p.starmap(nnls, [(pop['W'], M_norm[:,i].toarray().flatten()) for i in range(M_norm.shape[1])]) # project each cell i of normalized data onto the current W 
+		proj = np.vstack(H)
+
+	# pop['reg_covar'] = max(np.linalg.eig(np.cov(proj.T))[0])/100 # store a regularization value for GMM covariance matrices
 	gsea(pop) # run GSEA on feature space
 	split_proj(pop, proj) # split projected data and store it for each individual sample
 	plot_top_genes_features(pop) # plot a heatmap of top genes for W
