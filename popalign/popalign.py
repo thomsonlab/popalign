@@ -1080,7 +1080,6 @@ def plot_top_genes_features(pop):
 		geneFS = 1
 	if len(genes_idx)>600: 
 		geneFS = 0.5
-	print(geneFS)
 
 	mtx = W[genes_idx, :] # subset feature space with the top genes for the features
 
