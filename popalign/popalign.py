@@ -991,8 +991,6 @@ def split_proj(pop, proj):
 	for x in pop['order']: # for each sample in pop
 		n = pop['samples'][x]['M'].shape[1] # number of cells
 		end += n
-		print(start)
-		print(end)
 		pop['samples'][x]['C'] = proj[start:end,:] # store matching projected data
 		start = end
 
@@ -1075,14 +1073,25 @@ def plot_top_genes_features(pop):
 	genes_idx = np.array(l)[::-1]
 	keptgenes = [filtered_genes[i] for i in genes_idx]
 
-	plt.figure(figsize=(5,8)) 
+	 # define gene font sizes
+	if len(genes_idx)>200: 
+		geneFS = 2
+	if len(genes_idx)>400: 
+		geneFS = 1
+	if len(genes_idx)>600: 
+		geneFS = 0.5
+	print(geneFS)
+
 	mtx = W[genes_idx, :] # subset feature space with the top genes for the features
-	ax = plt.imshow(mtx, cmap='magma', aspect=0.2) # create heatmap
+
+	fig = plt.figure(figsize=(5,8)) 
+	ar = 3 * pop['nfeats']/len(genes_idx) # define aspect ratio
+	ax = plt.imshow(mtx, cmap='magma', aspect=ar) # create heatmap
 	xlbls = [pop['top_feat_labels'][i] for i in range(pop['nfeats'])]
 	plt.xticks(np.arange(pop['nfeats']),xlbls, rotation=45, ha='right',fontsize=6)
 	plt.ylabel('Genes')
 	plt.ylim(-0.5,len(genes_idx)-0.5)
-	plt.yticks(np.arange(len(genes_idx)),keptgenes, fontsize=3)
+	plt.yticks(np.arange(len(genes_idx)),keptgenes, fontsize=geneFS)
 	plt.xlabel('Features')
 	plt.colorbar()
 
