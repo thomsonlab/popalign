@@ -1392,11 +1392,14 @@ def find_best_m(pop, alpha = 3, multiplier = 3):
 	idx_flat = irow*len(jrange) + icol
 	bestm = minvals[irow][icol]
 
+	dname = 'qc'
+	mkdir(os.path.join(pop['output'], dname)) # create subfolder
+
 	# Plot MSE curve
 	plt.scatter(nfeats,errors_2, marker=".", s=100)
 	plt.plot(nfeats,errors_2, marker=".")
 	plt.ylabel('MSE(normalized)')
-	plt.savefig(os.path.join(pop['output'], 'featurechoice_1_mse.pdf'), bbox_inches = "tight")
+	plt.savefig(os.path.join(pop['output'], dname, 'featurechoice_1_mse.pdf'), bbox_inches = "tight")
 	plt.close()
 
 	# Plot f(m) curves
@@ -1413,7 +1416,7 @@ def find_best_m(pop, alpha = 3, multiplier = 3):
 			spine.set_color('magenta')
 			spine.set_linewidth(2)
 
-		plt.savefig(os.path.join(pop['output'], 'featurechoice_2_fm_curves.pdf'), bbox_inches = "tight")
+		plt.savefig(os.path.join(pop['output'], dname, 'featurechoice_2_fm_curves.pdf'), bbox_inches = "tight")
 		plt.close()
 
 	# Plot phase portrait of argmin
@@ -1427,7 +1430,7 @@ def find_best_m(pop, alpha = 3, multiplier = 3):
 	plt.xticks(np.array(jrange)-0.5, jrange)
 	# highlight the m value selected in the data
 	heat_map.add_patch(plt.Rectangle((icol, irow), 1, 1, fill=False, edgecolor='magenta', lw=2))
-	plt.savefig(os.path.join(pop['output'], 'featurechoice_3_phase_argmin_m.pdf'), bbox_inches = "tight")
+	plt.savefig(os.path.join(pop['output'], dname, 'featurechoice_3_phase_argmin_m.pdf'), bbox_inches = "tight")
 	plt.show()
 
 	return bestm
