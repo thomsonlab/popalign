@@ -2421,15 +2421,15 @@ def calc2Derr(D1, D2, binedges):
 		x = xy[i][0]
 		y = xy[i][1]
 
-		D1sub = D1[[x,y],:]
-		D2sub = D2[[x,y],:]
+		D1sub = D1[:,[x-1,y-1]]
+		D2sub = D2[:,[x-1,y-1]]
 
 		xedges = binedges[(x-1)]
 		yedges = binedges[(y-1)]
 
 		# make bins based on M values
-		N1, a, b = np.histogram2d(D1sub[0,:], D1sub[1,:], [xedges, yedges]);
-		N2, a, b = np.histogram2d(D2sub[0,:], D2sub[1,:], [xedges,yedges]);
+		N1, a, b = np.histogram2d(D1sub[:,0], D1sub[:,1], [xedges, yedges]);
+		N2, a, b = np.histogram2d(D2sub[:,0], D2sub[:,1], [xedges,yedges]);
 
 		# calculate the error: 
 		err = np.multiply(np.divide(np.abs(N1-N2),((N1+N2)/2)), np.divide((N1+N2),(n1+n2)))
@@ -2508,6 +2508,7 @@ def calcGMMerr(pop, sample, ncells = 400, nbins=5, saveplot = False):
 		xy = itertools.combinations(range(1,m+1),2)
 		xy = list(xy)
 		xy = [str(item) for item in xy]
+		n = len(xy)
 		sortxy = [xy[i] for i in sortidx]  
 
 		# Construct pandas dataframe - sorted
