@@ -1077,6 +1077,7 @@ def plot_top_genes_features(pop):
 	keptgenes = [filtered_genes[i] for i in genes_idx]
 
 	 # define gene font sizes
+	geneFS = 3 # (default)
 	if len(genes_idx)>200: 
 		geneFS = 2
 	if len(genes_idx)>400: 
@@ -2493,8 +2494,8 @@ def calcGMMerr(pop, sample, ncells = 400, nbins=5, saveplot = False):
 		H, curr_edges = np.histogram(C[:,i], bins = nbins)
 		binedges.append(curr_edges)
 	 
-	resample_err = calc2DErr(Csamp1, Csamp2, binedges)
-	model_err = calc2DErr(Csim, Csamp2, binedges)
+	resample_err = calc2Derr(Csamp1, Csamp2, binedges)
+	model_err = calc2Derr(Csim, Csamp2, binedges)
 
 	if saveplot == True: 
 
