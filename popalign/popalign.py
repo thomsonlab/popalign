@@ -32,6 +32,7 @@ import matplotlib
 from matplotlib import pyplot as plt
 from matplotlib.widgets import Slider, Button
 from matplotlib.offsetbox import AnchoredText
+import matplotlib.ticker as ticker
 from matplotlib import gridspec
 import seaborn as sns
 from scipy.stats import multivariate_normal as mvn
@@ -1015,7 +1016,7 @@ def save_top_genes_features(pop, stds, stdfactor):
 		gs = [filtered_genes[j] for j in gidx] # get matching names
 		out.append(gs) # store in list
 
-	dname = 'qc'
+	dname = 'qc/features'
 	with open(os.path.join(pop['output'], dname, 'features_m%d_topgenes_list.txt' % pop['nfeats']), 'w') as fout: # create file
 		#for i in range(pop['nfeats']): # dump selected genes for each feature i
 		for i, lbl in enumerate(pop['top_feat_labels']): # dump selected genes for each feature i
@@ -1027,6 +1028,8 @@ def save_top_genes_features(pop, stds, stdfactor):
 def plot_top_genes_features(pop):
 	"""
 	Plot heatmap top genes per feature ~ features
+
+	NB: Currently only supports oNMF features
 
 	Parameters
 	----------
@@ -1094,7 +1097,7 @@ def plot_top_genes_features(pop):
 	plt.xlabel('Features')
 	plt.colorbar()
 
-	dname = 'qc'
+	dname = 'qc/features'
 	mkdir(os.path.join(pop['output'], dname)) # create subfolder
 	plt.savefig(os.path.join(pop['output'], dname, 'features_m%d_topgenes.pdf' % pop['nfeats']), bbox_inches = "tight")
 	plt.close()
@@ -1166,6 +1169,8 @@ def plot_H(pop, method='complete', n=None):
 	'''
 	Plot the projection in feature space of the data
 
+	NB: Currently only supports oNMF features
+
 	Parameters
 	----------
 	pop : dict
@@ -1205,7 +1210,7 @@ def plot_H(pop, method='complete', n=None):
 	else:
 		plt.title('%d randomly selected cells from %d samples' % (X.shape[1], pop['nsamples']))
 
-	dname = 'qc'
+	dname = 'qc/features'
 	mkdir(os.path.join(pop['output'], dname)) # create subfolder
 	plt.savefig(os.path.join(pop['output'], dname, 'features_m%d_projection_%dcells.pdf' % (pop['nfeats'], n)), bbox_inches = "tight", dpi=300)
 	plt.close()
@@ -1270,7 +1275,9 @@ def onmf(pop, ncells=2000, nfeats=[5,7,9], nreps=3, niter=300):
 
 def choose_featureset(pop, m = [], alpha = 3, multiplier=3):
 	'''
-	Choose featureset from store oNMF calculations. Either user directly supplies a preferred m value or the 
+	Choose featureset from stored oNMF calculations. Either user directly supplies a preferred m value or the 
+
+	NB: Currently only supports oNMF features
 
 	Parameters
 	----------
@@ -1322,6 +1329,8 @@ def find_best_m(pop, alpha = 3, multiplier = 3):
 	'''
 	Find the best number of features (m) given the MSE error and 
 	parameters for polynomial cost function f(m)
+
+	NB: Currently only supports oNMF features
 
 	Parameters
 	----------
@@ -1392,7 +1401,7 @@ def find_best_m(pop, alpha = 3, multiplier = 3):
 	idx_flat = irow*len(jrange) + icol
 	bestm = minvals[irow][icol]
 
-	dname = 'qc'
+	dname = 'qc/features'
 	mkdir(os.path.join(pop['output'], dname)) # create subfolder
 
 	# Plot MSE curve
@@ -2372,6 +2381,220 @@ def get_gmm_means(pop, sample, rep = None):
 
 	return gmm_means
 
+'''
+Calculate GMM error
+'''
+
+def calc2Derr(D1, D2, binedges):
+	'''
+	Compute error for two matrices across all possible 2D projections
+
+	Parameters
+	----------
+	D1 : array
+		n1 x m array of coefficients, n1 = number of cells, m = number of feature dimensions
+	D2 : array
+		n2 x m array of coefficients, n1 = number of cells, m = number of feature dimensions
+	binedges : list of arrays
+		Each array in the list indicating binedges for a feature dimension
+
+	Output
+	----------
+	errv : array
+	    array of floats indicating % error for each 2D projection 
+	'''
+	(n1,m1) = np.shape(D1)
+	(n2,m2) = np.shape(D1)
+
+	if (m1 != m2):
+	    raise Exception('Two matrices not the same dimension')
+	#     elif (n1!=n2):
+	#         raise Exception('Two matrices not the same number of cells')
+
+	m = m1
+
+	xy = itertools.combinations(range(1,m+1),2)
+	xy = list(xy)
+
+	errv = [];
+	for i in range(len(xy)): 
+		x = xy[i][0]
+		y = xy[i][1]
+
+		D1sub = D1[[x,y],:]
+		D2sub = D2[[x,y],:]
+
+		xedges = binedges[(x-1)]
+		yedges = binedges[(y-1)]
+
+		# make bins based on M values
+		N1, a, b = np.histogram2d(D1sub[0,:], D1sub[1,:], [xedges, yedges]);
+		N2, a, b = np.histogram2d(D2sub[0,:], D2sub[1,:], [xedges,yedges]);
+
+		# calculate the error: 
+		err = np.multiply(np.divide(np.abs(N1-N2),((N1+N2)/2)), np.divide((N1+N2),(n1+n2)))
+		meanerr = np.nansum(np.nansum(err))*100
+		errv.append(meanerr)
+
+	errv = np.array(errv)
+	return gmm_err__avg_allsamples_across_nbins
+
+def calcGMMerr(pop, sample, ncells = 400, nbins=5, saveplot = False): 
+
+	'''
+	Compute and plot GMM error versus resampling error across all possible 2D projections
+
+	Parameters
+	----------
+	pop : dict
+	    PopAlign object
+	sample : str
+	    name of sample
+	ncells : int
+	    multiplies constant C in f(m)
+	nbins : int
+	    number of bins along a single axis. Thus, each 2D projection will have nbins^2 tiles
+	    
+	Output
+	----------
+	resample_err : array
+	    array of floats indicating % error for each 2D projection 
+	model_err : array 
+	    array of floats indicating % error for each 2D projection 
+	    
+	'''
+	navy = "#34495e"
+	red = "#e74c3c"
+
+	colors = [navy, red]
+	pal = sns.color_palette(colors)
+
+	# Retrieve coefficients from the sample
+	C = PA.get_coeff(pop,sample)
+
+	# find number of cells in C
+	numC = C.shape[0] 
+
+	# Sample from the existing population
+	if numC < 2*ncells:
+		print('Not enough cells in %s. Sampling %d cells instead' % (sample, np.floor(numC/2)))
+		ncells = int(np.floor(numC/2))
+
+	idxes = random.sample(range(len(C)),2*ncells)
+	idx1 = idxes[0:ncells]
+	idx2 = idxes[ncells:]
+	Csamp1 = C[idx1,:]
+	Csamp2 = C[idx2,:]
+	Csim = pop['samples'][sample]['gmm'].sample(ncells)[0]
+
+	# generate consistent set of binedges for each 2D projection 
+	binedges = []
+	for i in range(pop['nfeats']):
+		H, curr_edges = np.histogram(C[:,i], bins = nbins)
+		binedges.append(curr_edges)
+	 
+	resample_err = calc2DErr(Csamp1, Csamp2, binedges)
+	model_err = calc2DErr(Csim, Csamp2, binedges)
+
+	if saveplot == True: 
+
+		######## Construct a sorted dataframe #######
+		# Determine sort order for plot
+		errmean = np.divide(resample_err + model_err,2)
+		sortidx = np.argsort(errmean)
+
+		# Generate the (feat1,feat2) labels
+		m = np.shape(C)[1]
+		xy = itertools.combinations(range(1,m+1),2)
+		xy = list(xy)
+		xy = [str(item) for item in xy]
+		sortxy = [xy[i] for i in sortidx]  
+
+		# Construct pandas dataframe - sorted
+		curr_df = {'errs': np.append(resample_err[sortidx], model_err[sortidx]),
+					'index': np.tile(range(1,n+1),2), 
+					'errtype': np.append(['resample'] * n, ['model'] * n)}
+		curr_df = pd.DataFrame(curr_df)
+
+		############################################
+
+		dname = 'qc/gmm'
+		PA.mkdir(os.path.join(pop['output'], dname)) # create subfolder
+
+		fig = plt.figure(figsize=(6, 4)) 
+		fig.suptitle('nbins = %d' % nbins, fontsize=12)        
+
+		gs = gridspec.GridSpec(1, 2, width_ratios=[3, 1]) 
+		ax0 = plt.subplot(gs[0])
+		sns.lineplot(x="index", y="errs",
+					hue="errtype", palette = pal,legend="full", data=curr_df,  ax=ax0)
+		ax0.set_ylabel('error (%)')
+		ax0.set_xlabel('2D projection (feat1,feat2)')
+		ax0.set_xticks(np.arange(len(model_err)))
+		ax0.set_xticklabels(sortxy, rotation=45, ha='right',fontsize=8)
+		# set spacing of major ticks (with labels) and minor ticks (no labels) 
+		ax0.xaxis.set_minor_locator(ticker.MultipleLocator(1))
+		ax0.xaxis.set_major_locator(ticker.MultipleLocator(10))
+
+
+		ax1 = plt.subplot(gs[1])
+		sns.boxplot(x="errtype", y="errs", data = curr_df, palette = pal,ax=ax1)
+		ax1.set_ylabel('error (%)')
+		plt.xticks(rotation=45)
+
+		plt.savefig(os.path.join(pop['output'], dname, 'gmm_err_%s_each2Dproj.pdf' % sample), bbox_inches = "tight")
+		plt.close()
+
+	return resample_err, model_err
+
+def plotallGMMerr(pop, ncells = 400, nbinrange = list(range(5,55,5))):
+	'''
+	Compute average 2D projection errors for models across all samples, and a range of binwidths
+
+	Parameters
+	----------
+	pop : dict
+	    PopAlign object
+	ncells : int
+	    number of cells to sample
+	nbinrange: list of ints
+	    list of nbin values to sweep across
+	'''
+	err_df = pd.DataFrame()
+	for sample in pop['order']:
+		for i in range(len(nbinrange)): 
+			currnbins = nbinrange[i]
+			if currnbins == 25: 
+				Rerr,Merr = calcGMMerr(pop, sample, ncells = 500, nbins=currnbins, saveplot=True)
+			else: 
+				Rerr,Merr = calcGMMerr(pop, sample, ncells = 500, nbins=currnbins, saveplot=False)
+
+			currrows = {'avgerr': np.append(Rerr, Merr),
+						'numbins': np.append([currnbins] * len(Rerr), [currnbins]*len(Merr)),
+						'errtype':np.append(['resample'] * len(Rerr), ['model']*len(Merr)), 
+						'sample': [sample]* (len(Rerr) + len(Merr))}
+
+			currrows = pd.DataFrame(currrows)
+			err_df = err_df.append(currrows,ignore_index=True)
+
+	navy = "#34495e"
+	red = "#e74c3c"
+
+	colors = [navy, red]
+	pal = sns.color_palette(colors)
+
+	dname = 'qc/gmm'
+	PA.mkdir(os.path.join(pop['output'], dname)) # create subfolder
+
+	colwrapnum = np.round(np.sqrt(len(pop['order'])))
+
+	with sns.plotting_context('notebook',font_scale=1.7):
+		sns.relplot(x="numbins", y="avgerr", col='sample', col_wrap=colwrapnum,
+			hue="errtype", palette = pal,
+			kind="line", legend="full", data=err_df)
+	plt.ylabel('error (%)')
+	plt.savefig(os.path.join(pop['output'], dname, 'gmm_err__avg_allsamples_across_nbins.pdf'), bbox_inches = "tight")
+	plt.close()
 
 '''
 Build gmms using cell types
