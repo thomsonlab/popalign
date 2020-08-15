@@ -2590,6 +2590,137 @@ def plotGMMandKDEproj(pop, sample, bw, proj='random'):
 
 	return (np.sum(errexp)) # return the total error across the entire projection
 
+def compareGMMtoKDE(pop, sample, bw, numProj = 500): 
+	'''
+	Compute average 2D projection errors for a model compared to a KDE model 
+
+	Parameters
+	----------
+	pop : dict
+	    PopAlign object
+	sample : str
+	    name of sample within pop object
+	bw : float
+	    bandwidth for KDE model
+	numProj: int
+	    number of random projections to compute
+	'''
+
+	D = PA.get_coeff(pop,sample)
+	numC = D.shape[0]
+	gmm1= pop['samples'][sample]['gmm']
+
+	errv = [] 
+	pterr_df = pd.DataFrame() # data per grid point
+	err_df = pd.DataFrame() # data per 2D projection    
+
+	dname = 'qc/gmm'
+	PA.mkdir(os.path.join(pop['output'], dname)) # create subfolder
+
+	for i in range(numProj):
+		# Generate random 2D projection
+		transformer = random_projection.GaussianRandomProjection(n_components=2)
+		D_new = transformer.fit_transform(D)
+		Tmat = transformer.components_.T
+		# Project the model
+		newgmm = project_gmm(gmm1, Tmat) 
+
+		if not bw: 
+			# use grid search cross-validation to optimize the bandwidth
+			params = {'bandwidth': np.logspace(-2, 1, 20)}
+			grid = GridSearchCV(KernelDensity(), params)
+			grid.fit(D_new)
+			print("best bandwidth for projection: %.2f" %(grid.best_estimator_.bandwidth), end ='\r')
+			# use the best estimator to compute the kernel density estimate
+			bw = grid.best_estimator_.bandwidth
+		    
+		kde1 = KernelDensity(bandwidth=bw, metric='euclidean',
+		                    kernel='gaussian', algorithm='ball_tree')
+		kde1.fit(D_new)
+
+		# Sample some points from Gmm and combine points with experimental data to determine extents
+		Dsamp = newgmm.sample(D_new.shape[0])[0]
+		D_combo = np.vstack((Dsamp,D_new))
+
+		# Create a regular 2D grid with 25 points in each dimension
+		xmin, ymin = D_combo.min(axis=0)
+		xmax, ymax = D_combo.max(axis=0)
+		xi, yi = np.mgrid[xmin:xmax:25j, ymin:ymax:25j]
+
+		# Evaluate the KDE on a regular grid...
+		coords = np.vstack([item.ravel() for item in [xi, yi]])
+
+		kdedensity = kde1.score_samples(coords.T).reshape(xi.shape)
+		kdedensityexp = np.exp(kdedensity) 
+		kdedensityexp = kdedensityexp/np.sum(kdedensityexp)
+
+		gmmdensity = newgmm.score_samples(coords.T).reshape(xi.shape)
+		gmmdensityexp = np.exp(gmmdensity) 
+		gmmdensityexp = gmmdensityexp/np.sum(gmmdensityexp)
+
+		gmmdensityexpv = gmmdensityexp.flatten()
+		kdedensityexpv = kdedensityexp.flatten()
+		keepidx = np.argwhere(kdedensityexpv>(1/numC)).flatten()
+		errexp = np.abs(kdedensityexpv[keepidx]-gmmdensityexpv[keepidx])            
+		err1 = np.sum(errexp)
+		errv.append(err1)
+		currrows = {'errs': errexp,
+					'pKDE' : kdedensityexpv[keepidx],
+					'projection':['proj_' + str(i)] * len(keepidx),
+					'sample': [sample]* len(keepidx)}
+		currrows = pd.DataFrame(currrows)
+		pterr_df = pterr_df.append(currrows,ignore_index=True)
+
+	############ Plot2 - Distribution of summed error ############
+	ax0 = sns.distplot(errv,25)
+	ax0.set_ylabel('number of 2D projections')
+	ax0.set_xlabel('sum(|P(KDE) - P(model)|) across 2D projection')
+	plt.title('%d projections' % numProj)
+	plt.savefig(os.path.join(pop['output'], dname, 'gmm_err_%s__2_summed_random_2D_proj.pdf' % (sample)), bbox_inches = "tight")
+	plt.close()
+
+	############ Plot3 - err vs P(KDE) ############
+	# sample only 10,000 pts
+	numpts = 10000
+	if numpts>len(pterr_df): 
+		numpts = len(pterr_df)
+	idx = random.sample(range(len(pterr_df)),numpts)
+
+	pKDE = pterr_df.iloc[idx]['pKDE']
+	errs = pterr_df.iloc[idx]['errs']
+
+	xmin = np.min(pKDE)
+	xmax = np.max(pKDE)
+	ymin = np.min(errs)
+	ymax = np.max(errs)
+
+	ax0 = sns.scatterplot(x='pKDE', y='errs', data = pterr_df.iloc[idx],s=20,alpha=0.5, linewidth=0)
+	ax0.set_xlim((xmin,xmax*1.1))
+	ax0.set_ylim((ymin,ymax*1.1))    
+	ax0.set_xlabel('P(KDE)')
+	ax0.set_ylabel('|P(KDE) - P(model)|')
+	ax0.set_aspect(1)
+	plt.xscale('log')
+	plt.yscale('log')
+
+	"""Plot a line from slope and intercept"""
+	x_vals = np.array(ax0.get_xlim())
+	y_vals = x_vals
+	plt.plot(x_vals, y_vals, '--', color='red')
+	plt.savefig(os.path.join(pop['output'], dname, 'gmm_err_%s__3_logerr_vs_logpKDE_%d_randompoints.pdf' % (sample, numpts)), bbox_inches = "tight")
+	plt.close()
+
+	# Assemble error dataframe for 2D projections: 
+	currrows = {'projerr': errv, 
+				'perc' : [1] * len(errv),
+				'errtype' : ['gmm'] * len(errv),
+				'label' : ['gmm_1'] * len(errv),
+				'sample': [sample]* numProj}
+	currrows = pd.DataFrame(currrows)
+	err_df = err_df.append(currrows,ignore_index=True)
+
+	return err_df, pterr_df
+
 '''
 Build gmms using cell types
 '''
