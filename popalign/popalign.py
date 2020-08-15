@@ -2452,6 +2452,144 @@ def project_gmm(gmm1, Tmat):
 	    
 return newgmm #, projmeans_, projcovariances_,projprecisions_, projprecisions_chol_, weights
 
+def plotGMMandKDEproj(pop, sample, bw, proj='random'): 
+	'''
+	Plot 2D projection errors for model compared to kernel density estimate (KDE) of all datapoints
+	Can use either random Gaussian projections or two chosen dimensions from feature space
+
+	Parameters
+	----------
+	pop : dict
+	    PopAlign object
+	sample : str
+	    name of sample within pop object
+	bw : float
+	    bandwidth for KDE model
+	proj: 
+	    either 'random' or list [d1,d2] indicating chosen dimensions from feature space
+	'''
+
+	D = PA.get_coeff(pop,sample)
+	numC = D.shape[0]
+	gmm1= pop['samples'][sample]['gmm']
+
+	err_df = pd.DataFrame()
+
+	if proj=='random': 
+		transformer = random_projection.GaussianRandomProjection(n_components=2)
+		D_new = transformer.fit_transform(D)
+		Tmat = transformer.components_.T
+		newgmm = project_gmm(gmm1, Tmat) 
+		postfix = 'random'
+
+	elif len(proj)==2:
+		d1 = proj[0]
+		d2 = proj[1]
+		Tmat = np.zeros((D.shape[1],2))
+		Tmat[d1,0] = 1
+		Tmat[d2,1] = 1
+		newgmm = project_gmm(gmm1,Tmat)
+		D_new = D[:,[d1,d2]]
+		postfix = 'dim_%d_%d' %(d1,d2)
+
+	if not bw: 
+		# use grid search cross-validation to optimize the bandwidth
+		params = {'bandwidth': np.logspace(-2, 1, 20)}
+		grid = GridSearchCV(KernelDensity(), params)
+		grid.fit(D_new)
+		print("best bandwidth for projection: %.2f" %(grid.best_estimator_.bandwidth), end ='\r')
+		# use the best estimator to compute the kernel density estimate
+		bw = grid.best_estimator_.bandwidth
+
+	kde1 = KernelDensity(bandwidth=bw, metric='euclidean',
+	                    kernel='gaussian', algorithm='ball_tree')
+	kde1.fit(D_new)
+
+	# Sample some points from Gmm and combine points with experimental data to determine extents
+	Dsamp = newgmm.sample(D_new.shape[0])[0]
+	D_combo = np.vstack((Dsamp,D_new))
+
+	# Create a regular 2D grid with 25 points in each dimension
+	xmin, ymin = D_combo.min(axis=0)
+	xmax, ymax = D_combo.max(axis=0)
+	xi, yi = np.mgrid[xmin:xmax:25j, ymin:ymax:25j]
+
+	# Evaluate the KDE on a regular grid...
+	coords = np.vstack([item.ravel() for item in [xi, yi]])
+
+	kdedensity = kde1.score_samples(coords.T).reshape(xi.shape)
+	kdedensityexp = np.exp(kdedensity) 
+	kdedensityexp = kdedensityexp/np.sum(kdedensityexp)
+
+	gmmdensity = newgmm.score_samples(coords.T).reshape(xi.shape)
+	gmmdensityexp = np.exp(gmmdensity) 
+	gmmdensityexp = gmmdensityexp/np.sum(gmmdensityexp)
+
+	# Calculate the total error across entire 2D projection 
+	gmmdensityexpv = gmmdensityexp.flatten()
+	kdedensityexpv = kdedensityexp.flatten()
+
+	keepidx = np.argwhere(kdedensityexpv>(1/numC)) # threshold datapoints with p > 1/numC
+	errexp = np.abs(kdedensityexpv[keepidx]-gmmdensityexpv[keepidx])  
+
+	# Generate 1D vectors (projected along x axis) to plot: 
+	gmm1D = np.sum(gmmdensityexp,axis=0)
+	kde1D = np.sum(kdedensityexp,axis=0)
+	err1D = np.sum(np.abs(kdedensityexp-gmmdensityexp),axis=0)
+	#         err1D = np.abs(kde1D-gmm1D)
+
+	# Set the vmax for the colorscales in 2D plots
+	vmax_prob = np.max([np.max(kdedensityexp), np.max(gmmdensityexp)])
+	vmax_L1 = np.max(np.abs(kdedensityexp-gmmdensityexp))
+	vmax_1D =  np.max([np.max(kde1D), np.max(gmm1D)])
+
+	fig = plt.figure(tight_layout=True)
+	gs = gridspec.GridSpec(2, 3,  height_ratios = [10,1], width_ratios=[1, 1, 1]) 
+	extent = [xmin , xmax, ymin , ymax]
+
+	ax0 = fig.add_subplot(gs[0,0])        
+	plt.imshow(kdedensityexp,extent=extent, vmax = vmax_prob)
+	plt.title('P(KDE)')
+	plt.colorbar(fraction=0.046, pad=0.04)
+
+	ax1 = fig.add_subplot(gs[0,1])
+	plt.imshow(gmmdensityexp,extent=extent, vmax = vmax_prob)
+	plt.title('P(model)')
+	plt.colorbar(fraction=0.046, pad=0.04)
+
+	ax2 = fig.add_subplot(gs[0,2])
+	plt.imshow(np.abs(kdedensityexp-gmmdensityexp),extent=extent, vmax = vmax_L1)
+	plt.title('|P(KDE)- P(model)|')
+	plt.colorbar(fraction=0.046, pad=0.04)
+
+	ax3 = fig.add_subplot(gs[1,0])
+	plt.plot(list(range(0,25)),kde1D)
+	plt.ylim((0,vmax_1D*1.1))
+	plt.ylabel('P(x)')
+	sns.despine()
+
+	ax4 = fig.add_subplot(gs[1,1])
+	plt.plot(list(range(0,25)),gmm1D)
+	plt.ylim((0,vmax_1D*1.1))
+	sns.despine()
+
+	ax5 = fig.add_subplot(gs[1,2])
+	plt.plot(list(range(0,25)),err1D)
+	plt.ylim((0,vmax_1D*1.1))
+	sns.despine()    
+
+	dname = 'qc/gmm'
+	PA.mkdir(os.path.join(pop['output'], dname)) # create subfolder
+
+	# Save file with new number appended
+	filename = os.path.join(pop['output'], dname, 'gmm_err_%s__1_model_vs_KDE_error_proj_%s' % (sample, postfix))
+	i = 0
+	while os.path.exists('{}_{:d}.png'.format(filename, i)):
+		i += 1
+	plt.savefig('{}_{:d}.png'.format(filename, i))
+
+	return (np.sum(errexp)) # return the total error across the entire projection
+
 '''
 Build gmms using cell types
 '''
