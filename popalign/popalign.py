@@ -2721,6 +2721,152 @@ def compareGMMtoKDE(pop, sample, bw, numProj = 500):
 
 	return err_df, pterr_df
 
+def compareKDEsubsamples(pop, sample, bw, numProj = 500, percrange =[0.05,0.1, 0.2, 0.3, 0.4,.5,.6,.7,.8,.9,.95,0.99]):
+	'''
+	Compute 2D projection errors for random projections for: 
+	    1) KDE model and gmm model at 100% sampling
+	    2) KDE model and KDE model at various % of subsampling
+
+	Parameters
+	----------
+	pop : dict
+	    PopAlign object
+	sample : str
+	    name of sample within pop object
+	bw : float
+	    bandwidth for KDE model
+	numProj: int
+	    number of random projections to compute
+	percrange : list, float
+	    list of float values beteen 0 and 1 to indicate the proportion of original cells to sample
+	'''
+
+	D = PA.get_coeff(pop,sample)
+	numC = D.shape[0]
+	gmm1= pop['samples'][sample]['gmm']
+
+	errv = [] 
+	pterr_df = pd.DataFrame() # data per grid point
+	err_df = pd.DataFrame() # data per 2D projection    
+
+	dname = 'qc/gmm'
+	PA.mkdir(os.path.join(pop['output'], dname)) # create subfolder
+
+	for i in range(numProj):
+		# make random projection
+		transformer = random_projection.GaussianRandomProjection(n_components=2)
+		D_new = transformer.fit_transform(D)
+		Tmat = transformer.components_.T
+		errv = []
+
+		############ First calculate gmm model error at 100% sampling ############
+		Tmat = transformer.components_.T
+		print('Processing projection %d for model        ' %(i), end='\r', flush=True)
+		# Project the model
+		newgmm = project_gmm(gmm1, Tmat) 
+
+		# Generate the KDE model
+		if not bw: 
+			# use grid search cross-validation to optimize the bandwidth
+			params = {'bandwidth': np.logspace(-2, 1, 20)}
+			grid = GridSearchCV(KernelDensity(), params)
+			grid.fit(D_new)
+			print("best bandwidth for projection %d: %.2f" %(i, grid.best_estimator_.bandwidth), end ='\r')
+
+			# use the best estimator to compute the kernel density estimate
+			bw = grid.best_estimator_.bandwidth
+
+		kde1 = KernelDensity(bandwidth=bw, metric='euclidean',
+							kernel='gaussian', algorithm='ball_tree')
+		kde1.fit(D_new)
+
+		# Sample some points from Gmm and combine points with experimental data to determine extents
+		Dsamp = newgmm.sample(D_new.shape[0])[0]
+		D_combo = np.vstack((Dsamp,D_new))
+
+		# Create a regular 2D grid with 25 points in each dimension
+		xmin, ymin = D_combo.min(axis=0)
+		xmax, ymax = D_combo.max(axis=0)
+		xi, yi = np.mgrid[xmin:xmax:25j, ymin:ymax:25j]
+		# Evaluate the KDE on a regular grid...
+		coords = np.vstack([item.ravel() for item in [xi, yi]])
+
+		gmmdensity = newgmm.score_samples(coords.T).reshape(xi.shape)
+		gmmdensityexp = np.exp(gmmdensity) 
+		gmmdensityexp = gmmdensityexp/np.sum(gmmdensityexp)
+
+		kdedensity = kde1.score_samples(coords.T).reshape(xi.shape)
+		kdedensityexp = np.exp(kdedensity) 
+		kdedensityexp = kdedensityexp/np.sum(kdedensityexp)
+
+		gmmdensityexpv = gmmdensityexp.flatten()
+		kdedensityexpv = kdedensityexp.flatten()
+		keepidx = np.argwhere(kdedensityexpv>(1/numC)).flatten()
+		errexp = np.abs(kdedensityexpv[keepidx]-gmmdensityexpv[keepidx])    
+		err1 = np.sum(errexp)
+		errv.append(err1)
+
+		############ Now: calculate error for various subsampling rates ############
+		for k in range(len(percrange)): 
+			perccells = percrange[k]
+			print('Processing projection %d for %.2f subsample' %(i,perccells), end='\r', flush=True)
+			ncells = int(np.floor(numC*perccells))
+			idx1 = random.sample(range(len(D)),ncells)
+			idx2 = random.sample(range(len(D)),ncells)
+			D1 = D[idx1,:]
+			D2 = D[idx2,:]
+
+			D1_new = transformer.transform(D1)
+			D2_new = transformer.transform(D2)
+
+			# Generate the KDE model using existing bw
+
+			kde1 = KernelDensity(bandwidth=bw, metric='euclidean',
+			                    kernel='gaussian', algorithm='ball_tree')
+			kde1.fit(D1_new)
+
+			kde2 = KernelDensity(bandwidth=bw, metric='euclidean',
+			                    kernel='gaussian', algorithm='ball_tree')
+			kde2.fit(D2_new)
+
+			# Evaluate the KDE on a regular grid...using grid from above
+			coords = np.vstack([item.ravel() for item in [xi, yi]])
+
+			density1 = kde1.score_samples(coords.T).reshape(xi.shape)
+			density1exp = np.exp(density1) 
+			density1exp = density1exp/np.sum(density1exp)
+
+			density2 = kde2.score_samples(coords.T).reshape(xi.shape)
+			density2exp = np.exp(density2) 
+			density2exp = density2exp/np.sum(density2exp)
+
+			#             err1 = np.sum(np.abs(density1exp-density2exp)) # unweighted
+			# remove all points where pKDE < 1/numC
+			keepidx = np.argwhere(kdedensityexpv> (1/numC)).flatten()
+			density1expv = density1exp.flatten()
+			density2expv = density2exp.flatten()
+			err1 = np.sum(np.abs(density1expv[keepidx]-density2expv[keepidx]))
+			errv.append(err1)
+
+		currrows = {'projerr': errv, 
+					'perc' : np.append(1,percrange),
+					'errtype' : np.append(['model'],[['subsample'] * len(percrange)]),
+					'label' : np.append(['model_1'],['subsample_'+str(i) for i in percrange]),
+					'sample': [sample]* (len(percrange)+1)}
+
+		currrows = pd.DataFrame(currrows)
+		err_df = err_df.append(currrows,ignore_index=True)
+
+	# Make the boxplot
+	ax1=sns.boxplot(x="label", y="projerr", hue='errtype', data = err_df.iloc[:,:])
+	ax1.set_ylabel('sum(|P(KDE) - P(model)|) in 2D proj.')
+	ax1.set_xlabel('')
+	plt.xticks(rotation=45, ha='right')
+	plt.tight_layout()
+	plt.savefig(os.path.join(pop['output'], dname, 'gmm_err_%s__4_model_error_vs_subsampling_boxplot_bw%.2f.pdf' % (sample,bw)), bbox_inches = "tight")
+
+	return err_df
+
 '''
 Build gmms using cell types
 '''
