@@ -48,6 +48,13 @@ import umap.umap_ as umap
 import time
 import shutil
 import itertools
+import random
+from matplotlib import gridspec
+import matplotlib.ticker as ticker
+from sklearn.neighbors import KernelDensity
+from sklearn.model_selection import GridSearchCV
+from sklearn import random_projection
+from numpy import linalg
 
 
 '''
