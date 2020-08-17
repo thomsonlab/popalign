@@ -1245,7 +1245,7 @@ def onmf(pop, ncells=2000, nfeats=[5,7,9], nreps=3, niter=300):
 	M_norm = cat_data(pop, 'M_norm') # grab normalized data
 	maxncells = M_norm.shape[1] # get total number of cells
 	if 2*ncells > maxncells: # if ncells is larger than twice the number of cells
-		ncells = np.floor(maxncells/2) # adjust number down
+		ncells = int(np.floor(maxncells/2)) # adjust number down
 
 	# randomly select ncells and divide into training and cross-validation dataset
 	idx = np.random.choice(M_norm.shape[1], 2*ncells, replace=False) 
@@ -2390,7 +2390,7 @@ def get_gmm_means(pop, sample, rep = None):
 	return gmm_means
 
 '''
-Calculate GMM error
+Calculate GMM error compared to KDE model
 '''
 
 def project_gmm(gmm1, Tmat):
@@ -2426,7 +2426,7 @@ def project_gmm(gmm1, Tmat):
 		newcov =  Tmat.T @currcov @ Tmat
 		projcovariances_[j,:,:] = newcov
 
-		if not PA.check_posdef(currcov): 
+		if not check_posdef(currcov): 
 			allposdef = False
 		else:
 			newprecision = np.linalg.inv(newcov)
@@ -2457,7 +2457,7 @@ def project_gmm(gmm1, Tmat):
 		newgmm.lower_bound_ = gmm1.lower_bound_
 		newgmm.covariance_type = 'full'
 	    
-return newgmm #, projmeans_, projcovariances_,projprecisions_, projprecisions_chol_, weights
+	return newgmm #, projmeans_, projcovariances_,projprecisions_, projprecisions_chol_, weights
 
 def plotGMMandKDEproj(pop, sample, bw, proj='random'): 
 	'''
@@ -2476,7 +2476,7 @@ def plotGMMandKDEproj(pop, sample, bw, proj='random'):
 	    either 'random' or list [d1,d2] indicating chosen dimensions from feature space
 	'''
 
-	D = PA.get_coeff(pop,sample)
+	D = get_coeff(pop,sample)
 	numC = D.shape[0]
 	gmm1= pop['samples'][sample]['gmm']
 
@@ -2586,20 +2586,20 @@ def plotGMMandKDEproj(pop, sample, bw, proj='random'):
 	sns.despine()    
 
 	dname = 'qc/gmm'
-	PA.mkdir(os.path.join(pop['output'], dname)) # create subfolder
+	mkdir(os.path.join(pop['output'], dname)) # create subfolder
 
 	# Save file with new number appended
 	filename = os.path.join(pop['output'], dname, 'gmm_err_%s__1_model_vs_KDE_error_proj_%s' % (sample, postfix))
 	i = 0
-	while os.path.exists('{}_{:d}.png'.format(filename, i)):
+	while os.path.exists('{}_{:d}.pdf'.format(filename, i)):
 		i += 1
-	plt.savefig('{}_{:d}.png'.format(filename, i))
+	plt.savefig('{}_{:d}.pdf'.format(filename, i))
 
 	return (np.sum(errexp)) # return the total error across the entire projection
 
 def compareGMMtoKDE(pop, sample, bw, numProj = 500): 
 	'''
-	Compute average 2D projection errors for a model compared to a KDE model 
+	Compute average 2D projection errors for a specific model compared to a KDE model of all datapoints
 
 	Parameters
 	----------
@@ -2613,7 +2613,7 @@ def compareGMMtoKDE(pop, sample, bw, numProj = 500):
 	    number of random projections to compute
 	'''
 
-	D = PA.get_coeff(pop,sample)
+	D = get_coeff(pop,sample)
 	numC = D.shape[0]
 	gmm1= pop['samples'][sample]['gmm']
 
@@ -2622,7 +2622,7 @@ def compareGMMtoKDE(pop, sample, bw, numProj = 500):
 	err_df = pd.DataFrame() # data per 2D projection    
 
 	dname = 'qc/gmm'
-	PA.mkdir(os.path.join(pop['output'], dname)) # create subfolder
+	mkdir(os.path.join(pop['output'], dname)) # create subfolder
 
 	for i in range(numProj):
 		# Generate random 2D projection
@@ -2682,7 +2682,7 @@ def compareGMMtoKDE(pop, sample, bw, numProj = 500):
 	ax0 = sns.distplot(errv,25)
 	ax0.set_ylabel('number of 2D projections')
 	ax0.set_xlabel('sum(|P(KDE) - P(model)|) across 2D projection')
-	plt.title('%d projections' % numProj)
+	plt.title('%d projections; bw: %.2f' % (numProj,bw))
 	plt.savefig(os.path.join(pop['output'], dname, 'gmm_err_%s__2_summed_random_2D_proj.pdf' % (sample)), bbox_inches = "tight")
 	plt.close()
 
@@ -2748,7 +2748,7 @@ def compareKDEsubsamples(pop, sample, bw, numProj = 500, percrange =[0.05,0.1, 0
 	    list of float values beteen 0 and 1 to indicate the proportion of original cells to sample
 	'''
 
-	D = PA.get_coeff(pop,sample)
+	D = get_coeff(pop,sample)
 	numC = D.shape[0]
 	gmm1= pop['samples'][sample]['gmm']
 
@@ -2757,7 +2757,7 @@ def compareKDEsubsamples(pop, sample, bw, numProj = 500, percrange =[0.05,0.1, 0
 	err_df = pd.DataFrame() # data per 2D projection    
 
 	dname = 'qc/gmm'
-	PA.mkdir(os.path.join(pop['output'], dname)) # create subfolder
+	mkdir(os.path.join(pop['output'], dname)) # create subfolder
 
 	for i in range(numProj):
 		# make random projection
