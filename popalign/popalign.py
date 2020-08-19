@@ -2589,7 +2589,7 @@ def plotGMMandKDEproj(pop, sample, bw, proj='random'):
 	mkdir(os.path.join(pop['output'], dname)) # create subfolder
 
 	# Save file with new number appended
-	filename = os.path.join(pop['output'], dname, 'gmm_err_%s__1_model_vs_KDE_error_proj_%s' % (sample, postfix))
+	filename = os.path.join(pop['output'], dname, 'gmm_err_%s__1_model_vs_KDE_error_proj_bw%.2f_%s' % (sample,bw, postfix))
 	i = 0
 	while os.path.exists('{}_{:d}.pdf'.format(filename, i)):
 		i += 1
@@ -2626,7 +2626,7 @@ def compareGMMtoKDE(pop, sample, bw, numProj = 500):
 
 	for i in range(numProj):
 		# Generate random 2D projection
-		transformer = random_projection.GaussianRandomProjection(n_components=2)
+	transformer = random_projection.GaussianRandomProjection(n_components=2)
 		D_new = transformer.fit_transform(D)
 		Tmat = transformer.components_.T
 		# Project the model
@@ -2683,7 +2683,7 @@ def compareGMMtoKDE(pop, sample, bw, numProj = 500):
 	ax0.set_ylabel('number of 2D projections')
 	ax0.set_xlabel('sum(|P(KDE) - P(model)|) across 2D projection')
 	plt.title('%d projections; bw: %.2f' % (numProj,bw))
-	plt.savefig(os.path.join(pop['output'], dname, 'gmm_err_%s__2_summed_random_2D_proj.pdf' % (sample)), bbox_inches = "tight")
+	plt.savefig(os.path.join(pop['output'], dname, 'gmm_err_%s__2_summed_random_2D_proj_bw%.2f.pdf' % (sample,bw)), bbox_inches = "tight")
 	plt.close()
 
 	############ Plot3 - err vs P(KDE) ############
@@ -3462,7 +3462,7 @@ def aligner(refgmm, testgmm, method):
 	arr: array, int
 		pairwise JD values between two GMMs
 	res: array, int
-		Array giving best alignments. Leftmost square matrix:  'boolean' shows associated pairs 
+		Array giving best alignments. Leftmost matrix:  'boolean' shows associated pairs 
 		Rightmost column: JD values for those associated pairs 
 	'''
 	ltest = testgmm.n_components # get test number of components
@@ -3491,7 +3491,7 @@ def aligner(refgmm, testgmm, method):
 		mins = np.min(arr, axis=0) # get min divergence values
 		res = np.zeros((lref, 3))
 		for i in range(lref):
-			res[i,:] = np.array([minsidx[i], i, mins[i]])
+			res[i,:] = np.array([i, minsidx[i], mins[i]])
 
 	elif method == 'conservative':
 		minstest = [[i,x] for i,x in enumerate(np.argmin(arr,axis=1))]
