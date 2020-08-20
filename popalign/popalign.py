@@ -2202,8 +2202,11 @@ def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar=
 		# We minimize the BIC score of the validation set
 		# to pick the best fitted gmm
 		BIC = [gmm.bic(Cvalid) for gmm in q] # compute the BIC for each model with the validation set
-		gmm = q[np.argmin(BIC)] # best gmm is the one that minimizes the BIC
+		gmm = q[np.argmin(BIC)] # best gmm is the one that minimizes the BIC		
 		pop['samples'][x]['gmm'] = gmm # store gmm
+
+		# Plot the BIC values
+
 		# pop['samples'][x]['gmm_means'] = np.array(gmm.means_.dot(pop['W'].T))
 		pop['samples'][x]['gmm_means'] = get_gmm_means(pop,x,None)
 
@@ -2551,23 +2554,24 @@ def plotGMMandKDEproj(pop, sample, bw, proj='random'):
 	vmax_1D =  np.max([np.max(kde1D), np.max(gmm1D)])
 
 	fig = plt.figure(tight_layout=True)
+	
 	gs = gridspec.GridSpec(2, 3,  height_ratios = [10,1], width_ratios=[1, 1, 1]) 
 	extent = [xmin , xmax, ymin , ymax]
 
 	ax0 = fig.add_subplot(gs[0,0])        
 	plt.imshow(kdedensityexp,extent=extent, vmax = vmax_prob)
 	plt.title('P(KDE)')
-	plt.colorbar(fraction=0.046, pad=0.04)
+	plt.colorbar(fraction=0.046, pad=0.04, shrink=0.5)
 
 	ax1 = fig.add_subplot(gs[0,1])
 	plt.imshow(gmmdensityexp,extent=extent, vmax = vmax_prob)
 	plt.title('P(model)')
-	plt.colorbar(fraction=0.046, pad=0.04)
+	plt.colorbar(fraction=0.046, pad=0.04, shrink=0.5)
 
 	ax2 = fig.add_subplot(gs[0,2])
 	plt.imshow(np.abs(kdedensityexp-gmmdensityexp),extent=extent, vmax = vmax_L1)
 	plt.title('|P(KDE)- P(model)|')
-	plt.colorbar(fraction=0.046, pad=0.04)
+	plt.colorbar(fraction=0.046, pad=0.04, shrink=0.5)
 
 	ax3 = fig.add_subplot(gs[1,0])
 	plt.plot(list(range(0,25)),kde1D)
@@ -2583,13 +2587,15 @@ def plotGMMandKDEproj(pop, sample, bw, proj='random'):
 	ax5 = fig.add_subplot(gs[1,2])
 	plt.plot(list(range(0,25)),err1D)
 	plt.ylim((0,vmax_1D*1.1))
-	sns.despine()    
+	sns.despine() 
 
+	fig.suptitle('bw is %.2f' % bw, y=0.95) 
+	
 	dname = 'qc/gmm'
 	mkdir(os.path.join(pop['output'], dname)) # create subfolder
 
 	# Save file with new number appended
-	filename = os.path.join(pop['output'], dname, 'gmm_err_%s__1_model_vs_KDE_error_proj_bw%.2f_%s' % (sample,bw, postfix))
+	filename = os.path.join(pop['output'], dname, 'gmm_err_%s_1_model_vs_KDE_error_proj_bw%.2f_%s' % (sample,bw, postfix))
 	i = 0
 	while os.path.exists('{}_{:d}.pdf'.format(filename, i)):
 		i += 1
@@ -2626,7 +2632,7 @@ def compareGMMtoKDE(pop, sample, bw, numProj = 500):
 
 	for i in range(numProj):
 		# Generate random 2D projection
-	transformer = random_projection.GaussianRandomProjection(n_components=2)
+		transformer = random_projection.GaussianRandomProjection(n_components=2)
 		D_new = transformer.fit_transform(D)
 		Tmat = transformer.components_.T
 		# Project the model
@@ -2679,8 +2685,8 @@ def compareGMMtoKDE(pop, sample, bw, numProj = 500):
 		pterr_df = pterr_df.append(currrows,ignore_index=True)
 
 	############ Plot2 - Distribution of summed error ############
-	ax0 = sns.distplot(errv,25)
-	ax0.set_ylabel('number of 2D projections')
+	ax0 = sns.distplot(errv,25, norm_hist=True)
+	ax0.set_ylabel('Percent of 2D projections')
 	ax0.set_xlabel('sum(|P(KDE) - P(model)|) across 2D projection')
 	plt.title('%d projections; bw: %.2f' % (numProj,bw))
 	plt.savefig(os.path.join(pop['output'], dname, 'gmm_err_%s__2_summed_random_2D_proj_bw%.2f.pdf' % (sample,bw)), bbox_inches = "tight")
@@ -2768,7 +2774,7 @@ def compareKDEsubsamples(pop, sample, bw, numProj = 500, percrange =[0.05,0.1, 0
 
 		############ First calculate gmm model error at 100% sampling ############
 		Tmat = transformer.components_.T
-		print('Processing projection %d for model        ' %(i), end='\r', flush=True)
+		print('Processing projection %d for model           ' %(i), end='\r', flush=True)
 		# Project the model
 		newgmm = project_gmm(gmm1, Tmat) 
 
