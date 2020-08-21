@@ -2112,7 +2112,7 @@ def build_single_GMM(k, C, reg_covar):
 		verbose_interval=10) # create model
 	return gmm.fit(C) # Fit the data
 
-def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar='auto', rendering='grouped', types=None, figsizegrouped=(20,20), figsizesingle=(5,5), only=None, featuretype = 'onmf'):
+def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar='auto', rendering='grouped', types=None, figsizegrouped=(20,20), figsizesingle=(5,5), only=None, featuretype = 'onmf', criteria='bic'):
 	'''
 	Build a Gaussian Mixture Model on feature projected data for each sample
 
@@ -2123,7 +2123,7 @@ def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar=
 	ks : int or tuple
 		Number or range of components to use
 	niters : int
-		number of replicates to build for each k in `ks`
+		number of iterations to build for each k in `ks` during model selection phase
 	training : int or float
 		If training is float, the value will be used a percentage to select cells for the training set. Must follow 0<value<1
 		If training is int, that number of cells will be used for the training set.
@@ -2145,6 +2145,8 @@ def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar=
 		Sample label or list of sample labels. Will force GMM construction for specified samples only. Defaults to None
 	featuretype: str
 		either 'pca' or 'onmf'
+	criteria : str
+		either 'bic' or 'aic'
 	'''
 
 	if 'featuretype' in pop.keys():
@@ -2204,13 +2206,35 @@ def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar=
 		# to pick the best fitted gmm
 		BIC = [gmm.bic(Cvalid) for gmm in q] # compute the BIC for each model with the validation set
 		AIC = [gmm.aic(Cvalid) for gmm in q]
-		gmm = q[np.argmin(BIC)] # best gmm is the one that minimizes the BIC		
+        
+		if criteria=='bic': 
+			IC = BIC
+		elif criteria=='aic':
+			IC = AIC
+        
+		gmm = q[np.argmin(IC)] # best gmm is the one that minimizes the AIC		
 		pop['samples'][x]['gmm'] = gmm # store gmm
+        
+		# Plot and store the selected values   
+		dname = 'qc/gmm'
+		PA.mkdir(os.path.join(pop['output'], dname)) # create subfolder
 
-		# Plot the BIC values
+		df = {'IC' : np.hstack([BIC,AIC]),
+		'type': np.hstack([np.repeat('BIC',len(BIC)), np.repeat('AIC',len(AIC))]),
+		'numcomponents' : np.tile(np.repeat(ks, niters),2)}
+		df = pd.DataFrame(df)
+        
+		nc = np.repeat(ks,niters) # number of components
+		hidx = nc[np.argmin(IC)]
+		hval = IC[np.argmin(IC)]
+
 		fig = plt.figure()
-		plt.plot(np.repeat(ks, niters),BIC,c='blue')
-		plt.plot(np.repeat(ks, niters),AIC,c='red')
+		g = sns.lineplot(x = 'numcomponents', y= 'IC', hue = 'type', data=df)
+		sns.scatterplot(x=[hidx],y=[hval], color='red')
+		g.set_xticks(ks)
+		g.set_title(x)  
+		plt.savefig(os.path.join(pop['output'], dname, 'gmm_selection_rep0_%s.pdf' % (sample)), bbox_inches = "tight")
+		plt.close()
 
 		# pop['samples'][x]['gmm_means'] = np.array(gmm.means_.dot(pop['W'].T))
 		pop['samples'][x]['gmm_means'] = get_gmm_means(pop,x,None)
@@ -2245,9 +2269,13 @@ def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar=
 					q = p.starmap(build_single_GMM, [(k, Ctrain, reg_covar_param) for k in np.repeat(ks, niters)])
 				# We minimize the BIC score of the validation set
 				# to pick the best fitted gmm
-				BIC = [gmm.bic(Cvalid) for gmm in q] # compute the BIC for each model with the validation set
-				gmm = q[np.argmin(BIC)] # best gmm is the one that minimizes the BIC
-
+				BIC = [gmm.bic(Cvalid) for gmm in q]
+				AIC = [gmm.aic(Cvalid) for gmm in q]
+				if criteria=='bic': 
+					IC = BIC
+				elif criteria=='aic':
+					IC = AIC
+				gmm = q[np.argmin(IC)] # best gmm is the one that minimizes the selected information criterion		
 				pop['samples'][x]['replicates'][j] = {}
 				pop['samples'][x]['replicates'][j]['gmm'] = gmm # store replicate number j
 				# pop['samples'][x]['replicates'][j]['gmm_means'] = gmm.means_.dot(pop['W'].T)
