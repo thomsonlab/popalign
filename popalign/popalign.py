@@ -2181,6 +2181,7 @@ def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar=
 			n = training
 		elif (isinstance(training, int)) & (training>=m): # if training is int and bigger than number of cells
 			n = int(m*0.8) # since the number of training cells was larger than the number of cells in the sample, take 80%
+			print('Using 80\% of cells for training')
 		elif (isinstance(training, float)) & (0<training) & (training<1):
 			n = int(m*training) # number of cells for the training set
 		else:
@@ -2202,10 +2203,14 @@ def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar=
 		# We minimize the BIC score of the validation set
 		# to pick the best fitted gmm
 		BIC = [gmm.bic(Cvalid) for gmm in q] # compute the BIC for each model with the validation set
+		AIC = [gmm.aic(Cvalid) for gmm in q]
 		gmm = q[np.argmin(BIC)] # best gmm is the one that minimizes the BIC		
 		pop['samples'][x]['gmm'] = gmm # store gmm
 
 		# Plot the BIC values
+		fig = plt.figure()
+		plt.plot(np.repeat(ks, niters),BIC,c='blue')
+		plt.plot(np.repeat(ks, niters),AIC,c='red')
 
 		# pop['samples'][x]['gmm_means'] = np.array(gmm.means_.dot(pop['W'].T))
 		pop['samples'][x]['gmm_means'] = get_gmm_means(pop,x,None)
@@ -2222,9 +2227,10 @@ def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar=
 		# Also store first gmm in ['replicates'][0]: 
 		pop['samples'][x]['replicates'] = {}
 		pop['samples'][x]['replicates'][0] = {}
-		pop['samples'][x]['replicates'][0]['gmm'] = gmm # store gmm
+		pop['samples'][x]['replicates'][0]['gmm'] = pop['samples'][x]['gmm'] # store gmm
 		# pop['samples'][x]['replicates'][0]['gmm_means'] = np.array(gmm.means_.dot(pop['W'].T))
-		pop['samples'][x]['replicates'][0]['gmm_means'] = get_gmm_means(pop, x, 0)
+		pop['samples'][x]['replicates'][0]['gmm_means'] = pop['samples'][x]['gmm_means'] 
+		pop['samples'][x]['replicates'][0]['gmm_types'] = pop['samples'][x]['gmm_types'] 
 
 		# Create replicates
 		pop['nreplicates'] = nreplicates # store number of replicates in pop object
@@ -2241,6 +2247,7 @@ def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar=
 				# to pick the best fitted gmm
 				BIC = [gmm.bic(Cvalid) for gmm in q] # compute the BIC for each model with the validation set
 				gmm = q[np.argmin(BIC)] # best gmm is the one that minimizes the BIC
+
 				pop['samples'][x]['replicates'][j] = {}
 				pop['samples'][x]['replicates'][j]['gmm'] = gmm # store replicate number j
 				# pop['samples'][x]['replicates'][j]['gmm_means'] = gmm.means_.dot(pop['W'].T)
@@ -3497,7 +3504,7 @@ def aligner(refgmm, testgmm, method):
 		mins = np.min(arr, axis=0) # get min divergence values
 		res = np.zeros((lref, 3))
 		for i in range(lref):
-			res[i,:] = np.array([i, minsidx[i], mins[i]])
+			res[i,:] = np.array([minsidx[i], i, mins[i]])
 
 	elif method == 'conservative':
 		minstest = [[i,x] for i,x in enumerate(np.argmin(arr,axis=1))]
@@ -3527,7 +3534,7 @@ def align(pop, ref=None, method='conservative', figsizedeltas=(10,10), figsizeen
 		Method to perform the alignment
 		If conservative, the reference component and the test component have to be each other's best match to align
 		If test2ref, the closest reference component is found for each test component
-		If ref2test, the closest test component is found for each test component
+		If ref2test, the closest test component is found for each ref component
 	figsizedeltas : tuple, optional
 		Size of the figure for the delta plot. Default is (10,5)
 	figsizeentropy : tuple, optional
@@ -3560,6 +3567,7 @@ def align(pop, ref=None, method='conservative', figsizedeltas=(10,10), figsizeen
 			pop['samples'][x]['ref2test'] = np.zeros(testgmm.n_components, dtype=int)
 		except:
 			pass
+	pop['alignmentmethod'] = method
 
 	# plot_deltas(pop, figsizedeltas) # generate plot mu and delta w plots
 	# entropy(pop, figsizeentropy)
