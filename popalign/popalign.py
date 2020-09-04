@@ -824,7 +824,9 @@ def enrichment_analysis(pop,d,genelist,size_total,ngenesets):
 	keys = np.array(list(d.keys())) # get a list of gene set names
 	with Pool(pop['ncores']) as p:
 		q = np.array(p.starmap(sf, [(len(set(d[key]) & set(genelist)), size_total, len(d[key]), N) for key in keys])) # For each gene set, compute the p-value of the overlap with the gene list
-	return keys[np.argsort(q)[:ngenesets]] # return top 
+	indices = np.argsort(q)[0:ngenesets]
+	feat_df = pd.DataFrame({'feat_labels':keys[indices], 'feat_pvals':q[indices]})
+	return feat_df # return top features
 
 def gsea(pop, geneset='c5bp', ngenesets=20):
 	'''
@@ -857,8 +859,7 @@ def gsea(pop, geneset='c5bp', ngenesets=20):
 		idx = np.where(np.array(W[:,i]).flatten() > stdfactor*stds[i])[0] # get indices of genes that are above stdfactor times the standard deviation of feature i
 		genelist = [genes[j] for j in idx] # gene matching gene names
 		pop['feat_labels'][i] = enrichment_analysis(pop, d, genelist, size_total, ngenesets) # for that list of genes, run GSEA
-	pop['top_feat_labels'] = [pop['feat_labels'][i][0] for i in range(pop['nfeats'])] # store the top gene set of each feature
-
+	pop['top_feat_labels'] = [pop['feat_labels'][i].iloc[0].feat_labels for i in range(pop['nfeats'])]
 '''
 Dimensionality reduction functions
 '''
