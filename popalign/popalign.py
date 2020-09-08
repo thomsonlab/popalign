@@ -3024,7 +3024,7 @@ def plot_heatmap(pop, refcomp, genelist, samplenames = 'all', clustersamples=Tru
 	else: 
 	    M_small = M
 
-	if clustergenes == True: 
+	if (clustergenes == True) and (M_small.shape[0]>1): 
 		gidx2 = cluster_rows(M_small, metric=cmetric, method=cmethod) # cluster genes across entire matrix
 		M = M[gidx2,:] # reorder matrix
 		genelist = [genelist[i] for i in gidx2]
@@ -3043,10 +3043,11 @@ def plot_heatmap(pop, refcomp, genelist, samplenames = 'all', clustersamples=Tru
 	gridspec.GridSpec(nr,nc) # create plot grid
 
 	# heatmap
-	plt.subplot2grid((nr,nc), (0,0), colspan=nc, rowspan=nr-1) # create subplot for heatmap, leave space for column colors
-	plt.imshow(M, aspect='auto', interpolation='none', cmap=cmap) # plot heatmap
+	ax1 = plt.subplot2grid((nr,nc), (0,0), colspan=nc-2, rowspan=nr-1) # create subplot for heatmap, leave space for column colors
+	img = plt.imshow(M, aspect='auto', interpolation='none', cmap=cmap) # plot heatmap
 	plt.yticks(np.arange(len(genelist)),genelist,fontsize=8) # display gene names
 	plt.xticks([]) # remove x ticks
+	ax1.set_ylim(len(genelist)-0.5, -0.5)
 	plt.title('Reference sample: %s\nSubpopulation #%d: %s' % (ref, refcomp, pop['samples'][ref]['gmm_types'][refcomp]))
 	
 	if samplelimits == True: # if parameter is True
@@ -3054,11 +3055,15 @@ def plot_heatmap(pop, refcomp, genelist, samplenames = 'all', clustersamples=Tru
 			plt.axvline(xx, color='k') # plot vertical line
 
 	# col colors
-	plt.subplot2grid((nr,nc), (nr-1, 0), colspan=nc, rowspan=1) # create subplot for column colors
+	ax2 = plt.subplot2grid((nr,nc), (nr-1, 0), colspan=nc-2, rowspan=1) # create subplot for column colors
 	plt.imshow(cols, aspect='auto', cmap='binary') # plot column colors
 	plt.yticks([]) # remove y ticks
 	plt.xticks(xtickscoords, MSlabels, rotation=90 ) # display sample names
 	
+	# Now add the colorbar
+	cbaxes = plt.subplot2grid((nr,nc), (0,nc-1), colspan=1, rowspan=nr-1)
+	cb = plt.colorbar(img, cax = cbaxes)  
+
 	if len(samplenames)==1:
 		# dname = 'diffexp/%d_%s_%s/' % (refcomp, reftype, only) # define directory name
 		dname = 'diffexp/refpop%d_%s_%s/' % (refcomp, reftype, samplenames[0])
