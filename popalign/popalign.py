@@ -32,6 +32,7 @@ import matplotlib
 from matplotlib import pyplot as plt
 from matplotlib.widgets import Slider, Button
 from matplotlib.offsetbox import AnchoredText
+import matplotlib.ticker as ticker
 from matplotlib import gridspec
 import seaborn as sns
 from scipy.stats import multivariate_normal as mvn
@@ -46,6 +47,14 @@ from plotly.offline import iplot
 import umap.umap_ as umap
 import time
 import shutil
+import itertools
+import random
+from matplotlib import gridspec
+import matplotlib.ticker as ticker
+from sklearn.neighbors import KernelDensity
+from sklearn.model_selection import GridSearchCV
+from sklearn import random_projection
+from numpy import linalg
 
 
 '''
@@ -241,7 +250,7 @@ def load_samples(samples, controlstring=None, genes=None, outputfolder='output',
 		end = start+n
 		obj['samples'][x]['indices'] = (start,end)
 		start = end
-
+	# obj['ncells'] = end
 	obj['nsamples'] = len(obj['order']) # save number of samples
 	obj['output'] = outputfolder # define name of output folder to save results
 	return obj
@@ -428,7 +437,7 @@ def scale_factor(pop, ncells):
 			M = M[:,idx]
 
 	ogmean = pop['original_mean'] # Retrive original mean of the data prior to normalization
-	factorlist = [1,500,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000] # list of factors to try
+	factorlist = [500,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000] # list of factors to try
 
 	with Pool(pop['ncores']) as p:
 		q = p.starmap(comparison_factor, [(M.copy(), f, ogmean) for f in factorlist]) # try different factors
@@ -460,7 +469,8 @@ def normalize(pop, scaling_factor=None, ncells=None):
 		Gene means before normalizing
 	'''
 	if 'normed' in pop:
-		print('Data already column normalized')
+		if pop['normed']==True:
+			print('Data already column normalized')
 	else:
 		M = cat_data(pop, 'M') # aggregate data
 		pop['original_mean'] = M.mean() # store original mean of the data
@@ -477,6 +487,7 @@ def normalize(pop, scaling_factor=None, ncells=None):
 		else:
 			print('Finding best scaling factor')
 			scale_factor(pop, ncells) # Apply normalization factor
+			print('Best scaling factor beta is: ' + str(pop['scalingfactor']))
 		pop['normed'] = True
 
 def mu_sigma(M, pop):
@@ -735,13 +746,14 @@ def removeRBC(pop, species):
 
 	'''
 	if species == 'mouse':
-		genes = ['HBB-BT','HBB-BS' ,'HBA-A1','HBA-A2'] # mouse RBC gene list
+		genes = ['HBB-BT','HBB-BS' ,'HBA-A1','HBA-A2','HBB-B1','HBB-B2'] # mouse RBC gene list
 	elif species == 'human':
 		genes = ['HBB', 'HBA1', 'HBA2'] # human RBC gene list
 	else:
 		raise Exception('Wrong species (must be mouse or human')
 	
-	gidx = [np.where(pop['genes']==g)[0][0] for g in genes] # get indices of genes in current gene list
+	gidx = [np.where(pop['genes']==g)[0] for g in genes] # get indices of genes in current gene list
+	gidx = np.concatenate(gidx)
 	cellssums = []
 	for x in pop['order']: # for each sample
 		cellssums.append(np.array(pop['samples'][x]['M'][gidx,:].sum(axis=0)).flatten()) # compute cell sums for the specific genes
@@ -750,6 +762,7 @@ def removeRBC(pop, species):
 
 	start = 0
 	end = 0
+	numcells = 0
 	for i,x in enumerate(pop['order']): # for each sample
 		idx = np.where(cellssums[i]<=T)[0] # get indices of cells with sums inferior to T
 		pop['samples'][x]['M'] = pop['samples'][x]['M'][:,idx] # select cells
@@ -757,7 +770,10 @@ def removeRBC(pop, species):
 		end = start+len(idx) # update start and end cell indices
 		pop['samples'][x]['indices'] = (start,end) # update start and end cell indices
 		start = end # update start and end cell indices
+		numcells = numcells + (np.shape(pop['samples'][x]['M'])[1] - len(idx))
 		#print(x, '%d cells kept out of %d' % (len(idx), len(cellssums[i])))
+
+	print('%d red blood cells have been removed across all samples' % numcells)
 
 '''
 Gene Set Enrichment Analysis functions
@@ -808,7 +824,9 @@ def enrichment_analysis(pop,d,genelist,size_total,ngenesets):
 	keys = np.array(list(d.keys())) # get a list of gene set names
 	with Pool(pop['ncores']) as p:
 		q = np.array(p.starmap(sf, [(len(set(d[key]) & set(genelist)), size_total, len(d[key]), N) for key in keys])) # For each gene set, compute the p-value of the overlap with the gene list
-	return keys[np.argsort(q)[:ngenesets]] # return top 
+	indices = np.argsort(q)[0:ngenesets]
+	feat_df = pd.DataFrame({'feat_labels':keys[indices], 'feat_pvals':q[indices]})
+	return feat_df # return top features
 
 def gsea(pop, geneset='c5bp', ngenesets=20):
 	'''
@@ -841,8 +859,7 @@ def gsea(pop, geneset='c5bp', ngenesets=20):
 		idx = np.where(np.array(W[:,i]).flatten() > stdfactor*stds[i])[0] # get indices of genes that are above stdfactor times the standard deviation of feature i
 		genelist = [genes[j] for j in idx] # gene matching gene names
 		pop['feat_labels'][i] = enrichment_analysis(pop, d, genelist, size_total, ngenesets) # for that list of genes, run GSEA
-	pop['top_feat_labels'] = [pop['feat_labels'][i][0] for i in range(pop['nfeats'])] # store the top gene set of each feature
-
+	pop['top_feat_labels'] = [pop['feat_labels'][i].iloc[0].feat_labels for i in range(pop['nfeats'])]
 '''
 Dimensionality reduction functions
 '''
@@ -959,7 +976,8 @@ def reconstruction_errors(pop, M_norm, q):
 			Hj = p.starmap(nnls, [(Wj, M_norm[:,i].toarray().flatten()) for i in range(M_norm.shape[1])]) # project each cell i of normalized data onto the current W 
 		Hj = np.vstack(Hj) # Hj is projected data onto Wj
 		projs.append(Hj) # store projection
-		Dj = Wj.dot(Hj.T) # compute reconstructed data: Dj = Wj.Hj
+		Dj = Wj.dot(Hj.T) # compute reconstructed data: Dj = Wj.Hj\
+		curr_error = mean_squared_error(D, Dj)
 		errors.append(mean_squared_error(D, Dj)) # compute mean squared error between original data D and reconstructed data Dj
 	return errors, projs
 
@@ -1006,8 +1024,8 @@ def save_top_genes_features(pop, stds, stdfactor):
 		gs = [filtered_genes[j] for j in gidx] # get matching names
 		out.append(gs) # store in list
 
-	dname = 'qc'
-	with open(os.path.join(pop['output'], dname, 'top_genes_per_feat.txt'), 'w') as fout: # create file
+	dname = 'qc/features'
+	with open(os.path.join(pop['output'], dname, 'features_m%d_topgenes_list.txt' % pop['nfeats']), 'w') as fout: # create file
 		#for i in range(pop['nfeats']): # dump selected genes for each feature i
 		for i, lbl in enumerate(pop['top_feat_labels']): # dump selected genes for each feature i
 			print(i, lbl)
@@ -1019,42 +1037,78 @@ def plot_top_genes_features(pop):
 	"""
 	Plot heatmap top genes per feature ~ features
 
+	NB: Currently only supports oNMF features
+
 	Parameters
 	----------
 	pop : dict
 		Popalign object
 	"""
+	filtered_genes = pop['filtered_genes']
 	W = pop['W'] # grab feature space
 	stds = np.array(W.std(axis=0)).flatten() # get the feature standard deviations
 	stdfactor = 2 # factor to select genes
 	genes_idx = np.array([])
+	genes_loadings = np.array([])
 	for i,s in enumerate(stds): # for each feature i and its respective standard deviations
-		a = np.where(np.array(W[:,i]).flatten() > stdfactor*stds[i])[0] # get indices of top genes
+		a = np.where(np.array(W[:,i]).flatten() > stdfactor*s)[0] # get indices of top genes
 		sub = np.array(W[a,i]).flatten() # grab coefficients of top genes for feature i
 		a = a[np.argsort(sub)[::-1]] # sort subset by coefficent
 		genes_idx = np.concatenate([genes_idx, a]) # concatenate gene indices
+		genes_loadings = np.concatenate([genes_loadings, np.sort(sub)[::-1]])
 	genes_idx = genes_idx.astype(int)
 
 	# make list unique (a gene can't appear twice in the list for two different features)
 	s = set()
 	l = []
-	for x in genes_idx:
+	vals = []
+	for i in range(len(genes_idx)):
+		x = genes_idx[i]
+		currval = genes_loadings[i]
+		if x in s: 
+			# find the existing loading value and compare it to the new loading value
+			origidx = np.argwhere(l==x)[0][0]
+			origval = vals[origidx]
+			if origval<currval: 
+				# remove the origval and gene name in the list and append the new val and gene name
+				l.remove(x)
+				vals.remove(origval)
+				l.append(x)
+				vals.append(currval)
+
 		if x not in s:
 			s.add(x)
 			l.append(x)
-	genes_idx = np.array(l)
+			vals.append(currval)
+
+	genes_idx = np.array(l)[::-1]
+	keptgenes = [filtered_genes[i] for i in genes_idx]
+
+	 # define gene font sizes
+	geneFS = 3 # (default)
+	if len(genes_idx)>200: 
+		geneFS = 2
+	if len(genes_idx)>400: 
+		geneFS = 1
+	if len(genes_idx)>600: 
+		geneFS = 0.5
 
 	mtx = W[genes_idx, :] # subset feature space with the top genes for the features
-	ax = plt.imshow(mtx, cmap='magma', aspect='auto') # create heatmap
-	xlbls = [pop['top_feat_labels'][i] for i in range(pop['nfeats'])]
-	plt.xticks(np.arange(pop['nfeats']),xlbls,rotation=90)
-	plt.ylabel('Genes')
-	plt.yticks([])
-	plt.xlabel('Features')
 
-	dname = 'qc'
+	fig = plt.figure(figsize=(5,8)) 
+	ar = 3 * pop['nfeats']/len(genes_idx) # define aspect ratio
+	ax = plt.imshow(mtx, cmap='magma', aspect=ar) # create heatmap
+	xlbls = [pop['top_feat_labels'][i] for i in range(pop['nfeats'])]
+	plt.xticks(np.arange(pop['nfeats']),xlbls, rotation=45, ha='right',fontsize=6)
+	plt.ylabel('Genes')
+	plt.ylim(-0.5,len(genes_idx)-0.5)
+	plt.yticks(np.arange(len(genes_idx)),keptgenes, fontsize=geneFS)
+	plt.xlabel('Features')
+	plt.colorbar()
+
+	dname = 'qc/features'
 	mkdir(os.path.join(pop['output'], dname)) # create subfolder
-	plt.savefig(os.path.join(pop['output'], dname, 'topgenes_features.pdf'), bbox_inches = "tight")
+	plt.savefig(os.path.join(pop['output'], dname, 'features_m%d_topgenes.pdf' % pop['nfeats']), bbox_inches = "tight")
 	plt.close()
 
 	save_top_genes_features(pop, stds, stdfactor)
@@ -1124,6 +1178,8 @@ def plot_H(pop, method='complete', n=None):
 	'''
 	Plot the projection in feature space of the data
 
+	NB: Currently only supports oNMF features
+
 	Parameters
 	----------
 	pop : dict
@@ -1133,15 +1189,16 @@ def plot_H(pop, method='complete', n=None):
 	n : int or None
 		Number of cells to randomly sample.
 	'''
-	#C = cat_data(pop, 'C') # get feature data
-	C = get_cat_coeff(pop)
-
+	C = cat_data(pop, 'C') # get feature data
+	
 	if n != None:
 		if not isinstance(n, int): # check that n is an int
 			raise Exception('n must be an int')
 		if n<C.shape[0]: # if n is small than the number of cells in C
 			idx = np.random.choice(C.shape[0], n, replace=False) # randomly select ncells cells
 			C = C[idx,:] # subsample
+	else: 
+		n=C.shape[0]
 
 	d = pairwise_distances(X=C,metric='correlation',n_jobs=-1) # pairwaise distance matrix
 	np.fill_diagonal(d,0.) # make sure diagonal is not rounded to some small value
@@ -1162,9 +1219,9 @@ def plot_H(pop, method='complete', n=None):
 	else:
 		plt.title('%d randomly selected cells from %d samples' % (X.shape[1], pop['nsamples']))
 
-	dname = 'qc'
+	dname = 'qc/features'
 	mkdir(os.path.join(pop['output'], dname)) # create subfolder
-	plt.savefig(os.path.join(pop['output'], dname, 'projection_cells.pdf'), bbox_inches = "tight", dpi=300)
+	plt.savefig(os.path.join(pop['output'], dname, 'features_m%d_projection_%dcells.pdf' % (pop['nfeats'], n)), bbox_inches = "tight", dpi=300)
 	plt.close()
 
 def onmf(pop, ncells=2000, nfeats=[5,7,9], nreps=3, niter=300):
@@ -1188,30 +1245,213 @@ def onmf(pop, ncells=2000, nfeats=[5,7,9], nreps=3, niter=300):
 	'''
 	M_norm = cat_data(pop, 'M_norm') # grab normalized data
 	maxncells = M_norm.shape[1] # get total number of cells
-	if ncells > maxncells: # if ncells is larger than total number of cells
-		ncells = maxncells # adjust number down
-	idx = np.random.choice(M_norm.shape[1], ncells, replace=False) # randomly select ncells cells
+	if 2*ncells > maxncells: # if ncells is larger than twice the number of cells
+		ncells = int(np.floor(maxncells/2)) # adjust number down
+
+	# randomly select ncells and divide into training and cross-validation dataset
+	idx = np.random.choice(M_norm.shape[1], 2*ncells, replace=False) 
+	idx1 = idx[0:ncells]
+	idx2 = idx[ncells:]
 
 	print('Computing W matrices')
 	with Pool(pop['ncores']) as p:
-		q = p.starmap(oNMF, [(M_norm[:,idx], x, niter) for x in np.repeat(nfeats,nreps)]) # run ONMF in parallel for each possible k nreps times
+		q = p.starmap(oNMF, [(M_norm[:,idx1], x, niter) for x in np.repeat(nfeats,nreps)]) # run ONMF in parallel for each possible k nreps times
 
 	q = [scale_W(q[i][0]) for i in range(len(q))] # scale the different feature spaces
 	print('Computing reconstruction errors')
-	errors, projs = reconstruction_errors(pop, M_norm, q) # compute the reconstruction errors for all the different spaces in q and a list of the different data projections for each feature spaces
+	errors, projs = reconstruction_errors(pop, M_norm[:,idx2], q) # compute the reconstruction errors for all the different spaces in q and a list of the different data projections for each feature spaces
 	
-	print('Retrieving W with lowest error')
-	idx_best = np.argmin(errors) # get idx of lowest error
+	# choose the best out of all replicates
+	mlist = np.repeat(nfeats,nreps)
+
+	bestofreps = []
+	for i in range(len(nfeats)): 
+	    curridx = np.where(mlist==nfeats[i])[0]
+	    currerrors = [errors[i] for i in curridx]
+	    bestidx = np.argmin(currerrors)
+	    bestofreps.append(curridx[bestidx])
+	    
+	# Now subselect only the best of the replicate feature sets
+	q = [q[i] for i in bestofreps]
+	errors = [errors[i] for i in bestofreps]
+	projs = [projs[i] for i in bestofreps]
+
+	# Store each of these feature sets into the pop object for posterity
+	pop['onmf'] = {}
+	pop['onmf']['q'] = q
+	pop['onmf']['errors'] = errors
+	pop['onmf']['nfeats'] = nfeats
+
+def choose_featureset(pop, m = [], alpha = 3, multiplier=3):
+	'''
+	Choose featureset from stored oNMF calculations. Either user directly supplies a preferred m value or the 
+
+	NB: Currently only supports oNMF features
+
+	Parameters
+	----------
+	errors : list
+		list of MSE errors from oNMF
+	alpha : float
+		power of polynomial
+	multiplier : float
+		multiplies constant C in f(m)
+
+	'''
+	# Unpack variables from pop object
+	q = pop['onmf']['q']
+	errors = pop['onmf']['errors']
+	nfeats = pop['onmf']['nfeats']
+
+	# grab normalized data
+	M_norm = cat_data(pop, 'M_norm') 
+
+	if m in nfeats: 
+		print('Using oNMF featureset for specified m: ' + str(m))
+		bestm = m
+	else: 
+		print('Retrieving oNMF featureset with lowest f(m): ')
+		# idx_best = np.argmin(errors) # get idx of lowest error
+		bestm = find_best_m(pop, alpha, multiplier)
+		print('Featureset with ' + str(bestm) + ' features loaded')
+
+	idx_best = np.argwhere(np.array(nfeats)==bestm)[0][0]
+
+	# Store featureset and coefficients into the individual samples
 	pop['W'] = q[idx_best] # retrieve matching W
 	pop['nfeats'] = pop['W'].shape[1] # store number of features in best W
-	proj = projs[idx_best] # retrieve matching projection
-	# pop['reg_covar'] = max(np.linalg.eig(np.cov(proj.T))[0])/100 # store a regularization value for GMM covariance matrices
 
+	# recompute new projection based on chosen feature set
+	print('Projecting into selected featureset...')
+	with Pool(pop['ncores']) as p:
+		H = p.starmap(nnls, [(pop['W'], M_norm[:,i].toarray().flatten()) for i in range(M_norm.shape[1])]) # project each cell i of normalized data onto the current W 
+		proj = np.vstack(H)
+
+	# pop['reg_covar'] = max(np.linalg.eig(np.cov(proj.T))[0])/100 # store a regularization value for GMM covariance matrices
 	gsea(pop) # run GSEA on feature space
 	split_proj(pop, proj) # split projected data and store it for each individual sample
 	plot_top_genes_features(pop) # plot a heatmap of top genes for W
 	plot_H(pop, method='complete', n=2000)
 	#plot_reconstruction(pop) # plot reconstruction data
+
+def find_best_m(pop, alpha = 3, multiplier = 3): 
+	'''
+	Find the best number of features (m) given the MSE error and 
+	parameters for polynomial cost function f(m)
+
+	NB: Currently only supports oNMF features
+
+	Parameters
+	----------
+	errors : list
+		list of MSE errors from oNMF
+	alpha : float
+		power of polynomial
+	multiplier : float
+		multiplies constant C in f(m)
+
+	Output
+	----------
+	bestm : int
+		value of m (number of features) that minimizes cost function f(m)
+	'''
+	errors = pop['onmf']['errors']
+	nfeats = pop['onmf']['nfeats']
+
+	# First rescale MSE so it starts at 1
+	errors_2 = np.divide(errors, np.max(errors))
+
+	# set all powers and scaling factors to try
+	alphas = [0.7, 0.9, 1, 2, 3, 4, 5]
+	if alpha not in alphas: 
+		alphas.append(alpha)
+		alphas = np.sort(alphas).tolist()
+
+	basescales = []
+	r_univ= range(1,30)
+
+	for i in range(len(alphas)):
+		currscale = np.round(np.max(np.power(np.array(r_univ),alphas[i]))*10)
+		basescales.append(currscale)
+
+	# Assemble f(m) values by sweeping over j and alpha
+	fm_df = pd.DataFrame()
+	minvals = []
+	jrange= range(1,8)
+	if multiplier not in jrange: 
+		jrange.append(multiplier)
+		jrange = np.sort(jrange).tolist()
+
+	for i in range(len(alphas)): 
+		curralpha = alphas[i]
+		currbasescale = basescales[i]
+		currminvals = []
+		for j in jrange:               
+			currscale = j*1/currbasescale # increase j linearly
+			#         currscale = np.power(2,j) * currbasescale # increase j by powers of 2
+			curr_values = currscale*(np.power(np.array(nfeats),curralpha)) + np.array(errors_2)
+			currmin = np.argwhere(curr_values==np.min(curr_values))[0][0]
+
+			curr_df = {'vals': np.append(curr_values,np.min(curr_values)),
+						'm': np.append(nfeats,currmin)}
+			curr_df = pd.DataFrame(curr_df)
+			curr_df['scale'] = currscale
+			curr_df['a'] = curralpha
+			curr_df['j'] = j
+			curr_df['col'] = np.append(0*curr_values,1)
+			fm_df = fm_df.append(curr_df, ignore_index=True)
+
+			currminvals.append(nfeats[currmin])
+		minvals.append(currminvals)
+
+	# Find best m given supplied alpha and multiplier: 
+	irow = alphas.index(alpha)
+	icol = jrange.index(multiplier)
+	idx_flat = irow*len(jrange) + icol
+	bestm = minvals[irow][icol]
+
+	dname = 'qc/features'
+	mkdir(os.path.join(pop['output'], dname)) # create subfolder
+
+	# Plot MSE curve
+	plt.scatter(nfeats,errors_2, marker=".", s=100)
+	plt.plot(nfeats,errors_2, marker=".")
+	plt.ylabel('MSE(normalized)')
+	plt.savefig(os.path.join(pop['output'], dname, 'featurechoice_1_mse.pdf'), bbox_inches = "tight")
+	plt.close()
+
+	# Plot f(m) curves
+	with sns.plotting_context('notebook',font_scale=1.7):
+		g = sns.FacetGrid(fm_df, col="j",  row="a", hue="col")
+		g = (g.map(plt.scatter, "m", "vals", marker=".", s=400))#.set(ylim=(0.03,0.055))
+		g = (g.map(plt.plot, "m", "vals", marker="."))#.set(ylim=(0.03,0.055))
+
+		# Highlight the curve that uses the chosen parameters
+		axes = g.axes.flatten()
+		ax = axes[idx_flat]
+		for _, spine in ax.spines.items():
+			spine.set_visible(True) # You have to first turn them on
+			spine.set_color('magenta')
+			spine.set_linewidth(2)
+
+		plt.savefig(os.path.join(pop['output'], dname, 'featurechoice_2_fm_curves.pdf'), bbox_inches = "tight")
+		plt.close()
+
+	# Plot phase portrait of argmin
+	plt.figure(figsize=(5,7)) 
+	heat_map = sns.heatmap(minvals, annot=True, cmap='viridis')
+	plt.yticks(plt.yticks()[0], alphas)
+	heat_map.set_ylim(len(minvals)+0.5, -0.5)
+	plt.ylabel('alpha (a)')
+	plt.xlabel('constant multiplier (j)')
+	plt.yticks(rotation=0)
+	plt.xticks(np.array(jrange)-0.5, jrange)
+	# highlight the m value selected in the data
+	heat_map.add_patch(plt.Rectangle((icol, irow), 1, 1, fill=False, edgecolor='magenta', lw=2))
+	plt.savefig(os.path.join(pop['output'], dname, 'featurechoice_3_phase_argmin_m.pdf'), bbox_inches = "tight")
+	plt.show()
+
+	return bestm
 
 def pca(pop, n_components=2, fromspace='genes'):
 	'''
@@ -1859,9 +2099,9 @@ def build_single_GMM(k, C, reg_covar):
 	gmm = smix.GaussianMixture(
 		n_components=k,
 		covariance_type='full',
-		tol=0.001,
+		tol=0.001, # orig 0.001
 		reg_covar=reg_covar,
-		max_iter=10000,
+		max_iter=10000, # orig 10000
 		n_init=10,
 		init_params='kmeans',
 		weights_init=None,
@@ -1873,7 +2113,7 @@ def build_single_GMM(k, C, reg_covar):
 		verbose_interval=10) # create model
 	return gmm.fit(C) # Fit the data
 
-def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar='auto', rendering='grouped', types=None, figsizegrouped=(20,20), figsizesingle=(5,5), only=None, featuretype = 'onmf'):
+def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=1, reg_covar='auto', rendering='grouped', types=None, figsizegrouped=(20,20), figsizesingle=(5,5), only=None, featuretype = 'onmf', criteria='bic'):
 	'''
 	Build a Gaussian Mixture Model on feature projected data for each sample
 
@@ -1884,12 +2124,13 @@ def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar=
 	ks : int or tuple
 		Number or range of components to use
 	niters : int
-		number of replicates to build for each k in `ks`
+		number of iterations to build for each k in `ks` during model selection phase
 	training : int or float
 		If training is float, the value will be used a percentage to select cells for the training set. Must follow 0<value<1
 		If training is int, that number of cells will be used for the training set.
 	nreplicates : int
 		Number of replicates to generate. These replicates model will be used to provide confidence intervals later in the analysis.
+		Each replicate is stored with zero-indexed numbering:  pop['samples'][x]['replicates'][0] is the first replicate
 	reg_covar : str or float
 		If 'auto', the regularization value will be computed from the feature data
 		If float, value will be used as reg_covar parameter to build GMMs
@@ -1906,6 +2147,8 @@ def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar=
 		Sample label or list of sample labels. Will force GMM construction for specified samples only. Defaults to None
 	featuretype: str
 		either 'pca' or 'onmf'
+	criteria : str
+		either 'bic' or 'aic'
 	'''
 
 	if 'featuretype' in pop.keys():
@@ -1932,16 +2175,22 @@ def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar=
 
 	calc_reg_covar(pop)
 
+	dname = 'qc/gmm'
+	mkdir(os.path.join(pop['output'], dname)) # create subfolder
+
 	for i,x in enumerate(samples): # for each sample x
 		print('Building model for %s (%d of %d)' % (x, (i+1), len(samples)))
 		C = get_coeff(pop,x) # get sample feature data
 		M = pop['samples'][x]['M'] # get sample gene data
 		m = C.shape[0] # number of cells
 
-		if (isinstance(training, int)) & (training<m) & (training > 1): # if training is int and smaller than number of cells
+		if int(training) == 1:
+			n = m
+		elif (isinstance(training, int)) & (training<m) & (training > 1): # if training is int and smaller than number of cells
 			n = training
 		elif (isinstance(training, int)) & (training>=m): # if training is int and bigger than number of cells
 			n = int(m*0.8) # since the number of training cells was larger than the number of cells in the sample, take 80%
+			print('Using 80\% of cells for training')
 		elif (isinstance(training, float)) & (0<training) & (training<1):
 			n = int(m*training) # number of cells for the training set
 		else:
@@ -1949,9 +2198,14 @@ def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar=
 
 		idx = np.random.choice(m, n, replace=False) # get n random cell indices
 		not_idx = np.setdiff1d(range(m), idx) # get the validation set indices
-
-		Ctrain = C[idx,:] # subset to get the training sdt
-		Cvalid = C[not_idx,:] # subset to get the validation set
+		
+		# if using 100% of data to build models, use all data as validation
+		if len(not_idx)==0:
+			Ctrain = C
+			Cvalid = C
+		else: 
+			Ctrain = C[idx,:] # subset to get the training set
+			Cvalid = C[not_idx,:] # subset to get the validation set
 
 		if reg_covar == 'auto':
 			reg_covar_param = pop['reg_covar'] # retrieve reg value from pop object that was computed from projection data
@@ -1963,8 +2217,34 @@ def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar=
 		# We minimize the BIC score of the validation set
 		# to pick the best fitted gmm
 		BIC = [gmm.bic(Cvalid) for gmm in q] # compute the BIC for each model with the validation set
-		gmm = q[np.argmin(BIC)] # best gmm is the one that minimizes the BIC
+		AIC = [gmm.aic(Cvalid) for gmm in q]
+        
+		if criteria=='bic': 
+			IC = BIC
+		elif criteria=='aic':
+			IC = AIC
+        
+		gmm = q[np.argmin(IC)] # best gmm is the one that minimizes the AIC		
 		pop['samples'][x]['gmm'] = gmm # store gmm
+        
+		# Plot and store the selected values   
+		df = {'IC' : np.hstack([BIC,AIC]),
+		'type': np.hstack([np.repeat('BIC',len(BIC)), np.repeat('AIC',len(AIC))]),
+		'numcomponents' : np.tile(np.repeat(ks, niters),2)}
+		df = pd.DataFrame(df)
+        
+		nc = np.repeat(ks,niters) # number of components
+		hidx = nc[np.argmin(IC)]
+		hval = IC[np.argmin(IC)]
+
+		fig = plt.figure()
+		g = sns.lineplot(x = 'numcomponents', y= 'IC', hue = 'type', data=df)
+		sns.scatterplot(x=[hidx],y=[hval], color='red')
+		g.set_xticks(ks)
+		g.set_title(x)  
+		plt.savefig(os.path.join(pop['output'], dname, 'gmm_selection_rep0_%s.pdf' % (x)), bbox_inches = "tight")
+		plt.close()
+
 		# pop['samples'][x]['gmm_means'] = np.array(gmm.means_.dot(pop['W'].T))
 		pop['samples'][x]['gmm_means'] = get_gmm_means(pop,x,None)
 
@@ -1980,25 +2260,38 @@ def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=0, reg_covar=
 		# Also store first gmm in ['replicates'][0]: 
 		pop['samples'][x]['replicates'] = {}
 		pop['samples'][x]['replicates'][0] = {}
-		pop['samples'][x]['replicates'][0]['gmm'] = gmm # store gmm
+		pop['samples'][x]['replicates'][0]['gmm'] = pop['samples'][x]['gmm'] # store gmm
 		# pop['samples'][x]['replicates'][0]['gmm_means'] = np.array(gmm.means_.dot(pop['W'].T))
-		pop['samples'][x]['replicates'][0]['gmm_means'] = get_gmm_means(pop, x, 0)
+		pop['samples'][x]['replicates'][0]['gmm_means'] = pop['samples'][x]['gmm_means'] 
+		pop['samples'][x]['replicates'][0]['gmm_types'] = pop['samples'][x]['gmm_types'] 
 
 		# Create replicates
-		pop['nreplicates'] = nreplicates # store number of replicates in pop object
-		if nreplicates >=1: # if replicates are requested
+		pop['nreplicates'] = np.max([nreplicates,1])# store number of replicates in pop object
+		if nreplicates >1: # if replicates are requested
 			for j in range(1,nreplicates): # for each replicate number j
+				print('Building replicate %d out of %d' %(j+1, nreplicates), end='\r')
 				idx = np.random.choice(m, n, replace=False) # get n random cell indices
 				not_idx = np.setdiff1d(range(m), idx) # get the validation set indices
-				Ctrain = C[idx,:] # subset to get the training sdt
-				Cvalid = C[not_idx,:] # subset to get the validation set
+				
+				# if using 100% of data to build models, use all data as validation
+				if len(not_idx)==0:
+					Ctrain = C
+					Cvalid = C
+				else: 
+					Ctrain = C[idx,:] # subset to get the training set
+					Cvalid = C[not_idx,:] # subset to get the validation set
 
 				with Pool(pop['ncores']) as p: # build all the models in parallel
 					q = p.starmap(build_single_GMM, [(k, Ctrain, reg_covar_param) for k in np.repeat(ks, niters)])
-				# We minimize the BIC score of the validation set
+				# We minimize the AIC/BIC score of the validation set
 				# to pick the best fitted gmm
-				BIC = [gmm.bic(Cvalid) for gmm in q] # compute the BIC for each model with the validation set
-				gmm = q[np.argmin(BIC)] # best gmm is the one that minimizes the BIC
+				BIC = [gmm.bic(Cvalid) for gmm in q]
+				AIC = [gmm.aic(Cvalid) for gmm in q]
+				if criteria=='bic': 
+					IC = BIC
+				elif criteria=='aic':
+					IC = AIC
+				gmm = q[np.argmin(IC)] # best gmm is the one that minimizes the selected information criterion		
 				pop['samples'][x]['replicates'][j] = {}
 				pop['samples'][x]['replicates'][j]['gmm'] = gmm # store replicate number j
 				# pop['samples'][x]['replicates'][j]['gmm_means'] = gmm.means_.dot(pop['W'].T)
@@ -2150,6 +2443,493 @@ def get_gmm_means(pop, sample, rep = None):
 
 	return gmm_means
 
+'''
+Calculate GMM error compared to KDE model
+'''
+
+def project_gmm(gmm1, Tmat):
+	'''
+	Project gaussian mixture model into 2D  space
+	m = number of cells, n = original dimensionality
+
+	Parameters
+	----------
+	gmm1: obj
+	    sklearn GaussianMixture object
+	D_new : array
+	    m x n matrix of data that has already been projected into new dimensionality
+	Tmat : array
+	    transformation matrix. n x 2
+	'''
+
+	# get parameters from the gmm: 
+	means_ = gmm1.means_
+	covariances_ = gmm1.covariances_
+	weights_ = gmm1.weights_
+	lower_bound_ = gmm1.lower_bound_ 
+
+	# Transform gmm parameters and make a projected GMM
+	r = len(weights_)
+	projmeans_ = means_ @ Tmat
+	projcovariances_ = np.ndarray([r,2,2])
+	projprecisions_ = np.ndarray([r,2,2])
+	projprecisions_chol_ = np.ndarray([r,2,2])
+	allposdef=True
+	for j in range(r):
+		currcov = covariances_[j,:,:]
+		newcov =  Tmat.T @currcov @ Tmat
+		projcovariances_[j,:,:] = newcov
+
+		if not check_posdef(currcov): 
+			allposdef = False
+		else:
+			newprecision = np.linalg.inv(newcov)
+			projprecisions_[j,:,:] = newprecision
+			projprecisions_chol_[j,:,:] = np.matrix(linalg.cholesky(newprecision)).H
+
+	if not allposdef: 
+		return None # return a null object
+	else: 
+		newgmm = smix.GaussianMixture(
+			n_components = r,
+			covariance_type='full',
+			tol=0.001,
+			reg_covar=False,
+			max_iter=1,
+			n_init=1,
+			init_params='kmeans',
+			weights_init=weights_,
+			means_init=projmeans_,
+			precisions_init=projprecisions_,
+			random_state=None,
+			warm_start=False,
+			verbose=0,
+			verbose_interval=10)
+		best_params = (weights_, projmeans_, projcovariances_, projprecisions_chol_)
+		newgmm._set_parameters(best_params)
+		newgmm.n_iter_ = 1
+		newgmm.lower_bound_ = gmm1.lower_bound_
+		newgmm.covariance_type = 'full'
+	    
+	return newgmm #, projmeans_, projcovariances_,projprecisions_, projprecisions_chol_, weights
+
+def plotGMMandKDEproj(pop, sample, bw, proj='random'): 
+	'''
+	Plot 2D projection errors for model compared to kernel density estimate (KDE) of all datapoints
+	Can use either random Gaussian projections or two chosen dimensions from feature space
+
+	Parameters
+	----------
+	pop : dict
+	    PopAlign object
+	sample : str
+	    name of sample within pop object
+	bw : float
+	    bandwidth for KDE model
+	proj: 
+	    either 'random' or list [d1,d2] indicating chosen dimensions from feature space
+	'''
+
+	D = get_coeff(pop,sample)
+	numC = D.shape[0]
+	gmm1= pop['samples'][sample]['gmm']
+
+	err_df = pd.DataFrame()
+
+	if proj=='random': 
+		transformer = random_projection.GaussianRandomProjection(n_components=2)
+		D_new = transformer.fit_transform(D)
+		Tmat = transformer.components_.T
+		newgmm = project_gmm(gmm1, Tmat) 
+		postfix = 'random'
+
+	elif len(proj)==2:
+		d1 = proj[0]
+		d2 = proj[1]
+		Tmat = np.zeros((D.shape[1],2))
+		Tmat[d1,0] = 1
+		Tmat[d2,1] = 1
+		newgmm = project_gmm(gmm1,Tmat)
+		D_new = D[:,[d1,d2]]
+		postfix = 'dim_%d_%d' %(d1,d2)
+
+	if not bw: 
+		# use grid search cross-validation to optimize the bandwidth
+		params = {'bandwidth': np.logspace(-2, 1, 20)}
+		grid = GridSearchCV(KernelDensity(), params)
+		grid.fit(D_new)
+		print("best bandwidth for projection: %.2f" %(grid.best_estimator_.bandwidth), end ='\r')
+		# use the best estimator to compute the kernel density estimate
+		bw = grid.best_estimator_.bandwidth
+
+	kde1 = KernelDensity(bandwidth=bw, metric='euclidean',
+	                    kernel='gaussian', algorithm='ball_tree')
+	kde1.fit(D_new)
+
+	# Sample some points from Gmm and combine points with experimental data to determine extents
+	Dsamp = newgmm.sample(D_new.shape[0])[0]
+	D_combo = np.vstack((Dsamp,D_new))
+
+	# Create a regular 2D grid with 25 points in each dimension
+	xmin, ymin = D_combo.min(axis=0)
+	xmax, ymax = D_combo.max(axis=0)
+	xi, yi = np.mgrid[xmin:xmax:25j, ymin:ymax:25j]
+
+	# Evaluate the KDE on a regular grid...
+	coords = np.vstack([item.ravel() for item in [xi, yi]])
+
+	kdedensity = kde1.score_samples(coords.T).reshape(xi.shape)
+	kdedensityexp = np.exp(kdedensity) 
+	kdedensityexp = kdedensityexp/np.sum(kdedensityexp)
+
+	gmmdensity = newgmm.score_samples(coords.T).reshape(xi.shape)
+	gmmdensityexp = np.exp(gmmdensity) 
+	gmmdensityexp = gmmdensityexp/np.sum(gmmdensityexp)
+
+	# Calculate the total error across entire 2D projection 
+	gmmdensityexpv = gmmdensityexp.flatten()
+	kdedensityexpv = kdedensityexp.flatten()
+
+	keepidx = np.argwhere(kdedensityexpv>(1/numC)) # threshold datapoints with p > 1/numC
+	errexp = np.abs(kdedensityexpv[keepidx]-gmmdensityexpv[keepidx])  
+
+	# Generate 1D vectors (projected along x axis) to plot: 
+	gmm1D = np.sum(gmmdensityexp,axis=0)
+	kde1D = np.sum(kdedensityexp,axis=0)
+	err1D = np.sum(np.abs(kdedensityexp-gmmdensityexp),axis=0)
+	#         err1D = np.abs(kde1D-gmm1D)
+
+	# Set the vmax for the colorscales in 2D plots
+	vmax_prob = np.max([np.max(kdedensityexp), np.max(gmmdensityexp)])
+	vmax_L1 = np.max(np.abs(kdedensityexp-gmmdensityexp))
+	vmax_1D =  np.max([np.max(kde1D), np.max(gmm1D)])
+
+	fig = plt.figure(tight_layout=True)
+	
+	gs = gridspec.GridSpec(2, 3,  height_ratios = [10,1], width_ratios=[1, 1, 1]) 
+	extent = [xmin , xmax, ymin , ymax]
+
+	ax0 = fig.add_subplot(gs[0,0])        
+	plt.imshow(kdedensityexp,extent=extent, vmax = vmax_prob)
+	plt.title('P(KDE)')
+	plt.colorbar(fraction=0.046, pad=0.04, shrink=0.5)
+
+	ax1 = fig.add_subplot(gs[0,1])
+	plt.imshow(gmmdensityexp,extent=extent, vmax = vmax_prob)
+	plt.title('P(model)')
+	plt.colorbar(fraction=0.046, pad=0.04, shrink=0.5)
+
+	ax2 = fig.add_subplot(gs[0,2])
+	plt.imshow(np.abs(kdedensityexp-gmmdensityexp),extent=extent, vmax = vmax_L1)
+	plt.title('|P(KDE)- P(model)|')
+	plt.colorbar(fraction=0.046, pad=0.04, shrink=0.5)
+
+	ax3 = fig.add_subplot(gs[1,0])
+	plt.plot(list(range(0,25)),kde1D)
+	plt.ylim((0,vmax_1D*1.1))
+	plt.ylabel('P(x)')
+	sns.despine()
+
+	ax4 = fig.add_subplot(gs[1,1])
+	plt.plot(list(range(0,25)),gmm1D)
+	plt.ylim((0,vmax_1D*1.1))
+	sns.despine()
+
+	ax5 = fig.add_subplot(gs[1,2])
+	plt.plot(list(range(0,25)),err1D)
+	plt.ylim((0,vmax_1D*1.1))
+	sns.despine() 
+
+	fig.suptitle('bw is %.2f' % bw, y=0.95) 
+	
+	dname = 'qc/gmm'
+	mkdir(os.path.join(pop['output'], dname)) # create subfolder
+
+	# Save file with new number appended
+	filename = os.path.join(pop['output'], dname, 'gmm_err_%s_1_model_vs_KDE_error_proj_bw%.2f_%s' % (sample,bw, postfix))
+	i = 0
+	while os.path.exists('{}_{:d}.pdf'.format(filename, i)):
+		i += 1
+	plt.savefig('{}_{:d}.pdf'.format(filename, i))
+
+	return (np.sum(errexp)) # return the total error across the entire projection
+
+def compareGMMtoKDE(pop, sample, bw, numProj = 500): 
+	'''
+	Compute average 2D projection errors for a specific model compared to a KDE model of all datapoints
+
+	Parameters
+	----------
+	pop : dict
+	    PopAlign object
+	sample : str
+	    name of sample within pop object
+	bw : float
+	    bandwidth for KDE model
+	numProj: int
+	    number of random projections to compute
+	'''
+
+	D = get_coeff(pop,sample)
+	numC = D.shape[0]
+	gmm1= pop['samples'][sample]['gmm']
+
+	errv = [] 
+	pterr_df = pd.DataFrame() # data per grid point
+	err_df = pd.DataFrame() # data per 2D projection    
+
+	dname = 'qc/gmm'
+	mkdir(os.path.join(pop['output'], dname)) # create subfolder
+
+	for i in range(numProj):
+		# Generate random 2D projection
+		transformer = random_projection.GaussianRandomProjection(n_components=2)
+		D_new = transformer.fit_transform(D)
+		Tmat = transformer.components_.T
+		# Project the model
+		newgmm = project_gmm(gmm1, Tmat) 
+
+		if not bw: 
+			# use grid search cross-validation to optimize the bandwidth
+			params = {'bandwidth': np.logspace(-2, 1, 20)}
+			grid = GridSearchCV(KernelDensity(), params)
+			grid.fit(D_new)
+			print("best bandwidth for projection: %.2f" %(grid.best_estimator_.bandwidth), end ='\r')
+			# use the best estimator to compute the kernel density estimate
+			bw = grid.best_estimator_.bandwidth
+		    
+		kde1 = KernelDensity(bandwidth=bw, metric='euclidean',
+		                    kernel='gaussian', algorithm='ball_tree')
+		kde1.fit(D_new)
+
+		# Sample some points from Gmm and combine points with experimental data to determine extents
+		Dsamp = newgmm.sample(D_new.shape[0])[0]
+		D_combo = np.vstack((Dsamp,D_new))
+
+		# Create a regular 2D grid with 25 points in each dimension
+		xmin, ymin = D_combo.min(axis=0)
+		xmax, ymax = D_combo.max(axis=0)
+		xi, yi = np.mgrid[xmin:xmax:25j, ymin:ymax:25j]
+
+		# Evaluate the KDE on a regular grid...
+		coords = np.vstack([item.ravel() for item in [xi, yi]])
+
+		kdedensity = kde1.score_samples(coords.T).reshape(xi.shape)
+		kdedensityexp = np.exp(kdedensity) 
+		kdedensityexp = kdedensityexp/np.sum(kdedensityexp)
+
+		gmmdensity = newgmm.score_samples(coords.T).reshape(xi.shape)
+		gmmdensityexp = np.exp(gmmdensity) 
+		gmmdensityexp = gmmdensityexp/np.sum(gmmdensityexp)
+
+		gmmdensityexpv = gmmdensityexp.flatten()
+		kdedensityexpv = kdedensityexp.flatten()
+		keepidx = np.argwhere(kdedensityexpv>(1/numC)).flatten()
+		errexp = np.abs(kdedensityexpv[keepidx]-gmmdensityexpv[keepidx])            
+		err1 = np.sum(errexp)
+		errv.append(err1)
+		currrows = {'errs': errexp,
+					'pKDE' : kdedensityexpv[keepidx],
+					'projection':['proj_' + str(i)] * len(keepidx),
+					'sample': [sample]* len(keepidx)}
+		currrows = pd.DataFrame(currrows)
+		pterr_df = pterr_df.append(currrows,ignore_index=True)
+
+	############ Plot2 - Distribution of summed error ############
+	ax0 = sns.distplot(errv,25, norm_hist=True)
+	ax0.set_ylabel('Percent of 2D projections')
+	ax0.set_xlabel('sum(|P(KDE) - P(model)|) across 2D projection')
+	plt.title('%d projections; bw: %.2f' % (numProj,bw))
+	plt.savefig(os.path.join(pop['output'], dname, 'gmm_err_%s__2_summed_random_2D_proj_bw%.2f.pdf' % (sample,bw)), bbox_inches = "tight")
+	plt.close()
+
+	############ Plot3 - err vs P(KDE) ############
+	# sample only 10,000 pts
+	numpts = 10000
+	if numpts>len(pterr_df): 
+		numpts = len(pterr_df)
+	idx = random.sample(range(len(pterr_df)),numpts)
+
+	pKDE = pterr_df.iloc[idx]['pKDE']
+	errs = pterr_df.iloc[idx]['errs']
+
+	xmin = np.min(pKDE)
+	xmax = np.max(pKDE)
+	ymin = np.min(errs)
+	ymax = np.max(errs)
+
+	ax0 = sns.scatterplot(x='pKDE', y='errs', data = pterr_df.iloc[idx],s=20,alpha=0.5, linewidth=0)
+	ax0.set_xlim((xmin,xmax*1.1))
+	ax0.set_ylim((ymin,ymax*1.1))    
+	ax0.set_xlabel('P(KDE)')
+	ax0.set_ylabel('|P(KDE) - P(model)|')
+	ax0.set_aspect(1)
+	plt.xscale('log')
+	plt.yscale('log')
+
+	"""Plot a line from slope and intercept"""
+	x_vals = np.array(ax0.get_xlim())
+	y_vals = x_vals
+	plt.plot(x_vals, y_vals, '--', color='red')
+	plt.savefig(os.path.join(pop['output'], dname, 'gmm_err_%s__3_logerr_vs_logpKDE_%d_randompoints.pdf' % (sample, numpts)), bbox_inches = "tight")
+	plt.close()
+
+	# Assemble error dataframe for 2D projections: 
+	currrows = {'projerr': errv, 
+				'perc' : [1] * len(errv),
+				'errtype' : ['gmm'] * len(errv),
+				'label' : ['gmm_1'] * len(errv),
+				'sample': [sample]* numProj}
+	currrows = pd.DataFrame(currrows)
+	err_df = err_df.append(currrows,ignore_index=True)
+
+	return err_df, pterr_df
+
+def compareKDEsubsamples(pop, sample, bw, numProj = 500, percrange =[0.05,0.1, 0.2, 0.3, 0.4,.5,.6,.7,.8,.9,.95,0.99]):
+	'''
+	Compute 2D projection errors for random projections for: 
+	    1) KDE model and gmm model at 100% sampling
+	    2) KDE model and KDE model at various % of subsampling
+
+	Parameters
+	----------
+	pop : dict
+	    PopAlign object
+	sample : str
+	    name of sample within pop object
+	bw : float
+	    bandwidth for KDE model
+	numProj: int
+	    number of random projections to compute
+	percrange : list, float
+	    list of float values beteen 0 and 1 to indicate the proportion of original cells to sample
+	'''
+
+	D = get_coeff(pop,sample)
+	numC = D.shape[0]
+	gmm1= pop['samples'][sample]['gmm']
+
+	errv = [] 
+	pterr_df = pd.DataFrame() # data per grid point
+	err_df = pd.DataFrame() # data per 2D projection    
+
+	dname = 'qc/gmm'
+	mkdir(os.path.join(pop['output'], dname)) # create subfolder
+
+	for i in range(numProj):
+		# make random projection
+		transformer = random_projection.GaussianRandomProjection(n_components=2)
+		D_new = transformer.fit_transform(D)
+		Tmat = transformer.components_.T
+		errv = []
+
+		############ First calculate gmm model error at 100% sampling ############
+		Tmat = transformer.components_.T
+		print('Processing projection %d for model           ' %(i), end='\r', flush=True)
+		# Project the model
+		newgmm = project_gmm(gmm1, Tmat) 
+
+		# Generate the KDE model
+		if not bw: 
+			# use grid search cross-validation to optimize the bandwidth
+			params = {'bandwidth': np.logspace(-2, 1, 20)}
+			grid = GridSearchCV(KernelDensity(), params)
+			grid.fit(D_new)
+			print("best bandwidth for projection %d: %.2f" %(i, grid.best_estimator_.bandwidth), end ='\r')
+
+			# use the best estimator to compute the kernel density estimate
+			bw = grid.best_estimator_.bandwidth
+
+		kde1 = KernelDensity(bandwidth=bw, metric='euclidean',
+							kernel='gaussian', algorithm='ball_tree')
+		kde1.fit(D_new)
+
+		# Sample some points from Gmm and combine points with experimental data to determine extents
+		Dsamp = newgmm.sample(D_new.shape[0])[0]
+		D_combo = np.vstack((Dsamp,D_new))
+
+		# Create a regular 2D grid with 25 points in each dimension
+		xmin, ymin = D_combo.min(axis=0)
+		xmax, ymax = D_combo.max(axis=0)
+		xi, yi = np.mgrid[xmin:xmax:25j, ymin:ymax:25j]
+		# Evaluate the KDE on a regular grid...
+		coords = np.vstack([item.ravel() for item in [xi, yi]])
+
+		gmmdensity = newgmm.score_samples(coords.T).reshape(xi.shape)
+		gmmdensityexp = np.exp(gmmdensity) 
+		gmmdensityexp = gmmdensityexp/np.sum(gmmdensityexp)
+
+		kdedensity = kde1.score_samples(coords.T).reshape(xi.shape)
+		kdedensityexp = np.exp(kdedensity) 
+		kdedensityexp = kdedensityexp/np.sum(kdedensityexp)
+
+		gmmdensityexpv = gmmdensityexp.flatten()
+		kdedensityexpv = kdedensityexp.flatten()
+		keepidx = np.argwhere(kdedensityexpv>(1/numC)).flatten()
+		errexp = np.abs(kdedensityexpv[keepidx]-gmmdensityexpv[keepidx])    
+		err1 = np.sum(errexp)
+		errv.append(err1)
+
+		############ Now: calculate error for various subsampling rates ############
+		for k in range(len(percrange)): 
+			perccells = percrange[k]
+			print('Processing projection %d for %.2f subsample' %(i,perccells), end='\r', flush=True)
+			ncells = int(np.floor(numC*perccells))
+			idx1 = random.sample(range(len(D)),ncells)
+			idx2 = random.sample(range(len(D)),ncells)
+			D1 = D[idx1,:]
+			D2 = D[idx2,:]
+
+			D1_new = transformer.transform(D1)
+			D2_new = transformer.transform(D2)
+
+			# Generate the KDE model using existing bw
+
+			kde1 = KernelDensity(bandwidth=bw, metric='euclidean',
+			                    kernel='gaussian', algorithm='ball_tree')
+			kde1.fit(D1_new)
+
+			kde2 = KernelDensity(bandwidth=bw, metric='euclidean',
+			                    kernel='gaussian', algorithm='ball_tree')
+			kde2.fit(D2_new)
+
+			# Evaluate the KDE on a regular grid...using grid from above
+			coords = np.vstack([item.ravel() for item in [xi, yi]])
+
+			density1 = kde1.score_samples(coords.T).reshape(xi.shape)
+			density1exp = np.exp(density1) 
+			density1exp = density1exp/np.sum(density1exp)
+
+			density2 = kde2.score_samples(coords.T).reshape(xi.shape)
+			density2exp = np.exp(density2) 
+			density2exp = density2exp/np.sum(density2exp)
+
+			#             err1 = np.sum(np.abs(density1exp-density2exp)) # unweighted
+			# remove all points where pKDE < 1/numC
+			keepidx = np.argwhere(kdedensityexpv> (1/numC)).flatten()
+			density1expv = density1exp.flatten()
+			density2expv = density2exp.flatten()
+			err1 = np.sum(np.abs(density1expv[keepidx]-density2expv[keepidx]))
+			errv.append(err1)
+
+		currrows = {'projerr': errv, 
+					'perc' : np.append(1,percrange),
+					'errtype' : np.append(['model'],[['subsample'] * len(percrange)]),
+					'label' : np.append(['model_1'],['subsample_'+str(i) for i in percrange]),
+					'sample': [sample]* (len(percrange)+1)}
+
+		currrows = pd.DataFrame(currrows)
+		err_df = err_df.append(currrows,ignore_index=True)
+
+	# Make the boxplot
+	ax1=sns.boxplot(x="label", y="projerr", hue='errtype', data = err_df.iloc[:,:])
+	ax1.set_ylabel('sum(|P(KDE) - P(model)|) in 2D proj.')
+	ax1.set_xlabel('')
+	plt.xticks(rotation=45, ha='right')
+	plt.tight_layout()
+	plt.savefig(os.path.join(pop['output'], dname, 'gmm_err_%s__4_model_error_vs_subsampling_boxplot_bw%.2f.pdf' % (sample,bw)), bbox_inches = "tight")
+
+	return err_df
 
 '''
 Build gmms using cell types
@@ -2231,7 +3011,7 @@ def build_single_GMM_by_celltype(coeff, cell_types):
 	return gmm.fit(coeff)
 
 
-def build_gmms_by_celltypes(pop, ks=(5,10), only=None, rendering='grouped', figsizegrouped=(20,20), figsizesingle=(5,5), niters=3, training=0.7, nreplicates=0, reg_covar='auto',types='defaultpbmc', featuretype = 'onmf'):
+def build_gmms_by_celltypes(pop, ks=(5,10), only=None, rendering='grouped', figsizegrouped=(20,20), figsizesingle=(5,5), niters=3, training=0.7, nreplicates=1, reg_covar='auto',types='defaultpbmc', featuretype = 'onmf', criteria='filter_button_on_clicked'):
 	'''
 	Build a Gaussian Mixture Model on feature projected data using cell type labels for each sample
 	Parameters
@@ -2263,6 +3043,8 @@ def build_gmms_by_celltypes(pop, ks=(5,10), only=None, rendering='grouped', figs
 		Sample label or list of sample labels. Will force GMM construction for specified samples only. Defaults to None
 	featuretype: str
 		either 'pca' or 'onmf'
+	criteria : str
+		either 'bic' or 'aic'
 	'''
 
 	if 'featuretype' in pop.keys():
@@ -2305,7 +3087,9 @@ def build_gmms_by_celltypes(pop, ks=(5,10), only=None, rendering='grouped', figs
 			
 			m = coeff.shape[0] # number of cells
 
-			if (isinstance(training, int)) & (training<m) & (training > 1): # if training is int and smaller than number of cells
+			if int(training) == 1:
+				n = m
+			elif (isinstance(training, int)) & (training<m) & (training > 1): # if training is int and smaller than number of cells
 				n = training
 			elif (isinstance(training, int)) & (training>=m): # if training is int and bigger than number of cells
 				n = int(m*0.8) # since the number of training cells was larger than the number of cells in the sample, take 80%
@@ -2317,8 +3101,13 @@ def build_gmms_by_celltypes(pop, ks=(5,10), only=None, rendering='grouped', figs
 			idx = np.random.choice(m, n, replace=False) # get n random cell indices
 			not_idx = np.setdiff1d(range(m), idx) # get the validation set indices
 
-			Ctrain = coeff[idx,:] # subset to get the training sdt
-			Cvalid = coeff[not_idx,:] # subset to get the validation set
+			# if using 100% of data to build models, use all data as validation
+			if len(not_idx)==0:
+				Ctrain = C
+				Cvalid = C
+			else: 
+				Ctrain = C[idx,:] # subset to get the training set
+				Cvalid = C[not_idx,:] # subset to get the validation set
 
 			if reg_covar == 'auto':
 				reg_covar_param = pop['reg_covar'] # retrieve reg value from pop object that was computed from projection data
@@ -2329,9 +3118,14 @@ def build_gmms_by_celltypes(pop, ks=(5,10), only=None, rendering='grouped', figs
 
 			# We minimize the BIC score of the validation set
 			# to pick the best fitted gmm
-			BIC = [gmm.bic(Cvalid) for gmm in q] # compute the BIC for each model with the validation set
-			gmm = q[np.argmin(BIC)] # best gmm is the one that minimizes the BIC
-		
+			BIC = [gmm.bic(Cvalid) for gmm in q]
+			AIC = [gmm.aic(Cvalid) for gmm in q]
+			if criteria=='bic': 
+				IC = BIC
+			elif criteria=='aic':
+				IC = AIC
+			gmm = q[np.argmin(IC)] # best gmm is the one that minimizes the selected information criterion		
+
 			if types != None:
 				try:
 					M = pop['samples'][x]['M'] # get sample gene data
@@ -2346,7 +3140,7 @@ def build_gmms_by_celltypes(pop, ks=(5,10), only=None, rendering='grouped', figs
 		# pop['samples'][x]['gmm_means'] = np.array(gmm.means_.dot(pop['W'].T))
 		pop['samples'][x]['gmm_means'] = get_gmm_means(pop,x,None)
 		pop['samples'][x]['gmm_types'] = main_types
-		pop['nreplicates'] = 0
+		pop['nreplicates'] = 1
 
 	# print('Rendering models')
 	# render_models(pop, figsizegrouped=figsizegrouped, figsizesingle=figsizesingle, samples=samples, mode=rendering) # render the models
@@ -2739,7 +3533,7 @@ def aligner(refgmm, testgmm, method):
 	arr: array, int
 		pairwise JD values between two GMMs
 	res: array, int
-		Array giving best alignments. Leftmost square matrix:  'boolean' shows associated pairs 
+		Array giving best alignments. Leftmost matrix:  'boolean' shows associated pairs 
 		Rightmost column: JD values for those associated pairs 
 	'''
 	ltest = testgmm.n_components # get test number of components
@@ -2798,7 +3592,7 @@ def align(pop, ref=None, method='conservative', figsizedeltas=(10,10), figsizeen
 		Method to perform the alignment
 		If conservative, the reference component and the test component have to be each other's best match to align
 		If test2ref, the closest reference component is found for each test component
-		If ref2test, the closest test component is found for each test component
+		If ref2test, the closest test component is found for each ref component
 	figsizedeltas : tuple, optional
 		Size of the figure for the delta plot. Default is (10,5)
 	figsizeentropy : tuple, optional
@@ -2813,7 +3607,7 @@ def align(pop, ref=None, method='conservative', figsizedeltas=(10,10), figsizeen
 
 	refgmm = pop['samples'][ref]['gmm'] # get reference gmm
 	for x in pop['order']: # for each sample x
-		if pop['nreplicates'] >= 1: # if replicates exist
+		if pop['nreplicates'] > 1: # if replicates exist
 			for j in range(pop['nreplicates']): # for each replicate j
 				testgmm = pop['samples'][x]['replicates'][j]['gmm'] # grab replicate gmm
 				alignments, arr = aligner(refgmm, testgmm, method) # align that replicate to reference model
@@ -2831,6 +3625,7 @@ def align(pop, ref=None, method='conservative', figsizedeltas=(10,10), figsizeen
 			pop['samples'][x]['ref2test'] = np.zeros(testgmm.n_components, dtype=int)
 		except:
 			pass
+	pop['alignmentmethod'] = method
 
 	# plot_deltas(pop, figsizedeltas) # generate plot mu and delta w plots
 	# entropy(pop, figsizeentropy)
