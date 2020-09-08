@@ -4020,7 +4020,6 @@ def diffexp_testcomp(pop, testcomp=0, sample='', nbins=20, cutoff=.5, renderhist
 		Either 'filtered', 'unfiltered', or 'refilter'. default: 'filtered'	
 	'''
 	xref = pop['ref'] # get reference sample label	
-	reftype = pop['samples'][xref]['gmm_types'][refcomp]
 	ncomps = pop['samples'][xref]['gmm'].n_components-1
 
 	if sample not in pop['order']:
@@ -4034,6 +4033,7 @@ def diffexp_testcomp(pop, testcomp=0, sample='', nbins=20, cutoff=.5, renderhist
 		arr = pop['samples'][xtest]['alignments'] # get alignments between reference and test
 		irow = np.where(arr[:,0] == testcomp)[0][0] # get alignment that matches test subpopulation
 		refcomp = int(arr[irow,1])# get ref subpopulation number
+		reftype = pop['samples'][xref]['gmm_types'][refcomp]
 	except:
 		raise Exception('Could not retrieve a matching alignment for sample %s, component %d' % (sample, refcomp))
 
