@@ -842,7 +842,7 @@ def gsea(pop, geneset='c5bp', ngenesets=20):
 		Number of top genesets to return
 	'''
 	print('Starting gene set enrichment analysis')
-	size_total = len(pop['genes']) # get total number of genes
+	size_total = len(pop['filtered_genes']) # get total number of genes
 	pop['feat_labels'] = dict() #create entry to store the top labels for each feature
 
 
