@@ -4,7 +4,12 @@ This is a Python3 implementation of the Popalign framework (this package will no
 
 ## Introduction
 
-We develop a software package PopAlign for users to analyze and compare single-cell sequencing data across hundreds of experimental samples. The Popalign framework builds probabilistic gaussian mixture models of single-cell data within a compressed low-dimensional space, and uses statistical metrics to compare the models. Each GMM dissects complex populations into constituent subpopulations, which can then be individually compared. The framework 1) Ranks samples based on shifts across the entire population 2) Align subpopulations across samples based on minimum divergence 3) Finds subpopulation specific transcriptional and abundance changes 4) Automatically discovers differentially expressed genes based on L1 error in the distributions and 5) Queries data using a common universal model.
+We develop a software package PopAlign for users to analyze and compare single-cell sequencing data across hundreds of experimental samples. The Popalign framework builds probabilistic Gaussian mixture models of single-cell data within a compressed low-dimensional space, and uses statistical metrics to compare the models. Each GMM dissects complex populations into constituent subpopulations, which can then be individually compared. The framework can 
+1) Rank samples based on shifts across the entire population 
+2) Align subpopulations across samples based on minimum divergence 
+3) Find subpopulation specific transcriptional and abundance changes 
+4) Automatically discover differentially expressed genes based on L1 error in the distributions and 
+5) Query data using a common universal model.
 
 ## Install with pip
 
