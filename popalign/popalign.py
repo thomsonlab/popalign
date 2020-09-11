@@ -282,7 +282,7 @@ def load_multiplexed(matrix, barcodes, metafile, controlstring=None, genes=None,
 	metafile : str
 		Path to a metadata file. Must contains `cell_barcodes` and `sample_id` columns
 	controlstring: string
-		String containing common name across all control samples so that we can pull them out easily	
+		String containing common name across all control samples 	
 	genes : str
 		Path to a .tsv 10X gene file. Optional if existing_obj is provided
 	outputfolder : str, optional
@@ -910,35 +910,36 @@ def oNMF(X, k, n_iter=500, verbose=0, residual=1e-4, tof=1e-4):
 
 	X=X.todense()
 	XfitPrevious = np.inf
-	for i in range(n_iter):
-		if orthogonal[0]==1:
-			A=np.multiply(A,(X.dot(Y.T.dot(S.T)))/(A.dot(A.T.dot(X.dot(Y.T.dot(S.T))))))
-		else:
-			A=np.multiply(A,(X.dot(Y.T))/(A.dot(Y.dot(Y.T))))
-		A = np.nan_to_num(A)
-		A = np.maximum(A,np.spacing(1))
+	with np.errstate(divide='ignore',invalid='ignore'):
+		for i in range(n_iter):
+			if orthogonal[0]==1:
+				A=np.multiply(A,(X.dot(Y.T.dot(S.T)))/(A.dot(A.T.dot(X.dot(Y.T.dot(S.T))))))
+			else:
+				A=np.multiply(A,(X.dot(Y.T))/(A.dot(Y.dot(Y.T))))
+			A = np.nan_to_num(A)
+			A = np.maximum(A,np.spacing(1))
 
-		if orthogonal[1]==1:
-			Y=np.multiply(Y,(S.T.dot(A.T.dot(X)))/(S.T.dot(A.T.dot(X.dot(Y.T.dot(Y))))))
-		else:
-			Y=np.multiply(Y,(A.T.dot(X))/(A.T.dot(A.dot(Y))))
-		Y = np.nan_to_num(Y)
-		Y = np.maximum(Y,np.spacing(1))
+			if orthogonal[1]==1:
+				Y=np.multiply(Y,(S.T.dot(A.T.dot(X)))/(S.T.dot(A.T.dot(X.dot(Y.T.dot(Y))))))
+			else:
+				Y=np.multiply(Y,(A.T.dot(X))/(A.T.dot(A.dot(Y))))
+			Y = np.nan_to_num(Y)
+			Y = np.maximum(Y,np.spacing(1))
 
-		if np.sum(orthogonal) == 2:
-			S=np.multiply(S,(A.T.dot(X.dot(Y.T)))/(A.T.dot(A.dot(S.dot(Y.dot(Y.T))))))
-			S=np.maximum(S,np.spacing(1))
-		
-		if np.mod(i,100) == 0 or i==n_iter-1:
-			if verbose:
-				print('......... Iteration #%d' % i)
-			XfitThis = A.dot(S.dot(Y))
-			fitRes = np.linalg.norm(XfitPrevious-XfitThis, ord='fro')
-			XfitPrevious=XfitThis
-			curRes = np.linalg.norm(X-XfitThis,ord='fro')
-			if tof>=fitRes or residual>=curRes or i==n_iter-1:
-				print('Orthogonal NMF performed with %d iterations\n' % (i+1))
-				break
+			if np.sum(orthogonal) == 2:
+				S=np.multiply(S,(A.T.dot(X.dot(Y.T)))/(A.T.dot(A.dot(S.dot(Y.dot(Y.T))))))
+				S=np.maximum(S,np.spacing(1))
+			
+			if np.mod(i,100) == 0 or i==n_iter-1:
+				if verbose:
+					print('......... Iteration #%d' % i)
+				XfitThis = A.dot(S.dot(Y))
+				fitRes = np.linalg.norm(XfitPrevious-XfitThis, ord='fro')
+				XfitPrevious=XfitThis
+				curRes = np.linalg.norm(X-XfitThis,ord='fro')
+				if tof>=fitRes or residual>=curRes or i==n_iter-1:
+					print('Orthogonal NMF performed with %d iterations\n' % (i+1))
+					break
 	return A, Y # return feature space and projection for the cells in X
 
 def nnls(W, V):
@@ -1284,7 +1285,8 @@ def onmf(pop, ncells=2000, nfeats=[5,7,9], nreps=3, niter=300):
 
 def choose_featureset(pop, m = [], alpha = 3, multiplier=3):
 	'''
-	Choose featureset from stored oNMF calculations. Either user directly supplies a preferred m value or the 
+	Choose featureset from stored oNMF calculations. 
+	Either user directly supplies a preferred m value or the hyperparameters for the loss function 
 
 	NB: Currently only supports oNMF features
 
