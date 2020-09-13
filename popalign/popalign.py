@@ -55,7 +55,7 @@ from sklearn.neighbors import KernelDensity
 from sklearn.model_selection import GridSearchCV
 from sklearn import random_projection
 from numpy import linalg
-
+from scipy import linalg as la
 
 '''
 Misc functions
@@ -910,7 +910,7 @@ def oNMF(X, k, n_iter=500, verbose=0, residual=1e-4, tof=1e-4):
 
 	X=X.todense()
 	XfitPrevious = np.inf
-	with np.errstate(divide='ignore',invalid='ignore'):
+		with np.errstate(divide='ignore',invalid='ignore'):
 		for i in range(n_iter):
 			if orthogonal[0]==1:
 				A=np.multiply(A,(X.dot(Y.T.dot(S.T)))/(A.dot(A.T.dot(X.dot(Y.T.dot(S.T))))))
@@ -2269,7 +2269,7 @@ def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=1, reg_covar=
 
 		# Create replicates
 		pop['nreplicates'] = np.max([nreplicates,1])# store number of replicates in pop object
-		if nreplicates >1: # if replicates are requested
+		if nreplicates > 1: # if replicates are requested
 			for j in range(1,nreplicates): # for each replicate number j
 				print('Building replicate %d out of %d' %(j+1, nreplicates), end='\r')
 				idx = np.random.choice(m, n, replace=False) # get n random cell indices
@@ -3304,6 +3304,164 @@ def checkalignment(pop, refcomp, sample):
 
 	return alignbool    
 
+def getalignedcompnum(pop, refcomp, sample, rep = 0):
+	'''
+	Get index of components in the test sample that align to reference component specified
+
+	Parameters
+	----------
+	pop : dict
+		Popalign object
+	refcomp : int
+		index of reference component
+	sample : str
+		sample name
+	rep : 
+		replicate index. Default: 0
+
+	Output
+	----------
+	irow : list
+		list of indices
+	'''
+	arr = pop['samples'][sample]['replicates'][rep]['alignments'] # retrive test sample alignments
+	irow = np.where(arr[:,1] == refcomp)[0]
+	return irow
+
+def muDist(mu1,mu2):
+	'''
+	Compute delta mu between two mu vectors
+
+	Parameters
+	----------
+	mu1 : array
+		(m,) vector
+	mu2 : array
+		(m,) vector
+
+	Output
+	----------
+	d : float
+		scalar L2 euclidean norm between two mu vectors 
+	''' 
+
+	# define distance between two mus as the euclidean distance: 
+	d = np.linalg.norm([mu1- mu2], ord='fro')
+
+	# d = norm(W*mu1 - W*mu2,1);
+	return d
+
+def forstnerDist(A,B): 
+	'''
+	Compute 'distance' between two covariance matrices using Forstner's metric (1999) 
+
+	Parameters
+	----------
+	A : array
+		m x m covariance matrix
+	B : array
+		m x m covariance matrix
+
+	Output
+	----------
+	d : float
+	scalar distance
+	'''
+
+	D,V = la.eig(B,A) # D is the eigenvalues
+	d = np.sqrt(np.sum(np.log(D)**2))
+	return d
+
+def compute_delta_w(pop, w_ref, itest, sample, rep):
+	'''
+	Compute change in w between reference component and all components in the test sample that align to it. 
+
+	Parameters
+	----------
+	pop : dict
+		Popalign object
+	w_ref : float
+		w (abundance) for the reference component
+	itest : array
+		array of indexes for all components that align to specified reference component
+	sample : str
+		sample name
+	rep : 
+		replicate index. Default: 0
+
+	Output
+	----------
+	np.array(delta_w) : array
+		delta_w (scalar) returned as an array    
+	'''
+	if len(itest)==0:
+		return []
+	else: 
+		w_test = pop['samples'][sample]['replicates'][rep]['gmm'].weights_[itest]
+		delta_w = w_ref - sum(w_test)
+		return np.array(delta_w)
+
+def compute_delta_mu(pop, mu_ref, itest, sample, rep):
+	'''
+	Compute delta mu between reference component and all components in the test sample that align to it. 
+
+	Parameters
+	----------
+	pop : dict
+		Popalign object
+	mu_ref : array
+		(m,1) array
+	itest : array
+		array of indexes for all components that align to specified reference component
+	sample : str
+		sample name
+	rep : 
+		replicate index. Default: 0
+
+	Output
+	----------
+	np.array(dlist) : array
+		array of delta mu values for each component that aligns to reference component 
+
+	'''
+	dlist = []
+	for k in range(len(itest)): 
+		currindex = itest[k]
+		curr_mu = pop['samples'][sample]['replicates'][rep]['gmm'].means_[currindex]
+		curr_d = muDist(curr_mu, mu_ref)
+		dlist.append(curr_d)
+	return np.array(dlist)
+
+def compute_delta_cov(pop, cov_ref, itest, sample, rep):
+	'''
+	Compute delta covariance between reference component and all components in the test sample that align to it. 
+
+	Parameters
+	----------
+	pop : dict
+		Popalign object
+	cov_ref : array
+		m x m covariance matrix
+	itest : array
+		array of indexes for all components that align to specified reference component
+	sample : str
+		sample name
+	rep : 
+		replicate index. Default: 0
+
+	Output
+	----------
+	np.array(dlist) : array
+		array of delta covariance values for each component that aligns to reference component   
+	''' 
+	dlist = []
+	for k in range(len(itest)): 
+		currindex = itest[k]
+		curr_cov = pop['samples'][sample]['replicates'][rep]['gmm'].covariances_[currindex]
+		curr_d = forstnerDist(curr_cov, cov_ref)
+		dlist.append(curr_d.real)
+	return np.array(dlist)
+
 def plot_deltas(pop, figsize=(10,10), sortby='mu', pthresh = 0.05): # generate plot mu and delta w plots
 	'''
 	Generate delta mu and delta w plots for the computed alignments
@@ -3325,15 +3483,11 @@ def plot_deltas(pop, figsize=(10,10), sortby='mu', pthresh = 0.05): # generate p
 		contains the following objects: 
 
 	pop['deltas'][currtype]['combined'] : dataframe, 
-		contains: 'origidx','orderedsamples', 'mean_delta_mu', 'pvals_mu','mean_delta_w','pvals_w'
+		contains: 'origidx','orderedsamples', 'mean_delta_w','pvals_w', 'mean_delta_mu', 'pvals_mu','mean_delta_cov','pvals_cov'
 
 	% The following should not need to be accessed directly:
 	pop['deltas'][currtype]['idx'] = indices of ordered samples
 	pop['deltas'][currtype]['orderedsamples'] = ordered samples in currtype
-	pop['deltas'][currtype]['singles']={}
-	pop['deltas'][currtype]['singles']['delta_mus'] = delta_mu for each model (including replicates)
-	pop['deltas'][currtype]['singles']['delta_ws'] = delta_w for each model
-	pop['deltas'][currtype]['singles']['xcoords'] = x coordinates for delta_mus 
 
 	'''
 	dname = 'deltas'
@@ -3348,171 +3502,208 @@ def plot_deltas(pop, figsize=(10,10), sortby='mu', pthresh = 0.05): # generate p
 	if celltypes == None:
 		celltypes = [str(i) for i in range(pop['samples'][ref]['gmm'].n_components)]
 
-	# Make an object that stores the orders for each cell type
-	deltaobj = dict()
+	nreps = np.max(pop['nreplicates'],1)
 
 	for i, currtype in enumerate(celltypes): # for each reference subpopulation
-		samplelbls = []
-		xcoords = []
-		delta_mus = []
-		delta_ws = []
-		mean_mus = []
-		mean_ws = []
-		stds_mus = []
-		stds_ws = []
-		# mu_ref = pop['samples'][ref]['gmm_means'][i] # get the mean i value
-		mu_ref = get_gmm_means(pop, ref, None)
+		
+		mu_ref = PA.get_gmm_means(pop, ref, None)[i]
 		w_ref = pop['samples'][ref]['gmm'].weights_[i] # get the weight i value
+		cov_ref = pop['samples'][ref]['gmm'].covariances_[i]
 
-		k = 0
-		for x in pop['order']: # for each sample x
-			added = False
-			tmp_delta_mus = []
-			tmp_delta_ws = []
-			if pop['nreplicates'] > 1: # if gmm replicates exist
-				for j in range(pop['nreplicates']):
-					arr = pop['samples'][x]['replicates'][j]['alignments']
-					try:
-						irow = np.where(arr[:,1] == i) # try to get the row where the ref comp number matches i
-						itest = int(arr[irow, 0]) # get test comp number from row
-						# mu_test = pop['samples'][x]['replicates'][j]['gmm_means'][itest] # get the test comp mean value
-						mu_test = get_gmm_means(pop, x, j)[itest]
-						w_test = pop['samples'][x]['replicates'][j]['gmm'].weights_[itest] # get the test comp weight value
-						samplelbls.append(x)
-						tmp_delta_mus.append(np.linalg.norm([np.array(mu_test).flatten() - np.array(mu_ref[i]).flatten()], ord='fro')) # store delta mu
-						tmp_delta_ws.append((w_test - w_ref)*100) # store delta w
-						xcoords.append(k)
-						added = True
-					except:
-						pass
+		delta_mus = []
+		delta_covs = []
+		delta_ws = []
 
-			if x != ref: # if x is not the reference
-				arr = pop['samples'][x]['alignments'] # get the alignments between x and the reference
-				try:
-					irow = np.where(arr[:,1] == i) # try to get the row where the ref comp number matches i
-					itest = int(arr[irow, 0]) # get test comp number from row
-					# mu_test = pop['samples'][x]['gmm_means'][itest] # get the test comp mean value
-					mu_test = get_gmm_means(pop, x, None)[itest]
-					w_test = pop['samples'][x]['gmm'].weights_[itest] # get the test comp weight value
-					samplelbls.append(x) # store test sample label x
-					tmp_delta_mus.append(np.linalg.norm([np.array(mu_test).flatten() - np.array(mu_ref[i]).flatten()], ord='fro')) # store delta mu
-					tmp_delta_ws.append((w_test - w_ref)*100) # store delta w
-					xcoords.append(k)
-					added = True
-				except:
-					pass
+		samplelbls = []
+		samplelbls_w = [] # separate vector because delta_w is merged for all components within the test sample
 
-			if added == True:
-				k += 1
-				delta_mus += tmp_delta_mus
-				delta_ws += tmp_delta_ws
-				mean_mus.append(np.mean(tmp_delta_mus))
-				mean_ws.append(np.mean(tmp_delta_ws))
-				stds_mus.append(np.std(tmp_delta_mus))
-				stds_ws.append(np.std(tmp_delta_ws))
+		# Accumulate delta values across all samples
+		for sample in samplist: # for each sample x
 
-		seen = set()
-		seen_add = seen.add
-		xlbls = [x for x in samplelbls if not (x in seen or seen_add(x))]
-		x = [x for x in xcoords if not (x in seen or seen_add(x))]
+			for rep in range(nreps):
 
-		control_delta_mus = [mean_mus[i] for i in x if controlstring in xlbls[i]]
-		control_delta_ws = [mean_ws[i] for i in x if controlstring in xlbls[i]]
+				arr = pop['samples'][sample]['replicates'][j]['alignments'] # pick out current alignment array 
+				itest = getalignedcompnum(pop, i, sample, rep)
 
-		# Calculate the p-values for the means and abundances
-		if len(control_delta_mus)>1:
-			pvals_mus, control_mus_CI_min,control_mus_CI_max = calc_p_value(control_delta_mus, mean_mus, 1)
-			pvals_ws,control_ws_CI_min,control_ws_CI_max = calc_p_value(control_delta_ws, mean_ws, 2)
+				if len(itest)>0:
+					curr_del_w = compute_delta_w(pop, w_ref, itest, sample, rep)
+					curr_del_mu = compute_delta_mu(pop, mu_ref, itest, sample, rep)
+					curr_del_cov = compute_delta_cov(pop, cov_ref, itest, sample, rep)
+
+					delta_ws = np.append(delta_ws, curr_del_w)
+					delta_mus = np.append(delta_mus, curr_del_mu)
+					delta_covs = np.append(delta_covs, curr_del_cov)
+
+					samplelbls_w = np.append(samplelbls_w, sample)
+					samplelbls = np.append(samplelbls, [sample]*len(itest))
+
+		# # Compute the mean delta w, mu, and cov values for each sample: 
+		mean_delta_ws = []
+		mean_delta_mus = []
+		mean_delta_covs = []
+
+		std_delta_ws = []
+		std_delta_mus = []
+		std_delta_covs = []
+
+		mean_samplelbls = []
+
+		for sample in samplist:
+			if sample in samplelbls_w: 
+				sampidx = np.argwhere(samplelbls==sample)[0].flatten()
+				sampidx_w = np.argwhere(samplelbls_w==sample)[0].flatten()
+
+				curr_d_ws = delta_ws[sampidx_w]
+				curr_d_mus = delta_mus[sampidx]
+				curr_d_covs = delta_covs[sampidx]
+
+				mean_delta_ws.append(np.mean(curr_d_ws))
+				mean_delta_mus.append(np.mean(curr_d_mus))
+				mean_delta_covs.append(np.mean(curr_d_covs))
+
+				std_delta_ws.append(np.std(curr_d_ws))
+				std_delta_mus.append(np.std(curr_d_mus))
+				std_delta_covs.append(np.std(curr_d_covs))
+
+				mean_samplelbls.append(sample)
+			else: 
+				pass
+
+		# Extract the mean delta w, mu, and cov values for all control samples: 
+		control_delta_ws = [mean_delta_ws[i] for i in range(len(mean_delta_ws)) if controlstring in mean_samplelbls[i]]
+		control_delta_mus = [mean_delta_mus[i] for i in range(len(mean_delta_mus)) if controlstring in mean_samplelbls[i]]
+		control_delta_covs = [mean_delta_covs[i] for i in range(len(mean_delta_covs)) if controlstring in mean_samplelbls[i]]
+
+		# # Calculate the p-values 
+		if len(control_delta_ws)>1:
+		pvals_ws, control_ws_CI_min, control_ws_CI_max = PA.calc_p_value(control_delta_ws, mean_delta_ws, 2)
+		pvals_mus, control_mus_CI_min, control_mus_CI_max = PA.calc_p_value(control_delta_mus, mean_delta_mus, 1)
+		pvals_covs, control_covs_CI_min, control_covs_CI_max = PA.calc_p_value(control_delta_covs, mean_delta_covs, 1)
+
 		else:
-			pvals_mus, control_mus_CI_min,control_mus_CI_max = calc_p_value(control_delta_mus, mean_mus, 1)
-			pvals_mus = np.ones(len(pvals_mus))
-			pvals_ws,control_ws_CI_min,control_ws_CI_max = calc_p_value(control_delta_ws, mean_ws, 2)
-			pvals_ws = np.ones(len(pvals_ws))
+		pvals_ws = np.ones(len(mean_ws))
+		pvals_mus = np.ones(len(mean_mus))
+		pvals_covs = np.ones(len(mean_covs))
 
 		# Max/Min of bootstrapped measurements
-		control_delta_mus_min = min([delta_mus[i] for i in range(len(delta_mus)) if controlstring in xlbls[xcoords[i]]])
-		control_delta_mus_max = max([delta_mus[i] for i in range(len(delta_mus)) if controlstring in xlbls[xcoords[i]]])
+		control_delta_ws_min = min([delta_ws[i] for i in range(len(delta_ws)) if controlstring in samplelbls_w[i]])
+		control_delta_ws_max = max([delta_ws[i] for i in range(len(delta_ws)) if controlstring in samplelbls_w[i]])
 
-		control_delta_ws_min = min([delta_ws[i] for i in range(len(delta_ws)) if controlstring in xlbls[xcoords[i]]])
-		control_delta_ws_max = max([delta_ws[i] for i in range(len(delta_ws)) if controlstring in xlbls[xcoords[i]]])
+		control_delta_mus_min = min([delta_mus[i] for i in range(len(delta_mus)) if controlstring in samplelbls[i]])
+		control_delta_mus_max = max([delta_mus[i] for i in range(len(delta_mus)) if controlstring in samplelbls[i]])
+
+		control_delta_covs_min = min([delta_covs[i] for i in range(len(delta_mus)) if controlstring in samplelbls[i]])
+		control_delta_covs_max = max([delta_covs[i] for i in range(len(delta_mus)) if controlstring in samplelbls[i]])
 
 		# reorder data 
 		if sortby=="mu": 
-			idx = np.argsort(mean_mus)
+		idx = np.argsort(mean_delta_mus)
 		elif sortby=="w": 
-			idx = np.argsort(mean_ws)
+		idx = np.argsort(mean_delta_ws)
+		elif sortby=="cov": 
+		idx = np.argsort(mean_delta_covs)
 		else: 
-			raise Exception("Sortby must be either mu (gene expression) or w (abundance)")
-		xlbls = [xlbls[i] for i in idx]
-		mean_mus = [mean_mus[i] for i in idx]
-		mean_ws = [mean_ws[i] for i in idx]
-		stds_mus = [stds_mus[i] for i in idx]
-		stds_ws = [stds_ws[i] for i in idx]
-		pvals_mus = [pvals_mus[i] for i in idx]
+		raise Exception("Sortby must be either 'mu' (gene expression) or 'w' (abundance) or 'cov' (shape)")
+
+		xlbls = [mean_samplelbls[i] for i in idx]
+		mean_delta_ws = [mean_delta_ws[i] for i in idx]
+		mean_delta_mus = [mean_delta_mus[i] for i in idx]
+		mean_delta_covs = [mean_delta_covs[i] for i in idx]
+		std_delta_ws = [std_delta_ws[i] for i in idx]
+		std_delta_mus = [std_delta_mus[i] for i in idx]
+		std_delta_ws = [std_delta_ws[i] for i in idx]
 		pvals_ws= [pvals_ws[i] for i in idx]
+		pvals_mus = [pvals_mus[i] for i in idx]
+		pvals_covs= [pvals_covs[i] for i in idx]
 
-		xcoords = [np.where(idx==value)[0][0] for value in xcoords]
+		# Generate xcoordinates for bootstrapped values: 
+		d = dict([(y,x) for x,y in enumerate(xlbls)])
+		print(samplelbls_w)
+		xcoords_w = [d[x] for x in samplelbls_w]
+		xcoords = [d[x] for x in samplelbls]
 
-		# Only plot colors for adjusted p-values < pthresh
+		# # Only plot colors for adjusted p-values < pthresh
 		plot_pval_ws=[x if x < pthresh else 1 for x in pvals_ws]
 		plot_pval_mus=[x if x < pthresh else 1 for x in pvals_mus]
+		plot_pval_covs=[x if x < pthresh else 1 for x in pvals_covs]
 
 		rbcmap = matplotlib.colors.LinearSegmentedColormap.from_list("", ["black","red"])
 		plt.figure(figsize=figsize)
 
+		x = list(range(len(mean_samplelbls)))
+
 		# Plot the delta ws - upper
-		ax1 = plt.subplot(2,1,1)
+		ax1 = plt.subplot(3,1,1)
 		plt.title('Reference sample %s\nComponent %d: %s' %(ref, i, currtype))
-		plt.scatter(xcoords, delta_ws, s=2, c='k')
-		plt.scatter(x, mean_ws, s=36, c =-np.log10(plot_pval_ws) ,cmap=rbcmap, label = 'mean Δ\u03C9 (%)')
-		plt.errorbar(x, mean_ws, stds_ws, color='k', elinewidth=.5, capsize=1, fmt=' ')
+		plt.scatter(xcoords_w, delta_ws, s=2, c='k')
+		plt.scatter(x, mean_delta_ws, s=36, c =-np.log10(plot_pval_ws) ,cmap=rbcmap, label = 'mean Δ\u03C9 (%)')
+		plt.errorbar(x, mean_delta_ws, std_delta_ws, color='k', elinewidth=.5, capsize=1, fmt=' ')
 		# Plot the control ranges:
-		plt.hlines([control_delta_ws_min,control_delta_ws_max], -1, len(mean_ws), colors='k', linestyles='dotted', label = ' control min/max')   
+		plt.hlines([control_delta_ws_min,control_delta_ws_max], -1, len(mean_delta_ws), colors='k', linestyles='dotted', label = ' control min/max')   
+		# plt.xticks(x, xlbls, rotation=90)
 		plt.xticks([])
 		plt.ylabel('Δ\u03C9 (%)')
 		# Only plot CI and p-values if we can calculate them
 		if len(control_delta_ws)>1 : 
-			plt.fill_between(range(-1,len(mean_ws)+1),control_ws_CI_min,control_ws_CI_max,alpha=0.2, color='black', label = 'control CI')
-			cbar=plt.colorbar()
-			cbar.set_label('-log10(p-val)', rotation=90)
+		plt.fill_between(range(-1,len(mean_delta_ws)+1),control_ws_CI_min,control_ws_CI_max,alpha=0.2, color='black', label = 'control CI')
+		cbar=plt.colorbar()
+		cbar.set_label('-log10(p-val)', rotation=90)
 		else : 
-			plt.clim(0,0)
-		plt.legend()
+		plt.clim(0,0)
+		leg = plt.legend()
+		leg.legendHandles[0].set_color('black')
 
-		# Plot the delta mus - lower
-		plt.subplot(2,1,2)
+		# Plot the delta mus - middle
+		plt.subplot(3,1,2)
 		plt.scatter(xcoords, delta_mus, s=2, c='k')
-		plt.scatter(x, mean_mus, s=36,  c = -np.log10(plot_pval_mus), cmap=rbcmap, label = 'mean Δ\u03BC')
-		plt.errorbar(x, mean_mus, stds_mus, color='k', elinewidth=.3, capsize=1, fmt=' ')
-		plt.hlines([control_delta_mus_min,control_delta_mus_max], -1, len(mean_mus), colors='k', linestyles='dotted', label = 'control min/max')
+		plt.scatter(x, mean_delta_mus, s=36,  c = -np.log10(plot_pval_mus), cmap=rbcmap, label = 'mean Δ\u03BC')
+		plt.errorbar(x, mean_delta_mus, std_delta_mus, color='k', elinewidth=.3, capsize=1, fmt=' ')
+		plt.hlines([control_delta_mus_min,control_delta_mus_max], -1, len(mean_delta_mus), colors='k', linestyles='dotted', label = 'control min/max')
 		plt.xticks(x, xlbls, rotation=90)
 		plt.ylabel('Δ\u03BC')
 		# Only plot CI and p-values if we can calculate them
 		if len(control_delta_mus)>1 : 
-			plt.fill_between(range(-1,len(mean_mus)+1),control_mus_CI_min,control_mus_CI_max,alpha=0.2, color='black', label = 'control CI')
-			cbar=plt.colorbar()
-			cbar.set_label('-log10(p-val)', rotation=90)
+		plt.fill_between(range(-1,len(mean_delta_mus)+1),control_mus_CI_min,control_mus_CI_max,alpha=0.2, color='black', label = 'control CI')
+		cbar=plt.colorbar()
+		cbar.set_label('-log10(p-val)', rotation=90)
 		else : 
-			plt.clim(0,0)
-		plt.legend()
+		plt.clim(0,0)
+		leg = plt.legend()
+		leg.legendHandles[0].set_color('black')
 
-		plt.tight_layout()
+		# Plot the delta covs - bottom
+		plt.subplot(3,1,3)
+		plt.scatter(xcoords, delta_covs, s=2, c='k')
+		plt.scatter(x, mean_delta_covs, s=36,  c = -np.log10(plot_pval_covs), cmap=rbcmap, label = 'mean Δ\u03BC')
+		plt.errorbar(x, mean_delta_covs, std_delta_covs, color='k', elinewidth=.3, capsize=1, fmt=' ')
+		plt.hlines([control_delta_covs_min,control_delta_covs_max], -1, len(mean_delta_covs), colors='k', linestyles='dotted', label = 'control min/max')
+		plt.xticks(x, xlbls, rotation=90)
+		plt.ylabel('Δ\u03A3')
+		# Only plot CI and p-values if we can calculate them
+		if len(control_delta_mus)>1 : 
+		plt.fill_between(range(-1,len(mean_delta_covs)+1),control_covs_CI_min,control_covs_CI_max,alpha=0.2, color='black', label = 'control CI')
+		cbar=plt.colorbar()
+		cbar.set_label('-log10(p-val)', rotation=90)
+		else : 
+		plt.clim(0,0)
+		leg = plt.legend()
+		leg.legendHandles[0].set_color('black')
+
 		currtype = currtype.replace('/','')
 		plt.rc('font', size= 12) 
 		plt.savefig(os.path.join(pop['output'], dname, 'deltas_comp%d_%s_%ssort.pdf' % (i,currtype, sortby)), format='pdf', bbox_inches='tight')
 		plt.close()
 
-		# Combine mean data together into a single dataframe
-		t = pd.DataFrame(np.array([idx,xlbls, mean_mus, pvals_mus, mean_ws, pvals_ws]),
-			index=['origidx','orderedsamples', 'mean_delta_mu', 'pvals_mu','mean_delta_w','pvals_w'])      
+		# Make an object that stores the orders for each cell type
+		deltaobj = dict()
+
+		# Combine mean data together into a single dataframe and store in pop object
+		t = pd.DataFrame(np.array([idx, mean_samplelbls, mean_delta_ws, pvals_ws, mean_delta_mus, pvals_mus, mean_delta_covs, pvals_covs]),
+		index=['origidx','orderedsamples', 'mean_delta_w','pvals_w', 'mean_delta_mu', 'pvals_mu','mean_delta_cov','pvals_cov'])      
 		t = pd.DataFrame.transpose(t);
 		deltaobj[currtype]={}
 		deltaobj[currtype]['idx'] = idx
 		deltaobj[currtype]['orderedsamples'] = xlbls
-		deltaobj[currtype]['singles']={}
-		deltaobj[currtype]['singles']['delta_mus'] = delta_mus
-		deltaobj[currtype]['singles']['delta_ws'] = delta_ws
-		deltaobj[currtype]['singles']['xcoords'] = xcoords
 		deltaobj[currtype]['combined'] = t # table of data
 
 	pop['deltas'] = deltaobj
