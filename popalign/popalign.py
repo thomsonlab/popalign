@@ -3523,7 +3523,7 @@ def plot_deltas(pop, figsize=(10,10), sortby='mu', pthresh = 0.05): # generate p
 
 			for rep in range(nreps):
 
-				arr = pop['samples'][sample]['replicates'][j]['alignments'] # pick out current alignment array 
+				arr = pop['samples'][sample]['replicates'][rep]['alignments'] # pick out current alignment array 
 				itest = getalignedcompnum(pop, i, sample, rep)
 
 				if len(itest)>0:
