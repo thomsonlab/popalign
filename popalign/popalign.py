@@ -3372,6 +3372,35 @@ def forstnerDist(A,B):
 	d = np.sqrt(np.sum(np.log(D)**2))
 	return d
 
+def compute_delta_w(pop, w_ref, itest, sample, rep):
+	'''
+	Compute change in w between reference component and all components in the test sample that align to it. 
+
+	Parameters
+	----------
+	pop : dict
+		Popalign object
+	w_ref : float
+		w (abundance) for the reference component
+	itest : array
+		array of indexes for all components that align to specified reference component
+	sample : str
+		sample name
+	rep : 
+		replicate index. Default: 0
+
+	Output
+	----------
+	np.array(delta_w) : array
+		delta_w (scalar) returned as an array    
+	'''
+	if len(itest)==0:
+		return []
+	else: 
+		w_test = pop['samples'][sample]['replicates'][rep]['gmm'].weights_[itest]
+		delta_w = w_ref - sum(w_test)
+		return np.array(delta_w)
+
 def plot_deltas(pop, figsize=(10,10), sortby='mu', pthresh = 0.05): # generate plot mu and delta w plots
 	'''
 	Generate delta mu and delta w plots for the computed alignments
