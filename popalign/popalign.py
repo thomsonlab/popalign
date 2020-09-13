@@ -3401,6 +3401,37 @@ def compute_delta_w(pop, w_ref, itest, sample, rep):
 		delta_w = w_ref - sum(w_test)
 		return np.array(delta_w)
 
+def compute_delta_mu(pop, mu_ref, itest, sample, rep):
+	'''
+	Compute delta mu between reference component and all components in the test sample that align to it. 
+
+	Parameters
+	----------
+	pop : dict
+		Popalign object
+	mu_ref : array
+		(m,1) array
+	itest : array
+		array of indexes for all components that align to specified reference component
+	sample : str
+		sample name
+	rep : 
+		replicate index. Default: 0
+
+	Output
+	----------
+	np.array(dlist) : array
+		array of delta mu values for each component that aligns to reference component 
+
+	'''
+	dlist = []
+	for k in range(len(itest)): 
+		currindex = itest[k]
+		curr_mu = pop['samples'][sample]['replicates'][rep]['gmm'].means_[currindex]
+		curr_d = muDist(curr_mu, mu_ref)
+		dlist.append(curr_d)
+	return np.array(dlist)
+
 def plot_deltas(pop, figsize=(10,10), sortby='mu', pthresh = 0.05): # generate plot mu and delta w plots
 	'''
 	Generate delta mu and delta w plots for the computed alignments
