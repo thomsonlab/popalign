@@ -3659,7 +3659,7 @@ def plot_deltas(pop, figsize=(10,10), sortby='mu', pthresh = 0.05): # generate p
 		plt.scatter(x, mean_delta_mus, s=36,  c = -np.log10(plot_pval_mus), cmap=rbcmap, label = 'mean Δ\u03BC')
 		plt.errorbar(x, mean_delta_mus, std_delta_mus, color='k', elinewidth=.3, capsize=1, fmt=' ')
 		plt.hlines([control_delta_mus_min,control_delta_mus_max], -1, len(mean_delta_mus), colors='k', linestyles='dotted', label = 'control min/max')
-		plt.xticks(x, xlbls, rotation=90)
+		plt.xticks([])
 		plt.ylabel('Δ\u03BC')
 		# Only plot CI and p-values if we can calculate them
 		if len(control_delta_mus)>1 : 
