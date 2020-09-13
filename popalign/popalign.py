@@ -55,7 +55,7 @@ from sklearn.neighbors import KernelDensity
 from sklearn.model_selection import GridSearchCV
 from sklearn import random_projection
 from numpy import linalg
-
+from scipy import linalg as la
 
 '''
 Misc functions
@@ -3349,6 +3349,27 @@ def muDist(mu1,mu2):
 	d = np.linalg.norm([mu1- mu2], ord='fro')
 
 	# d = norm(W*mu1 - W*mu2,1);
+	return d
+
+def forstnerDist(A,B): 
+	'''
+	Compute 'distance' between two covariance matrices using Forstner's metric (1999) 
+
+	Parameters
+	----------
+	A : array
+		m x m covariance matrix
+	B : array
+		m x m covariance matrix
+
+	Output
+	----------
+	d : float
+	scalar distance
+	'''
+
+	D,V = la.eig(B,A) # D is the eigenvalues
+	d = np.sqrt(np.sum(np.log(D)**2))
 	return d
 
 def plot_deltas(pop, figsize=(10,10), sortby='mu', pthresh = 0.05): # generate plot mu and delta w plots
