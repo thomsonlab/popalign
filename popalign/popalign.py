@@ -3304,6 +3304,30 @@ def checkalignment(pop, refcomp, sample):
 
 	return alignbool    
 
+def getalignedcompnum(pop, refcomp, sample, rep = 0):
+	'''
+	Get index of components in the test sample that align to reference component specified
+
+	Parameters
+	----------
+	pop : dict
+		Popalign object
+	refcomp : int
+		index of reference component
+	sample : str
+		sample name
+	rep : 
+		replicate index. Default: 0
+
+	Output
+	----------
+	irow : list
+		list of indices
+	'''
+	arr = pop['samples'][sample]['replicates'][rep]['alignments'] # retrive test sample alignments
+	irow = np.where(arr[:,1] == refcomp)[0]
+	return irow
+
 def muDist(mu1,mu2):
 	'''
 	Compute delta mu between two mu vectors
