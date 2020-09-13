@@ -910,7 +910,7 @@ def oNMF(X, k, n_iter=500, verbose=0, residual=1e-4, tof=1e-4):
 
 	X=X.todense()
 	XfitPrevious = np.inf
-		with np.errstate(divide='ignore',invalid='ignore'):
+	with np.errstate(divide='ignore',invalid='ignore'):
 		for i in range(n_iter):
 			if orthogonal[0]==1:
 				A=np.multiply(A,(X.dot(Y.T.dot(S.T)))/(A.dot(A.T.dot(X.dot(Y.T.dot(S.T))))))
