@@ -3576,14 +3576,14 @@ def plot_deltas(pop, figsize=(10,10), sortby='mu', pthresh = 0.05): # generate p
 
 		# # Calculate the p-values 
 		if len(control_delta_ws)>1:
-		pvals_ws, control_ws_CI_min, control_ws_CI_max = PA.calc_p_value(control_delta_ws, mean_delta_ws, 2)
-		pvals_mus, control_mus_CI_min, control_mus_CI_max = PA.calc_p_value(control_delta_mus, mean_delta_mus, 1)
-		pvals_covs, control_covs_CI_min, control_covs_CI_max = PA.calc_p_value(control_delta_covs, mean_delta_covs, 1)
+			pvals_ws, control_ws_CI_min, control_ws_CI_max = PA.calc_p_value(control_delta_ws, mean_delta_ws, 2)
+			pvals_mus, control_mus_CI_min, control_mus_CI_max = PA.calc_p_value(control_delta_mus, mean_delta_mus, 1)
+			pvals_covs, control_covs_CI_min, control_covs_CI_max = PA.calc_p_value(control_delta_covs, mean_delta_covs, 1)
 
 		else:
-		pvals_ws = np.ones(len(mean_ws))
-		pvals_mus = np.ones(len(mean_mus))
-		pvals_covs = np.ones(len(mean_covs))
+			pvals_ws = np.ones(len(mean_ws))
+			pvals_mus = np.ones(len(mean_mus))
+			pvals_covs = np.ones(len(mean_covs))
 
 		# Max/Min of bootstrapped measurements
 		control_delta_ws_min = min([delta_ws[i] for i in range(len(delta_ws)) if controlstring in samplelbls_w[i]])
