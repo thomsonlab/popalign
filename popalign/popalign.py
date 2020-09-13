@@ -3597,13 +3597,13 @@ def plot_deltas(pop, figsize=(10,10), sortby='mu', pthresh = 0.05): # generate p
 
 		# reorder data 
 		if sortby=="mu": 
-		idx = np.argsort(mean_delta_mus)
+			idx = np.argsort(mean_delta_mus)	
 		elif sortby=="w": 
-		idx = np.argsort(mean_delta_ws)
+			idx = np.argsort(mean_delta_ws)
 		elif sortby=="cov": 
-		idx = np.argsort(mean_delta_covs)
-		else: 
-		raise Exception("Sortby must be either 'mu' (gene expression) or 'w' (abundance) or 'cov' (shape)")
+			idx = np.argsort(mean_delta_covs)
+		else: 	
+			raise Exception("Sortby must be either 'mu' (gene expression) or 'w' (abundance) or 'cov' (shape)")
 
 		xlbls = [mean_samplelbls[i] for i in idx]
 		mean_delta_ws = [mean_delta_ws[i] for i in idx]
@@ -3618,7 +3618,6 @@ def plot_deltas(pop, figsize=(10,10), sortby='mu', pthresh = 0.05): # generate p
 
 		# Generate xcoordinates for bootstrapped values: 
 		d = dict([(y,x) for x,y in enumerate(xlbls)])
-		print(samplelbls_w)
 		xcoords_w = [d[x] for x in samplelbls_w]
 		xcoords = [d[x] for x in samplelbls]
 
@@ -3645,11 +3644,11 @@ def plot_deltas(pop, figsize=(10,10), sortby='mu', pthresh = 0.05): # generate p
 		plt.ylabel('Δ\u03C9 (%)')
 		# Only plot CI and p-values if we can calculate them
 		if len(control_delta_ws)>1 : 
-		plt.fill_between(range(-1,len(mean_delta_ws)+1),control_ws_CI_min,control_ws_CI_max,alpha=0.2, color='black', label = 'control CI')
-		cbar=plt.colorbar()
-		cbar.set_label('-log10(p-val)', rotation=90)
+			plt.fill_between(range(-1,len(mean_delta_ws)+1),control_ws_CI_min,control_ws_CI_max,alpha=0.2, color='black', label = 'control CI')
+			cbar=plt.colorbar()
+			cbar.set_label('-log10(p-val)', rotation=90)
 		else : 
-		plt.clim(0,0)
+			plt.clim(0,0)
 		leg = plt.legend()
 		leg.legendHandles[0].set_color('black')
 
@@ -3663,11 +3662,11 @@ def plot_deltas(pop, figsize=(10,10), sortby='mu', pthresh = 0.05): # generate p
 		plt.ylabel('Δ\u03BC')
 		# Only plot CI and p-values if we can calculate them
 		if len(control_delta_mus)>1 : 
-		plt.fill_between(range(-1,len(mean_delta_mus)+1),control_mus_CI_min,control_mus_CI_max,alpha=0.2, color='black', label = 'control CI')
-		cbar=plt.colorbar()
-		cbar.set_label('-log10(p-val)', rotation=90)
+			plt.fill_between(range(-1,len(mean_delta_mus)+1),control_mus_CI_min,control_mus_CI_max,alpha=0.2, color='black', label = 'control CI')
+			cbar=plt.colorbar()
+			cbar.set_label('-log10(p-val)', rotation=90)
 		else : 
-		plt.clim(0,0)
+			plt.clim(0,0)
 		leg = plt.legend()
 		leg.legendHandles[0].set_color('black')
 
@@ -3681,11 +3680,11 @@ def plot_deltas(pop, figsize=(10,10), sortby='mu', pthresh = 0.05): # generate p
 		plt.ylabel('Δ\u03A3')
 		# Only plot CI and p-values if we can calculate them
 		if len(control_delta_mus)>1 : 
-		plt.fill_between(range(-1,len(mean_delta_covs)+1),control_covs_CI_min,control_covs_CI_max,alpha=0.2, color='black', label = 'control CI')
-		cbar=plt.colorbar()
-		cbar.set_label('-log10(p-val)', rotation=90)
+			plt.fill_between(range(-1,len(mean_delta_covs)+1),control_covs_CI_min,control_covs_CI_max,alpha=0.2, color='black', label = 'control CI')
+			cbar=plt.colorbar()
+			cbar.set_label('-log10(p-val)', rotation=90)
 		else : 
-		plt.clim(0,0)
+			plt.clim(0,0)
 		leg = plt.legend()
 		leg.legendHandles[0].set_color('black')
 
