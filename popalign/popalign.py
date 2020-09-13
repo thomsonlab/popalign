@@ -910,7 +910,7 @@ def oNMF(X, k, n_iter=500, verbose=0, residual=1e-4, tof=1e-4):
 
 	X=X.todense()
 	XfitPrevious = np.inf
-	with np.errstate(divide='ignore',invalid='ignore'):
+		with np.errstate(divide='ignore',invalid='ignore'):
 		for i in range(n_iter):
 			if orthogonal[0]==1:
 				A=np.multiply(A,(X.dot(Y.T.dot(S.T)))/(A.dot(A.T.dot(X.dot(Y.T.dot(S.T))))))
@@ -2269,7 +2269,7 @@ def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=1, reg_covar=
 
 		# Create replicates
 		pop['nreplicates'] = np.max([nreplicates,1])# store number of replicates in pop object
-		if nreplicates >1: # if replicates are requested
+		if nreplicates > 1: # if replicates are requested
 			for j in range(1,nreplicates): # for each replicate number j
 				print('Building replicate %d out of %d' %(j+1, nreplicates), end='\r')
 				idx = np.random.choice(m, n, replace=False) # get n random cell indices
@@ -3304,6 +3304,29 @@ def checkalignment(pop, refcomp, sample):
 
 	return alignbool    
 
+def muDist(mu1,mu2):
+	'''
+	Compute delta mu between two mu vectors
+
+	Parameters
+	----------
+	mu1 : array
+		(m,) vector
+	mu2 : array
+		(m,) vector
+
+	Output
+	----------
+	d : float
+		scalar L2 euclidean norm between two mu vectors 
+	''' 
+
+	# define distance between two mus as the euclidean distance: 
+	d = np.linalg.norm([mu1- mu2], ord='fro')
+
+	# d = norm(W*mu1 - W*mu2,1);
+	return d
+
 def plot_deltas(pop, figsize=(10,10), sortby='mu', pthresh = 0.05): # generate plot mu and delta w plots
 	'''
 	Generate delta mu and delta w plots for the computed alignments
@@ -3516,6 +3539,9 @@ def plot_deltas(pop, figsize=(10,10), sortby='mu', pthresh = 0.05): # generate p
 		deltaobj[currtype]['combined'] = t # table of data
 
 	pop['deltas'] = deltaobj
+
+
+
 
 def aligner(refgmm, testgmm, method):
 	'''
