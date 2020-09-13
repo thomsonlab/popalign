@@ -3503,6 +3503,7 @@ def plot_deltas(pop, figsize=(10,10), sortby='mu', pthresh = 0.05): # generate p
 		celltypes = [str(i) for i in range(pop['samples'][ref]['gmm'].n_components)]
 
 	nreps = np.max([pop['nreplicates'],1])
+	samplist = pop['order']
 
 	for i, currtype in enumerate(celltypes): # for each reference subpopulation
 		
