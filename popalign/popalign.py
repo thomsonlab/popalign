@@ -3506,7 +3506,7 @@ def plot_deltas(pop, figsize=(10,10), sortby='mu', pthresh = 0.05): # generate p
 
 	for i, currtype in enumerate(celltypes): # for each reference subpopulation
 		
-		mu_ref = PA.get_gmm_means(pop, ref, None)[i]
+		mu_ref = get_gmm_means(pop, ref, None)[i]
 		w_ref = pop['samples'][ref]['gmm'].weights_[i] # get the weight i value
 		cov_ref = pop['samples'][ref]['gmm'].covariances_[i]
 
@@ -3576,9 +3576,9 @@ def plot_deltas(pop, figsize=(10,10), sortby='mu', pthresh = 0.05): # generate p
 
 		# # Calculate the p-values 
 		if len(control_delta_ws)>1:
-			pvals_ws, control_ws_CI_min, control_ws_CI_max = PA.calc_p_value(control_delta_ws, mean_delta_ws, 2)
-			pvals_mus, control_mus_CI_min, control_mus_CI_max = PA.calc_p_value(control_delta_mus, mean_delta_mus, 1)
-			pvals_covs, control_covs_CI_min, control_covs_CI_max = PA.calc_p_value(control_delta_covs, mean_delta_covs, 1)
+			pvals_ws, control_ws_CI_min, control_ws_CI_max = calc_p_value(control_delta_ws, mean_delta_ws, 2)
+			pvals_mus, control_mus_CI_min, control_mus_CI_max = calc_p_value(control_delta_mus, mean_delta_mus, 1)
+			pvals_covs, control_covs_CI_min, control_covs_CI_max = calc_p_value(control_delta_covs, mean_delta_covs, 1)
 
 		else:
 			pvals_ws = np.ones(len(mean_ws))
