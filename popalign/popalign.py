@@ -2028,7 +2028,6 @@ def grid_rendering(pop, q, figsize, samples):
 	name = name.replace('/','')
 	plt.savefig(os.path.join(pop['output'], dname, 'model_rendering_%s.pdf' % 'allsamples'), dpi=200)
 	plt.savefig(os.path.join(pop['output'], dname, 'model_rendering_%s.png' % 'allsamples'), dpi=200)
-	plt.close()
 
 	'''
 	for i, name in enumerate(pop['order']):
@@ -2053,7 +2052,7 @@ def grid_rendering(pop, q, figsize, samples):
 	plt.close()
 	'''
 
-def render_models(pop, figsizegrouped, figsizesingle, samples, mode='grouped'):
+def render_models(pop, figsizegrouped, figsizesingle, samples, mode='grouped', showplot=False):
 	'''
 	Parameters
 	----------
@@ -2082,7 +2081,10 @@ def render_models(pop, figsizegrouped, figsizesingle, samples, mode='grouped'):
 		if mode == 'grouped':
 			if len(samples)>1:
 				grid_rendering(pop, q, figsizegrouped, samples)
+				if not showplot: 
+					plt.close()
 		return q
+
 
 def build_single_GMM(k, C, reg_covar):
 	'''
@@ -2115,7 +2117,7 @@ def build_single_GMM(k, C, reg_covar):
 		verbose_interval=10) # create model
 	return gmm.fit(C) # Fit the data
 
-def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=1, reg_covar='auto', rendering='grouped', types=None, figsizegrouped=(20,20), figsizesingle=(5,5), only=None, featuretype = 'onmf', criteria='bic'):
+def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=1, reg_covar='auto',  types=None, only=None, featuretype = 'onmf', criteria='bic'):
 	'''
 	Build a Gaussian Mixture Model on feature projected data for each sample
 
@@ -2136,15 +2138,9 @@ def build_gmms(pop, ks=(5,20), niters=3, training=0.7, nreplicates=1, reg_covar=
 	reg_covar : str or float
 		If 'auto', the regularization value will be computed from the feature data
 		If float, value will be used as reg_covar parameter to build GMMs
-	rendering : str
-		Either 'grouped', 'individual' or 'global'
 	types : dict, str or None
 		Dictionary of cell types.
 		If None, a default PBMC cell types dictionary is provided
-	figsizegrouped : tuple, optional
-		Size of the figure for the renderings together. Default is (20,20)
-	figsizesingle : tuple, optional
-		Size of the figure for each single sample rendering. Default is (5,5)
 	only: list or str, optional
 		Sample label or list of sample labels. Will force GMM construction for specified samples only. Defaults to None
 	featuretype: str
@@ -3013,7 +3009,7 @@ def build_single_GMM_by_celltype(coeff, cell_types):
 	return gmm.fit(coeff)
 
 
-def build_gmms_by_celltypes(pop, ks=(5,10), only=None, rendering='grouped', figsizegrouped=(20,20), figsizesingle=(5,5), niters=3, training=0.7, nreplicates=1, reg_covar='auto',types='defaultpbmc', featuretype = 'onmf', criteria='filter_button_on_clicked'):
+def build_gmms_by_celltypes(pop, ks=(5,10), only=None, niters=3, training=0.7, nreplicates=1, reg_covar='auto',types='defaultpbmc', featuretype = 'onmf', criteria='filter_button_on_clicked'):
 	'''
 	Build a Gaussian Mixture Model on feature projected data using cell type labels for each sample
 	Parameters
@@ -3032,15 +3028,9 @@ def build_gmms_by_celltypes(pop, ks=(5,10), only=None, rendering='grouped', figs
 	reg_covar : str or float
 		If 'auto', the regularization value will be computed from the feature data
 		If float, value will be used as reg_covar parameter to build GMMs
-	rendering : str
-		Either 'grouped', 'individual' or 'global'
 	types : dict, str or None
 		Dictionary of cell types.
 		If None, a default PBMC cell types dictionary is provided
-	figsizegrouped : tuple, optional
-		Size of the figure for the renderings together. Default is (20,20)
-	figsizesingle : tuple, optional
-		Size of the figure for each single sample rendering. Default is (5,5)
 	only: list or str, optional
 		Sample label or list of sample labels. Will force GMM construction for specified samples only. Defaults to None
 	featuretype: str
@@ -3143,9 +3133,6 @@ def build_gmms_by_celltypes(pop, ks=(5,10), only=None, rendering='grouped', figs
 		pop['samples'][x]['gmm_means'] = get_gmm_means(pop,x,None)
 		pop['samples'][x]['gmm_types'] = main_types
 		pop['nreplicates'] = 1
-
-	# print('Rendering models')
-	# render_models(pop, figsizegrouped=figsizegrouped, figsizesingle=figsizesingle, samples=samples, mode=rendering) # render the models
 
 def check_symmetric(mat):
 	return (np.allclose(mat, mat.T))
@@ -3463,7 +3450,7 @@ def compute_delta_cov(pop, cov_ref, itest, sample, rep):
 		dlist.append(curr_d.real)
 	return np.array(dlist)
 
-def plot_deltas(pop, figsize=(10,10), sortby='mu', pthresh = 0.05): # generate plot mu and delta w plots
+def plot_deltas(pop, figsize=(10,10), sortby='mu', pthresh = 0.05, showplot=False): # generate plot mu and delta w plots
 	'''
 	Generate delta mu and delta w plots for the computed alignments
 
@@ -3693,7 +3680,8 @@ def plot_deltas(pop, figsize=(10,10), sortby='mu', pthresh = 0.05): # generate p
 		currtype = currtype.replace('/','')
 		plt.rc('font', size= 12) 
 		plt.savefig(os.path.join(pop['output'], dname, 'deltas_comp%d_%s_%ssort.pdf' % (i,currtype, sortby)), format='pdf', bbox_inches='tight')
-		plt.close()
+		if not showplot : 
+			plt.close()
 
 		# Make an object that stores the orders for each cell type
 		deltaobj = dict()
@@ -3960,7 +3948,7 @@ def score_subpopulations(pop, ref=None, figsize=(10,5)):
 '''
 RANK
 '''
-def rank(pop, ref=None, k=100, niter=200, method='LLR', mincells=50, figsize=(10,5)):
+def rank(pop, ref=None, k=100, niter=200, method='LLR', mincells=50, figsize=(10,5), showplot=False):
     '''
     Generate a ranking plot of the samples against a reference model
 
@@ -4114,7 +4102,9 @@ def rank(pop, ref=None, k=100, niter=200, method='LLR', mincells=50, figsize=(10
     mkdir(os.path.join(pop['output'], dname))
     plt.savefig(os.path.join(pop['output'], dname, '%s_rankings_stripplot.png' % method), dpi=200)
     plt.savefig(os.path.join(pop['output'], dname, '%s_rankings_stripplot.pdf' % method))
-    plt.close()
+    
+    if not showplot: 
+        plt.close()
 
     pop['rankings'] = final_df
 
