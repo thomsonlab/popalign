@@ -9,7 +9,7 @@ The PopAlign package allows users to analyze and compare single-cell sequencing 
 2) Align subpopulations across samples based on minimum divergence 
 3) Find subpopulation specific transcriptional and abundance changes 
 4) Automatically discover differentially expressed genes based on L1 error in the distributions and 
-5) Query data using a common universal model.
+5) Query data using a common universal model
 
 ## Install with pip
 
