@@ -1859,7 +1859,7 @@ def typer_func(gmm, prediction, M, genes, types):
 
 	return finaltypes
 
-def render_model(pop, name, figsizesingle):
+def render_model(pop, name, figsizesingle, showplot=False):
 	'''
 	Render a model as a density heatmap
 
@@ -1960,11 +1960,11 @@ def render_model(pop, name, figsizesingle):
 	mkdir(os.path.join(pop['output'], dname))
 	name = name.replace('/','')
 	plt.savefig(os.path.join(pop['output'], dname, 'model_rendering_%s.pdf' % name), dpi=200)
-	plt.close()
-	
+	if not showplot: 
+		plt.close()
 	return sample_density
 
-def grid_rendering(pop, q, figsize, samples):
+def grid_rendering(pop, q, figsize, samples, showplot=False):
 	'''
 	Generate a grid plot of gmm renderings
 
@@ -2028,7 +2028,9 @@ def grid_rendering(pop, q, figsize, samples):
 	name = name.replace('/','')
 	plt.savefig(os.path.join(pop['output'], dname, 'model_rendering_%s.pdf' % 'allsamples'), dpi=200)
 	plt.savefig(os.path.join(pop['output'], dname, 'model_rendering_%s.png' % 'allsamples'), dpi=200)
-
+	if not showplot: 
+		plt.close()
+		
 	'''
 	for i, name in enumerate(pop['order']):
 		ii = i+1
@@ -2071,18 +2073,16 @@ def render_models(pop, figsizegrouped, figsizesingle, samples, mode='grouped', s
 	#if mode == 'unique':
 		#sd = render_model(pop, 'unique_gmm', figsizesingle)
 	if mode == 'global':
-		sd = render_model(pop, 'global_gmm', figsizesingle)
+		sd = render_model(pop, 'global_gmm', figsizesingle, showplot)
 	else:
 		'''
 		with Pool(pop['ncores']) as p:
 			q = p.starmap(render_model, [(pop, x, figsizesingle) for x in samples])
 		'''
-		q = [render_model(pop, x, figsizesingle) for x in samples]
+		q = [render_model(pop, x, figsizesingle, showplot=False) for x in samples]
 		if mode == 'grouped':
 			if len(samples)>1:
-				grid_rendering(pop, q, figsizegrouped, samples)
-				if not showplot: 
-					plt.close()
+				grid_rendering(pop, q, figsizegrouped, samples, showplot)
 		return q
 
 
