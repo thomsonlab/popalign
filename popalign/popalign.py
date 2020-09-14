@@ -5872,7 +5872,7 @@ def all_samples_diffexp(pop, nbins=20, cutoff=[], renderhists=True, usefiltered=
 	celltypes = pop['samples'][ref]['gmm_types']
 
 	# check that nbins is an integer or the the same length as gmm_types
-	if len(nbins)==1: 
+	if np.isscalar(nbins): 
 		nbins = [nbins]*len(celltypes)
 	elif len(nbins)!=len(celltypes):
 		raise Exception('nbins vector must integer or the same length as the number of reference components')
