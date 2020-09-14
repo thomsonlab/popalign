@@ -5899,8 +5899,13 @@ def all_samples_diffexp(pop, nbins=20, cutoff=[], renderhists=True, usefiltered=
 
 			for x in controls: 
 				print(x + ' ' + currtype)
+				
 				# calculate the differentially expressed genes
-				q_raw, genes_raw, lidx, upregulated, downregulated = all_diffexp(pop, refcomp=y, sample=x, nbins=curr_nbin, cutoff=0.5, renderhists=renderhists, usefiltered=usefiltered)
+				if checkalignment(pop, y, x): 			
+					q_raw, genes_raw, lidx, upregulated, downregulated = all_diffexp(pop, refcomp=y, sample=x, nbins=curr_nbin, cutoff=currcutoff, renderhists=renderhists, usefiltered=usefiltered)
+				else: 
+					q_raw = np.zeros((len(genes_raw),))
+
 				all_control_q.append(q_raw)
 
 			all_control_q = np.concatenate(all_control_q)
