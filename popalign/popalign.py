@@ -4579,7 +4579,7 @@ def plot_genes_gmm_cells(pop, sample='', genelist=[], savename='', metric='corre
 	plt.savefig(os.path.join(pop['output'], dname, '%s_cells.pdf' % savename), dpi=200, bbox_inches='tight')
 	plt.close()
 
-def scatter(pop, method='tsne', sample=None, compnumber=None, marker=None, size=.3, extension='pdf', cmap='Blues',samplecolor='red'):	
+def scatter(pop, method='tsne', sample=None, compnumber=None, marker=None, size=.3, extension='pdf', cmap='Blues',samplecolor='red', showplot=False):	
 	'''
 	Run an embedding algorithm and plot the data in a scatter plot
 
@@ -4593,6 +4593,8 @@ def scatter(pop, method='tsne', sample=None, compnumber=None, marker=None, size=
 		Point size. Defaults to .1
 	extension: string
 		File extension like 'png' or 'pdf' to designate how to save the plot
+	showplot: bool
+		whether to show the plot inline
 	'''
 
 	if method not in pop: # if method not run before
@@ -4672,7 +4674,8 @@ def scatter(pop, method='tsne', sample=None, compnumber=None, marker=None, size=
 	dname = 'embedding/markers/' # directory name
 	mkdir(os.path.join(pop['output'], dname)) # create directory if needed
 	plt.savefig(os.path.join(pop['output'], dname, '%s.%s' % (filename, extension)), dpi=200, bbox_inches='tight') # save figure
-	plt.close()
+	if not showplot: 
+		plt.close()
 
 def samples_grid(pop, method='tsne', figsize=(20,20), size_background=.1, size_samples=.3, samplecolor='magenta', showplot=False):
 	'''
@@ -4745,7 +4748,8 @@ def samples_grid(pop, method='tsne', figsize=(20,20), size_background=.1, size_s
 	dname = 'embedding/samples/' # folder name
 	mkdir(os.path.join(pop['output'], dname)) # create folder if doesn't exist
 	plt.savefig(os.path.join(pop['output'], dname, 'embedding_grid_%s.png' % method), dpi=200) # save plot
-	plt.close() # close plot
+	if not showplot: 
+		plt.close() # close plot
 
 def subpopulations_grid_global(pop, method='tsne', figsize=(20,20), size_background=.1, size_subpops=1):
 	if method not in pop: # if method not run before
