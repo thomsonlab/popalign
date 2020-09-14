@@ -5835,8 +5835,8 @@ def all_samples_diffexp(pop, nbins=20, cutoff=[], renderhists=True, usefiltered=
 	----------
 	deltaobj : dict,
 		contains many keys including sample ordering for different cell types
-	nbins : int, optional
-		Number of histogram bins to use
+	nbins : list or int
+		sets the number of bins to use. Can also be supplied as a list of integers with one number for each reference component type
 	cutoff : float
 		L1 norm cutoff. If this is empty, we recalculate it empirically from the control samples. 
 	renderhists : bool
@@ -5871,9 +5871,11 @@ def all_samples_diffexp(pop, nbins=20, cutoff=[], renderhists=True, usefiltered=
 	ref = pop['ref'] # get reference sample name
 	celltypes = pop['samples'][ref]['gmm_types']
 
-	# check that nbis is the same length as gmm_types
-	if len(nbins)!=len(celltypes):
-		raise Exception('nbins vector must be same length as celltypes')
+	# check that nbins is an integer or the the same length as gmm_types
+	if len(nbins)==1: 
+		nbins = [nbins]*len(celltypes)
+	elif len(nbins)!=len(celltypes):
+		raise Exception('nbins vector must integer or the same length as the number of reference components')
 
 	# get control values
 	x = range(len(samples))
