@@ -2030,7 +2030,7 @@ def grid_rendering(pop, q, figsize, samples, showplot=False):
 	plt.savefig(os.path.join(pop['output'], dname, 'model_rendering_%s.png' % 'allsamples'), dpi=200)
 	if not showplot: 
 		plt.close()
-		
+
 	'''
 	for i, name in enumerate(pop['order']):
 		ii = i+1
@@ -3795,7 +3795,7 @@ def align(pop, ref=None, method='conservative', figsizedeltas=(10,10), figsizeen
 			pop['samples'][x]['replicates'][j]['alignments'] = alignments
 			pop['samples'][x]['replicates'][j]['fullalignments'] = arr
 
-			if j == 0
+			if j == 0: 
 				pop['samples'][x]['alignments'] = alignments
 				pop['samples'][x]['fullalignments'] = arr
 
