@@ -39,3 +39,8 @@ In the package folder, install the dependencies from the terminal with:
 ```sh
 pip install -r requirements.txt
 ```
+
+## Tutorial
+
+A Google Colabs notebook tutorial is now available in the 'tutorials/' folder and is also shared at this link: 
+https://colab.research.google.com/drive/1t5W_r9FzQCBHe4IL5hCABda5VGAdeTWS?usp=sharing
