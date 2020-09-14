@@ -3273,8 +3273,9 @@ def JeffreyDiv(mu1, cov1, mu2, cov2):
 	cov2 : array
 		Covariance matrix
 	'''
-	JD = 0.5*KL(mu1, cov1, mu2, cov2)+0.5*KL(mu2, cov2, mu1, cov1)
-	return np.log10(JD)
+	with np.errstate(divide='ignore',invalid='ignore'):
+		JD = 0.5*KL(mu1, cov1, mu2, cov2)+0.5*KL(mu2, cov2, mu1, cov1)
+		return np.log10(JD)
 
 def checkalignment(pop, refcomp, sample):
 	'''
@@ -4158,8 +4159,6 @@ def plot_query(pop, pcells=.2, nreps=10, figsize=(10,20), sharey=True):
 		Size of the figure. Default is (5,20)
 	'''
 
-	#ncells = 1000
-
 	gmm = pop['gmm'] # get global gmm
 	N = len(pop['order']) # get number of samples
 	arrmus = np.zeros((N, gmm.n_components)) # empty array to store the proportion means of each sample for all components
@@ -4606,7 +4605,7 @@ def scatter(pop, method='tsne', sample=None, compnumber=None, marker=None, size=
 		elif method == 'pca': # if method is pca
 			pca(pop) # build pca space if necessary
 		else: # if method not valid
-			raise Exception('Method value not supported. Must be one of tsne, umap.') # raise exception
+			raise Exception('Method value not supported. Must be one of tsne, umap, pca') # raise exception
 		pop[method] = X # store embedded coordinates
 	else: # if method has been run before
 		if method == 'pca':
