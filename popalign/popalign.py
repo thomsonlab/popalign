@@ -3800,12 +3800,15 @@ def align(pop, ref=None, method='conservative', figsizedeltas=(10,10), figsizeen
 
 	refgmm = pop['samples'][ref]['gmm'] # get reference gmm
 	for x in pop['order']: # for each sample x
-		if pop['nreplicates'] > 1: # if replicates exist
-			for j in range(pop['nreplicates']): # for each replicate j
-				testgmm = pop['samples'][x]['replicates'][j]['gmm'] # grab replicate gmm
-				alignments, arr = aligner(refgmm, testgmm, method) # align that replicate to reference model
-				pop['samples'][x]['replicates'][j]['alignments'] = alignments
-				pop['samples'][x]['replicates'][j]['fullalignments'] = arr
+		for j in range(pop['nreplicates']): # for each replicate j
+			testgmm = pop['samples'][x]['replicates'][j]['gmm'] # grab replicate gmm
+			alignments, arr = aligner(refgmm, testgmm, method) # align that replicate to reference model
+			pop['samples'][x]['replicates'][j]['alignments'] = alignments
+			pop['samples'][x]['replicates'][j]['fullalignments'] = arr
+
+			if j == 0
+				pop['samples'][x]['alignments'] = alignments
+				pop['samples'][x]['fullalignments'] = arr
 
 		# if x != ref: # if sample is not ref
 		# for all samples, re-align the 'main' gmm at the upper level
@@ -3813,11 +3816,7 @@ def align(pop, ref=None, method='conservative', figsizedeltas=(10,10), figsizeen
 		alignments, arr = aligner(refgmm, testgmm, method) # align gmm to reference
 		pop['samples'][x]['alignments'] = alignments
 		pop['samples'][x]['fullalignments'] = arr
-		try:
-			pop['samples'][x]['test2ref'] = np.zeros(testgmm.n_components, dtype=int)
-			pop['samples'][x]['ref2test'] = np.zeros(testgmm.n_components, dtype=int)
-		except:
-			pass
+
 	pop['alignmentmethod'] = method
 
 	# plot_deltas(pop, figsizedeltas) # generate plot mu and delta w plots
