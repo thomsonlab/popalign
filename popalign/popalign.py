@@ -1873,6 +1873,8 @@ def render_model(pop, name, figsizesingle, showplot=False):
 		either 'pca' or 'NMF'
 	figsizesingle : int
 		size of figure
+	showplot: bool
+		whether to show the plot inline
 	'''
 	# if name == 'unique_gmm':
 	if name == 'global_gmm':
@@ -1978,6 +1980,8 @@ def grid_rendering(pop, q, figsize, samples, showplot=False):
 		Size of the figure. Default is (10,10)
 	samples : list
 		Order in which to plot the sample renderings in the grid
+	showplot: bool
+		whether to show the plot inline
 	'''
 	pcacomps = pop['pca']['components']
 	cmap = 'jet'
@@ -2069,6 +2073,8 @@ def render_models(pop, figsizegrouped, figsizesingle, samples, mode='grouped', s
 		Grouped will render the models individually and together in a separate grid
 		Individual will only render the models individually
 		Global will render the entire dataset's global model
+	showplot: bool
+		whether to show the plot inline
 	'''
 	#if mode == 'unique':
 		#sd = render_model(pop, 'unique_gmm', figsizesingle)
@@ -3464,6 +3470,8 @@ def plot_deltas(pop, figsize=(10,10), sortby='mu', pthresh = 0.05, showplot=Fals
 		Either 'mu' (gene expression) or 'w' (abundance)
 	pthresh : float 
 		p-value threshold at which colors are no longer plotted
+	showplot: bool
+		whether to show the plot inline
 
 	Outputs
 	----------
@@ -3968,6 +3976,8 @@ def rank(pop, ref=None, k=100, niter=200, method='LLR', mincells=50, figsize=(10
         If a sample has less than `mincells` cells, is discarded
     figsize : tuple, optional
         Size of the figure. Default is (10,5)
+	showplot: bool
+		whether to show the plot inline
         
     Outputs
     ----------
@@ -4664,7 +4674,7 @@ def scatter(pop, method='tsne', sample=None, compnumber=None, marker=None, size=
 	plt.savefig(os.path.join(pop['output'], dname, '%s.%s' % (filename, extension)), dpi=200, bbox_inches='tight') # save figure
 	plt.close()
 
-def samples_grid(pop, method='tsne', figsize=(20,20), size_background=.1, size_samples=.3, samplecolor='purple'):
+def samples_grid(pop, method='tsne', figsize=(20,20), size_background=.1, size_samples=.3, samplecolor='magenta', showplot=False):
 	'''
 	Generate a grid plot of sample plots in an embedding space
 
@@ -4680,6 +4690,8 @@ def samples_grid(pop, method='tsne', figsize=(20,20), size_background=.1, size_s
 		Point size for the embedding scatter in the background
 	size_samples : float, int
 		Point size for the highlighted samples
+	showplot: bool
+		whether to show the plot inline
 	'''
 
 	if method not in pop: # if method not run before
@@ -4734,24 +4746,6 @@ def samples_grid(pop, method='tsne', figsize=(20,20), size_background=.1, size_s
 	mkdir(os.path.join(pop['output'], dname)) # create folder if doesn't exist
 	plt.savefig(os.path.join(pop['output'], dname, 'embedding_grid_%s.png' % method), dpi=200) # save plot
 	plt.close() # close plot
-
-def subpopulations_grid(pop, method='tsne', figsize=(20,20), size_background=.1, size_subpops=1):
-	'''
-	Generate grid plots of sample subpopulations in an embedding space
-
-	Parameters
-	----------
-	pop : dict
-		Popalign object
-	method : str
-		Embedding method. One of tsne, umap
-	figsize : tuple
-		Size of the figures to be generated
-	size_background : float, int
-		Point size for the embedding scatter in the background
-	size_subpops : float, int
-		Point size for the highlighted subpopulations
-	'''
 
 def subpopulations_grid_global(pop, method='tsne', figsize=(20,20), size_background=.1, size_subpops=1):
 	if method not in pop: # if method not run before
