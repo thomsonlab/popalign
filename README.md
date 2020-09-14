@@ -42,5 +42,7 @@ pip install -r requirements.txt
 
 ## Tutorial
 
-A Google Colabs notebook tutorial is now available in the 'tutorials/' folder and is also shared at this link: 
+A Google Colabs notebook tutorial is now available in the 'tutorials/' folder and can also be accessed at the following link: 
 https://colab.research.google.com/drive/1t5W_r9FzQCBHe4IL5hCABda5VGAdeTWS?usp=sharing
+
+Full documentation of the PopAlign package is still under construction. Not all features currently implemented have been completely documented or highlighted in the tutorial but will be covered in future versions. 
