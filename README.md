@@ -50,6 +50,7 @@ Full documentation of the PopAlign package is still under construction. Not all 
 ## Citation
 
 Please cite the following paper:
+```sh
 @article {ChenPopalign,
 	author = {Chen, Sisi and Park, Jong H. and Tsou, Tiffany and Rivaud, Paul and Charles, Emeric and Haliburton, John and Pichiorri, Flavia and Thomson, Matt},
 	title = {Dissecting heterogeneous cell populations across drug and disease conditions with PopAlign},
@@ -61,3 +62,4 @@ Please cite the following paper:
 	eprint = {https://www.biorxiv.org/content/early/2020/03/31/421354.full.pdf},
 	journal = {bioRxiv}
 }
+```
