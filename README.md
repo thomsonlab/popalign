@@ -46,3 +46,18 @@ A Google Colabs notebook tutorial is now available in the 'tutorials/' folder an
 https://colab.research.google.com/drive/1t5W_r9FzQCBHe4IL5hCABda5VGAdeTWS?usp=sharing
 
 Full documentation of the PopAlign package is still under construction. Not all features currently implemented have been completely documented or highlighted in the tutorial but will be covered in future versions. 
+
+## Citation
+
+Please cite the following paper:
+@article {ChenPopalign,
+	author = {Chen, Sisi and Park, Jong H. and Tsou, Tiffany and Rivaud, Paul and Charles, Emeric and Haliburton, John and Pichiorri, Flavia and Thomson, Matt},
+	title = {Dissecting heterogeneous cell populations across drug and disease conditions with PopAlign},
+	elocation-id = {421354},
+	year = {2020},
+	doi = {10.1101/421354},
+	publisher = {Cold Spring Harbor Laboratory},
+	URL = {https://www.biorxiv.org/content/early/2020/03/31/421354},
+	eprint = {https://www.biorxiv.org/content/early/2020/03/31/421354.full.pdf},
+	journal = {bioRxiv}
+}
