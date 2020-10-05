@@ -2430,18 +2430,19 @@ Calculate GMM error compared to KDE model
 
 def project_gmm(gmm1, Tmat):
 	'''
-	Project gaussian mixture model into 2D  space
+	Project gaussian mixture model into lower-dimensional space
 	m = number of cells, n = original dimensionality
 
 	Parameters
 	----------
 	gmm1: obj
 	    sklearn GaussianMixture object
-	D_new : array
-	    m x n matrix of data that has already been projected into new dimensionality
 	Tmat : array
-	    transformation matrix. n x 2
+	    transformation matrix. n x newdim
 	'''
+
+	# get number of new dimensions
+	ndims = Tmat.shape[1]
 
 	# get parameters from the gmm: 
 	means_ = gmm1.means_
@@ -2452,9 +2453,9 @@ def project_gmm(gmm1, Tmat):
 	# Transform gmm parameters and make a projected GMM
 	r = len(weights_)
 	projmeans_ = means_ @ Tmat
-	projcovariances_ = np.ndarray([r,2,2])
-	projprecisions_ = np.ndarray([r,2,2])
-	projprecisions_chol_ = np.ndarray([r,2,2])
+	projcovariances_ = np.ndarray([r,ndims,ndims])
+	projprecisions_ = np.ndarray([r,ndims,ndims])
+	projprecisions_chol_ = np.ndarray([r,ndims,ndims])
 	allposdef=True
 	for j in range(r):
 		currcov = covariances_[j,:,:]
