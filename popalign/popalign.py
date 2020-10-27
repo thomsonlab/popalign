@@ -3556,9 +3556,9 @@ def plot_deltas(pop, figsize=(10,10), sortby='mu', pthresh = 0.05, showplot=Fals
 			pvals_covs, control_covs_CI_min, control_covs_CI_max = calc_p_value(control_delta_covs, mean_delta_covs, 1)
 
 		else:
-			pvals_ws = np.ones(len(mean_ws))
-			pvals_mus = np.ones(len(mean_mus))
-			pvals_covs = np.ones(len(mean_covs))
+			pvals_ws = np.ones(len(mean_delta_ws))
+			pvals_mus = np.ones(len(mean_delta_mus))
+			pvals_covs = np.ones(len(mean_delta_covs))
 
 		# Max/Min of bootstrapped measurements
 		control_delta_ws_min = min([delta_ws[i] for i in range(len(delta_ws)) if controlstring in samplelbls_w[i]])
