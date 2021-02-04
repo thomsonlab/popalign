@@ -2356,6 +2356,7 @@ def build_global_gmm(pop, ks=(5,20), niters=3, training=0.2, reg_covar=True, typ
 		reg_covar_param = reg_covar
 	with Pool(pop['ncores']) as p:
 			q = p.starmap(build_single_GMM, [(k, Ctrain, reg_covar_param) for k in np.repeat(ks, niters)])
+
 	
 	# We minimize the BIC score of the validation set
 	# to pick the best fitted gmm
@@ -4471,7 +4472,7 @@ def plot_genes_gmm_cells(pop, sample='', genelist=[], savename='', metric='corre
 	plt.savefig(os.path.join(pop['output'], dname, '%s_cells.pdf' % savename), dpi=200, bbox_inches='tight')
 	plt.close()
 
-def scatter(pop, method='tsne', sample=None, compnumber=None, marker=None, size=.3, extension='pdf', cmap='Blues',samplecolor='red', showplot=False):	
+def scatter(pop, method='tsne', sample=None, compnumber=None, marker=None, size=.3, extension='pdf', cmap='Blues', samplecolor='magenta', showplot=False):	
 	'''
 	Run an embedding algorithm and plot the data in a scatter plot
 
@@ -4569,7 +4570,7 @@ def scatter(pop, method='tsne', sample=None, compnumber=None, marker=None, size=
 	if not showplot: 
 		plt.close()
 
-def samples_grid(pop, method='tsne', figsize=(20,20), size_background=.1, size_samples=.3, samplecolor='magenta', showplot=False):
+def samples_grid(pop, method='tsne', samples = None, figsize=(20,20), size_background=.1, size_samples=.3, samplecolor='magenta', showplot=False):
 	'''
 	Generate a grid plot of sample plots in an embedding space
 
@@ -4579,6 +4580,8 @@ def samples_grid(pop, method='tsne', figsize=(20,20), size_background=.1, size_s
 		Popalign object
 	method : str
 		Embedding method. One of tsne, umap
+	samples : list, str
+		List of exact samples to plot. default: pop['order']
 	figsize : tuple
 		Figure size
 	size_background : float, int
@@ -4606,15 +4609,18 @@ def samples_grid(pop, method='tsne', figsize=(20,20), size_background=.1, size_s
 		else:
 			X = pop[method] # retrieve embedded coordinates
 
+	if samples==None: 
+		samples = pop['order']
+
 	x = X[:,0] # get x coordinates
 	y = X[:,1] # get y coordinates
 
-	nr, nc = nr_nc(len(pop['order'])) # based on number of samples, get number of rows and columns for grid plot
+	nr, nc = nr_nc(len(samples)) # based on number of samples, get number of rows and columns for grid plot
 	fig, axes = plt.subplots(nr,nc,figsize=figsize) # create figure and sub axes
 	axes = axes.flatten()
 	start = 0 # start index to retrive cells for a given sample
 	end = 0 # end index to retrive cells for a given sample
-	for i, name in enumerate(pop['order']): # for each sample
+	for i, name in enumerate(samples): # for each sample
 		ax = axes[i] # assign sub axis
 		end = start+pop['samples'][name]['M'].shape[1] # adjust end index with number of cells
 		xsub = x[start:end] # splice x coordinates
@@ -6068,7 +6074,6 @@ def remove_celltypes(pop, ctlist):
 def save_celltypes_in_meta(pop, meta_in, meta_out):
 	'''
 	Save the labeled cell types into the metadata file
-	And also put it the pop object
 
 	Parameters
 	----------
@@ -6112,9 +6117,34 @@ def save_celltypes_in_meta(pop, meta_in, meta_out):
 	# Store newmeta into pop object
 	pop['meta'] = newmeta
 
+def save_celltypes_in_samples(pop):
+
+	'''
+	Save the labeled cell types into the samples of the pop object
+
+	Parameters
+	----------
+	pop : dict
+	    PopAlign object        
+	meta_in : str
+		original meta file name
+	meta_out : str
+	    file name that ends in csv
+	'''
+
+	# concatenate all coefficient matrices together
+	allC = get_cat_coeff(pop)
+
+	# use the gmm to classify all of the data
+	classes = pop['gmm'].predict(allC)
+
+	dicttypes = pop['gmm_types']
+	celltypes = [dicttypes[i] for i in classes]
+
 	# Store cell types back into individual samples
 	for x in pop['order']:
-		currtypes = newmeta[newmeta.sample_id == x].cell_type.values
+		indices = pop['samples'][x]['indices']
+		currtypes = celltypes[indices[0]:indices[1]]
 		pop['samples'][x]['cell_type'] = currtypes
 
 '''
