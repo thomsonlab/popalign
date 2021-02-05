@@ -248,7 +248,7 @@ def load_samples(samples, controlstring=None, genes=None, outputfolder='output',
 	for x in obj['order']:
 		n = obj['samples'][x]['M'].shape[1]
 		end = start+n
-		obj['samples'][x]['indices'] = (start,end)
+		obj['samples'][x]['indices'] = list(range(start,end)) # originally (start,end)
 		start = end
 	# obj['ncells'] = end
 	obj['nsamples'] = len(obj['order']) # save number of samples
@@ -365,7 +365,7 @@ def load_multiplexed(matrix, barcodes, metafile, controlstring=None, genes=None,
 	for x in obj['order']:
 		n = obj['samples'][x]['M'].shape[1]
 		end = start+n
-		obj['samples'][x]['indices'] = (start,end)
+		obj['samples'][x]['indices'] = list(range(start,end)) # originally (start,end)
 		start = end
 	obj['ncells'] = end
 	obj['nsamples'] = len(obj['order']) 
@@ -768,7 +768,7 @@ def removeRBC(pop, species):
 		pop['samples'][x]['M'] = pop['samples'][x]['M'][:,idx] # select cells
 		pop['samples'][x]['M_norm'] = pop['samples'][x]['M_norm'][:,idx] # select cells
 		end = start+len(idx) # update start and end cell indices
-		pop['samples'][x]['indices'] = (start,end) # update start and end cell indices
+		pop['samples'][x]['indices'] = list(range(start,end)) # originally (start,end)
 		start = end # update start and end cell indices
 		numcells = numcells + (np.shape(pop['samples'][x]['M'])[1] - len(idx))
 		#print(x, '%d cells kept out of %d' % (len(idx), len(cellssums[i])))
@@ -4510,11 +4510,9 @@ def scatter(pop, method='tsne', sample=None, compnumber=None, marker=None, size=
 		
 	if sample != None: # if a sample is provided
 		M = pop['samples'][sample]['M'] # get matrix
-		idx = pop['samples'][sample]['indices'] # get cells indices of that sample
-		start = idx[0] # get start index
-		end = idx[1] # get end index
-		xsample = X[start:end,0] # subset embedded coordinates
-		ysample = X[start:end,1] # subset embedded coordinates
+		indices = pop['samples'][sample]['indices'] # get cells indices of that sample
+		xsample = X[indices,0] # subset embedded coordinates
+		ysample = X[indices,1] # subset embedded coordinates
 		
 		if compnumber != None:
 			gmm = pop['samples'][sample]['gmm']
@@ -4618,14 +4616,13 @@ def samples_grid(pop, method='tsne', samples = None, figsize=(20,20), size_backg
 	nr, nc = nr_nc(len(samples)) # based on number of samples, get number of rows and columns for grid plot
 	fig, axes = plt.subplots(nr,nc,figsize=figsize) # create figure and sub axes
 	axes = axes.flatten()
-	start = 0 # start index to retrive cells for a given sample
-	end = 0 # end index to retrive cells for a given sample
 	for i, name in enumerate(samples): # for each sample
 		ax = axes[i] # assign sub axis
-		end = start+pop['samples'][name]['M'].shape[1] # adjust end index with number of cells
-		xsub = x[start:end] # splice x coordinates
-		ysub = y[start:end] # splice y coordinates
-		start = end # update start index
+
+		indices = pop['samples'][name]['indices']
+		xsub = x[indices] # splice x coordinates
+		ysub = y[indices] # splice y coordinates
+
 		ax.scatter(x, y, c='lightgrey', s=size_background) # plot all cells as background
 		ax.scatter(xsub, ysub, c=samplecolor, s=size_samples) # plot sample cells on top
 		ax.set(xticks=[]) # remove x ticks
@@ -6060,7 +6057,7 @@ def remove_celltypes(pop, ctlist):
 	for i,x in enumerate(newpop['order']): # for each sample
 		numcells = np.shape(newpop['samples'][x]['M'])[1]
 		end = start+numcells # update start and end cell indices
-		newpop['samples'][x]['indices'] = (start,end) # update start and end cell indices
+		newpop['samples'][x]['indices'] = list(range(start,end)) # (start,end) # update start and end cell indices
 		start = end # update start and end cell indices
 
 	# recalculate pca max and min	
@@ -6144,7 +6141,7 @@ def save_celltypes_in_samples(pop):
 	# Store cell types back into individual samples
 	for x in pop['order']:
 		indices = pop['samples'][x]['indices']
-		currtypes = celltypes[indices[0]:indices[1]]
+		currtypes = celltypes[indices]
 		pop['samples'][x]['cell_type'] = currtypes
 
 '''
