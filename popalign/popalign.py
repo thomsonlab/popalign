@@ -1349,7 +1349,7 @@ def find_best_m(pop, alpha = 3, multiplier = 3):
 		list of MSE errors from oNMF
 	alpha : float
 		power of polynomial
-	multiplier : float
+	multiplier : int
 		multiplies constant C in f(m)
 
 	Output
@@ -1379,7 +1379,7 @@ def find_best_m(pop, alpha = 3, multiplier = 3):
 	# Assemble f(m) values by sweeping over j and alpha
 	fm_df = pd.DataFrame()
 	minvals = []
-	jrange= range(1,8)
+	jrange= list(range(1,8))
 	if multiplier not in jrange: 
 		jrange.append(multiplier)
 		jrange = np.sort(jrange).tolist()
@@ -3119,6 +3119,14 @@ def build_gmms_by_celltypes(pop, ks=(5,10), only=None, niters=3, training=0.7, n
 		pop['samples'][x]['gmm_types'] = main_types
 		pop['nreplicates'] = 1
 
+		# Also store first gmm in ['replicates'][0]: 
+		pop['samples'][x]['replicates'] = {}
+		pop['samples'][x]['replicates'][0] = {}
+		pop['samples'][x]['replicates'][0]['gmm'] = pop['samples'][x]['gmm'] # store gmm
+		# pop['samples'][x]['replicates'][0]['gmm_means'] = np.array(gmm.means_.dot(pop['W'].T))
+		pop['samples'][x]['replicates'][0]['gmm_means'] = pop['samples'][x]['gmm_means'] 
+		pop['samples'][x]['replicates'][0]['gmm_types'] = pop['samples'][x]['gmm_types'] 
+
 def check_symmetric(mat):
 	return (np.allclose(mat, mat.T))
 
@@ -4844,7 +4852,7 @@ def plot_L1_heatmap(pop, sample, dname,cmap='RdBu'):
 	plt.savefig(os.path.join(pop['output'], dname, '%s_degenes_L1_heatmap.pdf' % sample))
 	plt.close()
 
-def plot_violins(pop, refcomp, samples, plotgenes, prefix, **kwargs):
+def plot_violins(pop, refcomp, samples, plotgenes, prefix, figsize=(3,3),**kwargs):
 	'''
 	Plot violin plots of gene distributions for all samples that align
 	to a specified component from the reference sample
@@ -4910,7 +4918,7 @@ def plot_violins(pop, refcomp, samples, plotgenes, prefix, **kwargs):
 		arrdf.rename(columns = {0:'values',1:'sample'},inplace=True)
 		arrdf['values']=arrdf['values'].astype('float64')
 		arrdf['sample']=arrdf['sample'].astype('category')
-		arrdf['sample'].cat.categories = samples  # enforces original ordering in plots
+		# arrdf['sample'].cat.categories = samples  # enforces original ordering in plots
 		arrdf['y'] = fakey
 		arrdf['y'] = arrdf['y'].astype('float64')
 
@@ -4920,7 +4928,7 @@ def plot_violins(pop, refcomp, samples, plotgenes, prefix, **kwargs):
 		else:
 			ncols = 1
         
-		plt.figure(figsize=(3,3));
+		plt.figure(figsize=figsize);
 		plt.rc('font',size=12)
 		ax=sns.violinplot(y='values' ,x='y',data=arrdf,hue='sample',split=False, orient='v',**kwargs)
 		ax.set_ylabel('Normalized log(counts)',fontsize=12)
