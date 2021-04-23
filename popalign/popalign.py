@@ -9,7 +9,7 @@ import csv
 import numpy as np
 import pandas as pd
 from multiprocessing import Pool
-from scipy import io as sio
+from scipy import io as s
 from scipy import sparse as ss
 from scipy import optimize as so
 from scipy import stats
@@ -1098,7 +1098,7 @@ def plot_top_genes_features(pop):
 
 	fig = plt.figure(figsize=(5,8)) 
 	ar = 3 * pop['nfeats']/len(genes_idx) # define aspect ratio
-	ax = plt.imshow(mtx, cmap='magma', aspect=ar) # create heatmap
+	ax = plt.imshow(mtx, cmap='magma', aspect=ar, interpolation='none') # create heatmap
 	xlbls = [pop['top_feat_labels'][i] for i in range(pop['nfeats'])]
 	plt.xticks(np.arange(pop['nfeats']),xlbls, rotation=45, ha='right',fontsize=6)
 	plt.ylabel('Genes')
