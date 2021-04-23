@@ -1211,7 +1211,7 @@ def plot_H(pop, method='complete', n=None):
 	X = C[idx,:] # append ordered feature data
 	X = X.T # concatenate the clustered matrices of all samples. Cells are columns, features are rows.
 	
-	plt.imshow(X, aspect='auto', interpolation=none) # generate heatmap
+	plt.imshow(X, aspect='auto', interpolation=None) # generate heatmap
 	plt.yticks(np.arange(pop['nfeats']), pop['top_feat_labels'])
 	plt.xticks([])
 	plt.xlabel('Cells')
