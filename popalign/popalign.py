@@ -9,7 +9,7 @@ import csv
 import numpy as np
 import pandas as pd
 from multiprocessing import Pool
-from scipy import io as s
+from scipy import io as sio
 from scipy import sparse as ss
 from scipy import optimize as so
 from scipy import stats
